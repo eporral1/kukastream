@@ -72,6 +72,10 @@ function buildLiveTimelinePoints(stream: Stream): MinuteDataPoint[] {
   return points;
 }
 
+// Variables booleanas para controlar la visibilidad temporal del Heatmap y Métricas Promedio
+const SHOW_HEATMAP = false;
+const SHOW_AVG_METRICS = false;
+
 export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
   channel: initialChannel,
   liveStream: initialLiveStream,
@@ -304,9 +308,9 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
               <span className="w-3 h-3 rounded-full bg-red-600 animate-pulse"></span>
               <span>🔴 Streams En Vivo</span>
             </h3>
-            <span className="text-xs font-medium text-gray-500">
+            {/*<span className="text-xs font-medium text-gray-500">
               video_id: <strong className="font-mono text-gray-700">{liveStream.video_id}</strong>
-            </span>
+            </span>*/}
           </div>
 
           <div className="bg-white rounded-xl shadow-xs border border-gray-100 p-6 space-y-6">
@@ -403,35 +407,39 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
         </div>
       )}
 
-      {/* 🔥 Heatmap Section (matching Laravel) */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xl sm:text-2xl font-bold text-gray-900">
-            🔥 Heatmap - Usuarios promedio conectados
-          </h3>
-        </div>
-        <HeatmapTable data={effectiveHeatmapData} />
-      </div>
-
-      {/* 📊 Métricas Promedio (24h curve) */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xl sm:text-2xl font-bold text-gray-900">
-            📊 Métricas Promedio a lo largo del día
-          </h3>
-        </div>
-        <div className="bg-white rounded-xl shadow-xs border border-gray-100 p-6">
-          <div className="text-xs text-gray-500 mb-4">
-            Curva promedio de audiencia y likes registrados cada 10-30 minutos (últimos 30 días)
+      {/* 🔥 Heatmap Section (oculto temporalmente con SHOW_HEATMAP) */}
+      {SHOW_HEATMAP && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl sm:text-2xl font-bold text-gray-900">
+              🔥 Heatmap - Usuarios promedio conectados
+            </h3>
           </div>
-          <StreamLineChart
-            labels={avgLabels}
-            viewers={avgViewers}
-            likes={avgLikes}
-            height={320}
-          />
+          <HeatmapTable data={effectiveHeatmapData} />
         </div>
-      </div>
+      )}
+
+      {/* 📊 Métricas Promedio (24h curve) (oculto temporalmente con SHOW_AVG_METRICS) */}
+      {SHOW_AVG_METRICS && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl sm:text-2xl font-bold text-gray-900">
+              📊 Métricas Promedio a lo largo del día
+            </h3>
+          </div>
+          <div className="bg-white rounded-xl shadow-xs border border-gray-100 p-6">
+            <div className="text-xs text-gray-500 mb-4">
+              Curva promedio de audiencia y likes registrados cada 10-30 minutos (últimos 30 días)
+            </div>
+            <StreamLineChart
+              labels={avgLabels}
+              viewers={avgViewers}
+              likes={avgLikes}
+              height={320}
+            />
+          </div>
+        </div>
+      )}
 
       {/* 📈 Streams finalizados (Past Streams matching Laravel) */}
       <div className="space-y-6">

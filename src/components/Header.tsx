@@ -53,7 +53,7 @@ export const Header: React.FC<HeaderProps> = ({
                   KukaStream
                 </h1>
                 <p className="text-xs text-gray-500 hidden sm:flex font-medium">
-                  viendo que opninan los kukitas y sus bots
+                  Contenido que nos chupa la pija. Estadísticas con IVA.
                 </p>
               </div>
             </button>

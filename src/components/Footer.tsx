@@ -66,10 +66,7 @@ export const Footer: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-4 text-xs sm:text-sm text-gray-500 space-y-3">
         <p className="font-medium text-gray-600">
-          KukaStream &bull; viendo que opninan los kukitas y sus bots
-        </p>
-        <p>
-          Rankings actualizados con datos en tiempo real de la API de YouTube.
+          KukaStream &bull; 
         </p>
         <div className="flex items-center justify-center space-x-4">
           <a

@@ -123,9 +123,9 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
                 <span className="font-bold text-gray-900 text-sm sm:text-base truncate">
                   {stream.channel_name}
                 </span>
-                <span className="text-[11px] font-mono bg-blue-100 text-blue-800 px-2 py-0.5 rounded-md font-semibold">
+                {/*<span className="text-[11px] font-mono bg-blue-100 text-blue-800 px-2 py-0.5 rounded-md font-semibold">
                   video_id: {stream.video_id}
-                </span>
+                </span>*/}
                 {stream.live === 'live' && (
                   <span className="text-[11px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse"></span>
@@ -359,7 +359,7 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
         {/* Footer */}
         <div className="p-3.5 border-t border-gray-100 bg-gray-50 flex items-center justify-between text-xs text-gray-500">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-[11px]">video_id: {stream.video_id}</span>
+            {/*<span className="font-mono text-[11px]">video_id: {stream.video_id}</span>*/}
             <span>•</span>
             <a
               href={`https://youtube.com/watch?v=${stream.video_id}`}
