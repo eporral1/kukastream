@@ -405,16 +405,18 @@ const channelHandler = async (req: Request, res: Response) => {
         live.max_likes = maxStatsRes.rows[0].max_likes;
       }
 
-      // Live stream minute-by-minute curve (October 2026 onwards)
+      // Live stream minute-by-minute curve (strictly chronological by timestamp)
       let minuteRows: any[] = [];
       try {
         const minuteRes = await p.query(
-          `SELECT to_char(scrape_date, 'HH24:MI') AS scrape_date, concurrent_viewers, likes, 
-                  COALESCE(chat_count, 0) as chat_count, COALESCE(authors_count, 0) as authors_count, 
-                  COALESCE(comments_count, 0) as comments_count
-           FROM public.minute 
-           WHERE video_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
-           ORDER BY scrape_date ASC
+          `SELECT to_char(m.scrape_date, 'HH24:MI') AS scrape_date, 
+                  m.scrape_date AS raw_date,
+                  m.concurrent_viewers, m.likes, 
+                  COALESCE(m.chat_count, 0) as chat_count, COALESCE(m.authors_count, 0) as authors_count, 
+                  COALESCE(m.comments_count, 0) as comments_count
+           FROM public.minute m
+           WHERE m.video_id = $1 AND m.scrape_date >= '${OCT_2026_CUTOFF}'
+           ORDER BY m.scrape_date ASC
            LIMIT 500`,
           [live.video_id]
         );
@@ -481,11 +483,13 @@ const channelHandler = async (req: Request, res: Response) => {
         let minDataRows: any[] = [];
         try {
           const minData = await p.query(
-            `SELECT to_char(scrape_date, 'HH24:MI') AS scrape_date, concurrent_viewers, likes, 
-                    COALESCE(comments_count, 0) as comments_count
-             FROM public.minute
-             WHERE video_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
-             ORDER BY scrape_date ASC
+            `SELECT to_char(m.scrape_date, 'HH24:MI') AS scrape_date, 
+                    m.scrape_date AS raw_date,
+                    m.concurrent_viewers, m.likes, 
+                    COALESCE(m.comments_count, 0) as comments_count
+             FROM public.minute m
+             WHERE m.video_id = $1 AND m.scrape_date >= '${OCT_2026_CUTOFF}'
+             ORDER BY m.scrape_date ASC
              LIMIT 500`,
             [stream.video_id]
           );

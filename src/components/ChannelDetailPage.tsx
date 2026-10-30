@@ -72,6 +72,45 @@ function buildLiveTimelinePoints(stream: Stream): MinuteDataPoint[] {
   return points;
 }
 
+// Reordena cronológicamente los puntos de transmisión que cruzan la medianoche (ej. 21:00 -> 23:45 -> 00:00 -> 04:30)
+function sortTimelineChronologically<T extends { scrape_date: string; raw_date?: string }>(data: T[]): T[] {
+  if (!data || data.length <= 1) return data;
+
+  // 1. Si existe raw_date (timestamp completo), ordenar cronológicamente
+  const hasRawDates = data.some((d) => d.raw_date);
+  if (hasRawDates) {
+    return [...data].sort((a, b) => {
+      const timeA = a.raw_date ? new Date(a.raw_date).getTime() : 0;
+      const timeB = b.raw_date ? new Date(b.raw_date).getTime() : 0;
+      return timeA - timeB;
+    });
+  }
+
+  // 2. Si solo tenemos 'HH:mm', corregir orden alfabético si horas de madrugada (< 12) quedaron antes que horas de noche (>= 18)
+  let splitIndex = -1;
+  for (let i = 0; i < data.length - 1; i++) {
+    const parseHour = (str: string) => {
+      const parts = str.split(':');
+      return parseInt(parts[0], 10);
+    };
+    const hCurrent = parseHour(data[i].scrape_date);
+    const hNext = parseHour(data[i + 1].scrape_date);
+
+    if (hCurrent < 12 && hNext >= 18) {
+      splitIndex = i + 1;
+      break;
+    }
+  }
+
+  if (splitIndex > 0) {
+    const morningChunk = data.slice(0, splitIndex);
+    const eveningChunk = data.slice(splitIndex);
+    return [...eveningChunk, ...morningChunk];
+  }
+
+  return data;
+}
+
 // Variables booleanas para controlar la visibilidad temporal del Heatmap y Métricas Promedio
 const SHOW_HEATMAP = false;
 const SHOW_AVG_METRICS = false;
@@ -187,7 +226,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
   const activeLiveChartPoints = useMemo(() => {
     if (!liveStream) return [];
     if (liveStream.data && liveStream.data.length >= 2) {
-      return liveStream.data;
+      return sortTimelineChronologically(liveStream.data);
     }
     return buildLiveTimelinePoints(liveStream);
   }, [liveStream]);
@@ -451,10 +490,11 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
 
         <div className="space-y-6">
           {pastStreams.map((pastStream) => {
-            const chartData =
+            const chartData = sortTimelineChronologically(
               pastStream.data && pastStream.data.length >= 2
                 ? pastStream.data
-                : buildLiveTimelinePoints(pastStream);
+                : buildLiveTimelinePoints(pastStream)
+            );
             const chartLabels = chartData.map((d) => d.scrape_date);
             const chartViewers = chartData.map((d) => d.concurrent_viewers);
             const chartLikes = chartData.map((d) => d.likes);

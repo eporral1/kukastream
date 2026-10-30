@@ -291,15 +291,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         live.max_likes = live.current_likes;
       }
 
-      // 2. Minute-by-minute timeline curve for the live stream
+      // 2. Minute-by-minute timeline curve for the live stream (strictly chronological)
       let minutePoints: any[] = [];
       try {
         const minuteRes = await p.query(
-          `SELECT to_char(scrape_date, 'HH24:MI') AS scrape_date, concurrent_viewers, likes, 
-                  COALESCE(comments_count, 0) as comments_count
-           FROM public.minute 
-           WHERE video_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
-           ORDER BY scrape_date ASC
+          `SELECT to_char(m.scrape_date, 'HH24:MI') AS scrape_date, 
+                  m.scrape_date AS raw_date,
+                  m.concurrent_viewers, m.likes, 
+                  COALESCE(m.comments_count, 0) as comments_count
+           FROM public.minute m
+           WHERE m.video_id = $1 AND m.scrape_date >= '${OCT_2026_CUTOFF}'
+           ORDER BY m.scrape_date ASC
            LIMIT 500`,
           [live.video_id]
         );
@@ -308,10 +310,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Try fallback column names if table has date / viewers
         try {
           const altRes = await p.query(
-            `SELECT to_char(date, 'HH24:MI') AS scrape_date, viewers AS concurrent_viewers, likes, 0 as comments_count
-             FROM public.minute 
-             WHERE video_id = $1 AND date >= '${OCT_2026_CUTOFF}'
-             ORDER BY date ASC
+            `SELECT to_char(m.date, 'HH24:MI') AS scrape_date, 
+                    m.date AS raw_date,
+                    m.viewers AS concurrent_viewers, m.likes, 0 as comments_count
+             FROM public.minute m
+             WHERE m.video_id = $1 AND m.date >= '${OCT_2026_CUTOFF}'
+             ORDER BY m.date ASC
              LIMIT 500`,
             [live.video_id]
           );
@@ -365,11 +369,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       for (const stream of finishedStreams) {
         try {
           const minData = await p.query(
-            `SELECT to_char(scrape_date, 'HH24:MI') AS scrape_date, concurrent_viewers, likes, 
-                    COALESCE(comments_count, 0) as comments_count
-             FROM public.minute
-             WHERE video_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
-             ORDER BY scrape_date ASC
+            `SELECT to_char(m.scrape_date, 'HH24:MI') AS scrape_date, 
+                    m.scrape_date AS raw_date,
+                    m.concurrent_viewers, m.likes, 
+                    COALESCE(m.comments_count, 0) as comments_count
+             FROM public.minute m
+             WHERE m.video_id = $1 AND m.scrape_date >= '${OCT_2026_CUTOFF}'
+             ORDER BY m.scrape_date ASC
              LIMIT 500`,
             [stream.video_id]
           );

@@ -48,6 +48,7 @@ export interface CommentItem {
 
 export interface MinuteDataPoint {
   scrape_date: string; // HH:mm
+  raw_date?: string;
   concurrent_viewers: number;
   likes: number;
   chat_count?: number;
