@@ -317,7 +317,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
             </div>
 
             {/* Overall averages */}
-            <div className="flex md:flex-col sm:flex-row gap-4 border-t md:border-t-0 md:border-l border-gray-100 pt-4 md:pt-0 md:pl-8 w-full md:w-auto">
+            {/*<div className="flex md:flex-col sm:flex-row gap-4 border-t md:border-t-0 md:border-l border-gray-100 pt-4 md:pt-0 md:pl-8 w-full md:w-auto">
               <div className="text-left md:text-right">
                 <div className="text-xs text-gray-500 uppercase tracking-wider font-semibold">
                   Promedio Conectados
@@ -334,7 +334,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                   {formatNumber(channel.avg_likes)}
                 </div>
               </div>
-            </div>
+            </div>*/}
           </div>
         </div>
       </div>

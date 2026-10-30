@@ -53,7 +53,7 @@ export const Header: React.FC<HeaderProps> = ({
                   KukaStream
                 </h1>
                 <p className="text-xs text-gray-500 hidden sm:flex font-medium">
-                  Contenido que nos chupa la pija. Estadísticas con IVA.
+                  Contenido que nos chupa la pija.
                 </p>
               </div>
             </button>
@@ -93,14 +93,14 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
 
             {/* Quick Actions: Share Tweet text & Refresh */}
-            <button
+            {/*<button
               onClick={onOpenSocialModal}
               title="Generar ranking para X / Twitter"
               className="p-2 text-gray-600 hover:text-blue-600 hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-medium"
             >
               <Share2 className="w-4 h-4" />
               <span className="hidden lg:inline">Ranking X</span>
-            </button>
+            </button>*/}
 
             <button
               onClick={onRefresh}
@@ -120,7 +120,7 @@ export const Header: React.FC<HeaderProps> = ({
               }`}
             >
               <Radio className={`w-3.5 h-3.5 ${isSimulating ? 'animate-pulse text-green-600' : ''}`} />
-              <span>{isSimulating ? 'Auto-refresh DB (30s)' : 'Auto-refresh Off'}</span>
+              <span>{isSimulating ? 'Auto-refresh On (30s)' : 'Auto-refresh Off'}</span>
             </button>
 
             {/* Mobile menu button */}

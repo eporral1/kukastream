@@ -424,7 +424,7 @@ export default function App() {
                                 onClick={() => navigate(`/channel/${stream.channel}`)}
                                 className="bg-purple-50 hover:bg-purple-100 text-purple-700 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors cursor-pointer"
                               >
-                                Ver Curva 24h
+                                Ver Stats
                               </button>
                               <button
                                 onClick={() => setSelectedCommentsStream(stream)}

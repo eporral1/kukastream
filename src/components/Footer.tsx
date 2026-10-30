@@ -19,12 +19,20 @@ export const Footer: React.FC = () => {
     },
     {
       q: '¿Qué canales se incluyen en el ranking?',
-      a: 'Incluimos canales y transmisiones públicas de YouTube radicadas o producidas en Argentina correspondientes a streaming, entretenimiento, noticias, deportes, política y radio.',
+      a: 'Incluimos canales y transmisiones públicas de YouTube de kukitas radioactivos.',
     },
     {
+      q: 'Cuánto nos importa la opinión de los kukas',
+      a: 'Nos chupa la pija.',
+    },
+    {
+      q: 'Si no les importa la opinión de los kukas, porque existe esta página',
+      a: 'Eso es exactamente lo que preguntaría un kuka.',
+    },
+   /* {
       q: '¿Cómo se calculan los likes y el heatmap?',
       a: 'El heatmap refleja la audiencia promedio registrada por hora y día de la semana durante los últimos 30 días, permitiendo a marcas y creadores identificar las franjas horarias con mayor tracción.',
-    },
+    },*/
   ];
 
   return (
@@ -65,11 +73,11 @@ export const Footer: React.FC = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 text-xs sm:text-sm text-gray-500 space-y-3">
-        <p className="font-medium text-gray-600">
+        {/*<p className="font-medium text-gray-600">
           KukaStream &bull; 
-        </p>
+        </p>*/}
         <div className="flex items-center justify-center space-x-4">
-          <a
+          {/*<a
             href="https://x.com/kukastream"
             target="_blank"
             rel="noopener noreferrer"
@@ -77,7 +85,7 @@ export const Footer: React.FC = () => {
           >
             <span>@kukastream</span>
             <ExternalLink className="w-3 h-3" />
-          </a>
+          </a>*/}
           <span>•</span>
           <span className="inline-flex items-center gap-1">
             Hecho para la comunidad de streaming <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />

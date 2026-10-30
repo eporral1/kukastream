@@ -57,10 +57,10 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
       {/* Title & Search header */}
       <div className="text-center pt-2 pb-6">
         <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">
-          Directorio de Canales de Streaming
+        Canales
         </h2>
         <p className="text-gray-600 max-w-xl mx-auto text-sm sm:text-base">
-          Promedios de audiencia, suscriptores, comentarios en vivo y superchats destacados de Argentina.
+          
         </p>
 
         {/* Search bar */}
@@ -70,7 +70,7 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar canal por nombre, show o categoría..."
+            placeholder="Buscar..."
             className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white shadow-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm text-gray-900 transition-all placeholder:text-gray-400"
           />
         </div>
