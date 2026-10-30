@@ -1,48 +1,46 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { Pool } from 'pg';
-
-let pool: Pool | null = null;
-
-function getPool(): Pool | null {
-  if (pool) return pool;
-
-  const host = process.env.DB_HOST;
-  const user = process.env.DB_USERNAME;
-  const password = process.env.DB_PASSWORD;
-  const database = process.env.DB_DATABASE;
-  const port = parseInt(process.env.DB_PORT || '5432', 10);
-
-  if (!host || !password || host.includes('hjkhjk') || password.includes('hjkhjk')) {
-    return null;
-  }
-
-  pool = new Pool({
-    host,
-    user,
-    password,
-    database,
-    port,
-    ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 5000,
-  });
-
-  return pool;
-}
-
-const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
+import { getPool, OCT_2026_CUTOFF } from './_db';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const p = getPool();
-  let channelParam = (req.query.id as string) || '';
+  // Support both /api/channel?id=... and /api/channel/:id (via rewrite or query)
+  let channelParam =
+    (req.query.id as string) ||
+    (req.query.channel as string) ||
+    (req.query.channelId as string) ||
+    '';
 
+  try {
+    channelParam = decodeURIComponent(channelParam);
+  } catch {
+    // Keep as is if decodeURIComponent fails
+  }
+
+  channelParam = channelParam.trim();
+
+  if (!channelParam) {
+    return res.status(400).json({ success: false, message: 'Parámetro de canal requerido' });
+  }
+
+  const p = getPool();
   if (!p) {
     return res.json({ success: false, fallback: true, message: 'DB not configured' });
   }
 
+  const cleanParam = channelParam.startsWith('@') ? channelParam.substring(1) : channelParam;
+  const withAtParam = channelParam.startsWith('@') ? channelParam : `@${channelParam}`;
+
   try {
     const chRes = await p.query(
-      'SELECT * FROM public.channels WHERE LOWER(channel) = LOWER($1) OR channel_id = $1 OR LOWER(channel_name) = LOWER($1) LIMIT 1',
-      [channelParam]
+      `SELECT * FROM public.channels 
+       WHERE LOWER(channel) = LOWER($1) 
+          OR LOWER(channel) = LOWER($2) 
+          OR LOWER(channel) = LOWER($3)
+          OR channel_id = $1 
+          OR channel_id = $2
+          OR LOWER(channel_name) = LOWER($1) 
+          OR LOWER(channel_name) = LOWER($2)
+       LIMIT 1`,
+      [channelParam, cleanParam, withAtParam]
     );
     const channel = chRes.rows[0] || null;
 
@@ -152,8 +150,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       stream.superchats = scRes.rows;
     }
 
-    const heatmapRes = await p.query(`
-      SELECT
+    const heatmapRes = await p.query(
+      `SELECT
         hour,
         AVG(CASE WHEN dow = 1 THEN concurrent_viewers END) AS mon_viewers,
         AVG(CASE WHEN dow = 1 THEN likes END) AS mon_likes,
@@ -164,7 +162,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         AVG(CASE WHEN dow = 4 THEN concurrent_viewers END) AS thu_viewers,
         AVG(CASE WHEN dow = 4 THEN likes END) AS thu_likes,
         AVG(CASE WHEN dow = 5 THEN concurrent_viewers END) AS fri_viewers,
-        AVG(CASE WHEN dow = 5 THEN likes END) AS fri_likes,
+        AVG(CASE WHEN dow = 5 THEN fri_likes END) AS fri_likes,
         AVG(CASE WHEN dow = 6 THEN concurrent_viewers END) AS sat_viewers,
         AVG(CASE WHEN dow = 6 THEN likes END) AS sat_likes,
         AVG(CASE WHEN dow = 0 THEN concurrent_viewers END) AS sun_viewers,
@@ -179,11 +177,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         WHERE channel_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
       ) t
       GROUP BY hour
-      ORDER BY hour;
-    `, [channelId]);
+      ORDER BY hour;`,
+      [channelId]
+    );
 
-    const avgRes = await p.query(`
-      SELECT scrape_date1, AVG(avg_viewers)::int AS avg_viewers, AVG(avg_likes)::int AS avg_likes
+    const avgRes = await p.query(
+      `SELECT scrape_date1, AVG(avg_viewers)::int AS avg_viewers, AVG(avg_likes)::int AS avg_likes
       FROM (
         SELECT 
           to_char(
@@ -200,8 +199,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           interval '10 minute' * floor(extract(minute from scrape_date)::int / 10)
       ) sub
       GROUP BY scrape_date1
-      ORDER BY scrape_date1;
-    `, [channelId]);
+      ORDER BY scrape_date1;`,
+      [channelId]
+    );
 
     return res.json({
       success: true,

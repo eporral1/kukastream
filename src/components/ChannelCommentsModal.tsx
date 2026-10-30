@@ -38,6 +38,12 @@ export const ChannelCommentsModal: React.FC<ChannelCommentsModalProps> = ({
 
     try {
       const res = await fetch(`/api/comments?channel_id=${encodeURIComponent(channel.channel_id)}&channel=${encodeURIComponent(channel.channel)}`);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      if (!res.headers.get('content-type')?.includes('application/json')) {
+        throw new Error('Respuesta inválida del servidor');
+      }
       const data = await res.json();
       if (data.success) {
         const rawComments: DbComment[] = data.comments || [];

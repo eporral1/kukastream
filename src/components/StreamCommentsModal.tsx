@@ -36,6 +36,12 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
 
     try {
       const res = await fetch(`/api/comments?video_id=${encodeURIComponent(stream.video_id)}`);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      if (!res.headers.get('content-type')?.includes('application/json')) {
+        throw new Error('Respuesta inválida del servidor');
+      }
       const data = await res.json();
       if (data.success) {
         const rawComments: DbComment[] = data.comments || [];

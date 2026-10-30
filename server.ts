@@ -20,6 +20,22 @@ let pool: Pool | null = null;
 function getPool(): Pool | null {
   if (pool) return pool;
 
+  const connectionString =
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_PRISMA_URL;
+
+  if (connectionString && !connectionString.includes('hjkhjk')) {
+    pool = new Pool({
+      connectionString,
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 5000,
+      max: 10,
+      idleTimeoutMillis: 30000,
+    });
+    return pool;
+  }
+
   const host = process.env.DB_HOST;
   const user = process.env.DB_USERNAME;
   const password = process.env.DB_PASSWORD;

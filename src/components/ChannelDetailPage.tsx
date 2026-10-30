@@ -46,9 +46,22 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
     let isMounted = true;
     setIsLoadingChannel(true);
 
-    fetch(`/api/channel/${encodeURIComponent(channelIdentifier)}`)
-      .then((res) => res.json())
-      .then((data) => {
+    const tryFetchChannel = async () => {
+      try {
+        // Try path format first: /api/channel/@handle
+        let res = await fetch(`/api/channel/${encodeURIComponent(channelIdentifier)}`);
+        // If 404 or not JSON, try query param format: /api/channel?id=@handle
+        if (!res.ok || !res.headers.get('content-type')?.includes('application/json')) {
+          res = await fetch(`/api/channel?id=${encodeURIComponent(channelIdentifier)}`);
+        }
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error(`Expected JSON but received ${contentType || 'non-JSON'}`);
+        }
+        const data = await res.json();
         if (!isMounted) return;
         if (data.success) {
           if (data.channel) {
@@ -73,13 +86,14 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
             setAvgData(data.avg_data);
           }
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         console.warn('Could not fetch channel details from API, using fallback data:', err);
-      })
-      .finally(() => {
+      } finally {
         if (isMounted) setIsLoadingChannel(false);
-      });
+      }
+    };
+
+    tryFetchChannel();
 
     return () => {
       isMounted = false;

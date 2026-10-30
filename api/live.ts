@@ -1,35 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { Pool } from 'pg';
-
-let pool: Pool | null = null;
-
-function getPool(): Pool | null {
-  if (pool) return pool;
-
-  const host = process.env.DB_HOST;
-  const user = process.env.DB_USERNAME;
-  const password = process.env.DB_PASSWORD;
-  const database = process.env.DB_DATABASE;
-  const port = parseInt(process.env.DB_PORT || '5432', 10);
-
-  if (!host || !password || host.includes('hjkhjk') || password.includes('hjkhjk')) {
-    return null;
-  }
-
-  pool = new Pool({
-    host,
-    user,
-    password,
-    database,
-    port,
-    ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 5000,
-  });
-
-  return pool;
-}
-
-const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
+import { getPool, OCT_2026_CUTOFF } from './_db';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const p = getPool();
