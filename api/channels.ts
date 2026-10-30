@@ -29,6 +29,8 @@ function getPool(): Pool | null {
   return pool;
 }
 
+const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
+
 export default async function handler(_req: VercelRequest, res: VercelResponse) {
   const p = getPool();
   if (!p) {
@@ -43,7 +45,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
         COALESCE(AVG((l.current_likes - l.old_likes) * 6), 0)::int AS avg_likes
       FROM public.channels c
       LEFT JOIN public.live l ON l.channel_id = c.channel_id 
-        AND l.scrape_date >= NOW() - INTERVAL '30 days' 
+        AND l.scrape_date >= '${OCT_2026_CUTOFF}' 
         AND l.concurrent_viewers > 0
       GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter
       ORDER BY avg_viewers DESC;

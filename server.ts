@@ -78,6 +78,9 @@ app.get('/api/health/db', async (_req: Request, res: Response) => {
 
 // GET /api/live - Reproduces Laravel route: /
 // DB::select("select * from public.live l, channels c where l.live='live' and l.concurrent_viewers > 0 and l.channel_id = c.channel_id and c.tags like '%tag%' order by l.concurrent_viewers desc limit 10")
+// Cutoff constant for queries: Only October 2026 onwards
+const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
+
 // GET /api/live - Reproduces Laravel route: /
 // DB::select("select * from public.live l, channels c where l.live='live' and l.concurrent_viewers > 0 and l.channel_id = c.channel_id and c.tags like '%tag%' order by l.concurrent_viewers desc limit 10")
 app.get('/api/live', async (req: Request, res: Response) => {
@@ -109,15 +112,18 @@ app.get('/api/live', async (req: Request, res: Response) => {
       LEFT JOIN (
         SELECT video_id, SUM(amount) as total_superchats, COUNT(id) as superchats_count
         FROM public.superchats
+        WHERE created_at >= '${OCT_2026_CUTOFF}'
         GROUP BY video_id
       ) sc ON sc.video_id = l.video_id
       LEFT JOIN (
         SELECT video_id, COUNT(id) as comments_count
         FROM public.comments
+        WHERE created_at >= '${OCT_2026_CUTOFF}'
         GROUP BY video_id
       ) comm ON comm.video_id = l.video_id
       WHERE l.live = 'live' 
         AND l.concurrent_viewers > 0
+        AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
     `;
 
     const liveParams: any[] = [];
@@ -129,7 +135,7 @@ app.get('/api/live', async (req: Request, res: Response) => {
     liveQuery += ` ORDER BY l.concurrent_viewers DESC LIMIT 25;`;
     const liveResult = await p.query(liveQuery, liveParams);
 
-    // Also get recent finished streams from the last 24h
+    // Also get recent finished streams from the last 24h, strictly October 2026 onwards
     let recentQuery = `
       SELECT 
         l.video_id, l.channel_id, l.concurrent_viewers, l.old_viewers,
@@ -144,14 +150,17 @@ app.get('/api/live', async (req: Request, res: Response) => {
       LEFT JOIN (
         SELECT video_id, SUM(amount) as total_superchats, COUNT(id) as superchats_count
         FROM public.superchats
+        WHERE created_at >= '${OCT_2026_CUTOFF}'
         GROUP BY video_id
       ) sc ON sc.video_id = l.video_id
       LEFT JOIN (
         SELECT video_id, COUNT(id) as comments_count
         FROM public.comments
+        WHERE created_at >= '${OCT_2026_CUTOFF}'
         GROUP BY video_id
       ) comm ON comm.video_id = l.video_id
       WHERE l.live <> 'live'
+        AND l.scrape_date >= '${OCT_2026_CUTOFF}'
         AND l.scrape_date >= NOW() - INTERVAL '24 hours'
     `;
 
@@ -175,7 +184,7 @@ app.get('/api/live', async (req: Request, res: Response) => {
 });
 
 // GET /api/channels - Reproduces Laravel route: /channels
-// SELECT c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, avg(l.concurrent_viewers) avg_viewers, AVG((l.current_likes - l.old_likes)*6) avg_likes ...
+// Filtered strictly for October 2026 onwards to optimize aggregations
 app.get('/api/channels', async (_req: Request, res: Response) => {
   const p = getPool();
   if (!p) {
@@ -191,7 +200,7 @@ app.get('/api/channels', async (_req: Request, res: Response) => {
         COALESCE(AVG((l.current_likes - l.old_likes) * 6), 0)::int AS avg_likes
       FROM public.channels c
       LEFT JOIN public.live l ON l.channel_id = c.channel_id 
-        AND l.scrape_date >= NOW() - INTERVAL '30 days' 
+        AND l.scrape_date >= '${OCT_2026_CUTOFF}'
         AND l.concurrent_viewers > 0
       GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter
       ORDER BY avg_viewers DESC;
@@ -228,23 +237,25 @@ app.get('/api/channel/:channelId', async (req: Request, res: Response) => {
 
     const channelId = channel.channel_id;
 
-    // Current live stream (matching Laravel: l.live='live' and l.concurrent_viewers > 0)
+    // Current live stream (matching Laravel: l.live='live', concurrent_viewers > 0, >= Oct 2026)
     let liveRes = await p.query(
       `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter
        FROM public.live l
        JOIN public.channels c ON l.channel_id = c.channel_id
        WHERE c.channel_id = $1 AND l.live = 'live' AND l.concurrent_viewers > 0 
+         AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
        ORDER BY l.concurrent_viewers DESC LIMIT 1`,
       [channelId]
     );
 
-    // Fallback if live stream flag is set but concurrent_viewers is transitioning (must still be strictly live = 'live')
+    // Fallback if live stream flag is set but concurrent_viewers is transitioning
     if (liveRes.rows.length === 0) {
       liveRes = await p.query(
         `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter
          FROM public.live l
          JOIN public.channels c ON l.channel_id = c.channel_id
-         WHERE c.channel_id = $1 AND l.live = 'live' AND l.scrape_date >= NOW() - INTERVAL '24 hours'
+         WHERE c.channel_id = $1 AND l.live = 'live' 
+           AND l.scrape_date >= '${OCT_2026_CUTOFF}'
          ORDER BY l.scrape_date DESC LIMIT 1`,
         [channelId]
       );
@@ -256,9 +267,11 @@ app.get('/api/channel/:channelId', async (req: Request, res: Response) => {
     }
 
     if (live) {
-      // Max users & max likes (from Laravel web.php)
+      // Max users & max likes (from Laravel web.php, October 2026 onwards)
       const maxStatsRes = await p.query(
-        `SELECT MAX(concurrent_viewers) as max_users, MAX(likes) as max_likes FROM public.minute WHERE video_id = $1`,
+        `SELECT MAX(concurrent_viewers) as max_users, MAX(likes) as max_likes 
+         FROM public.minute 
+         WHERE video_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'`,
         [live.video_id]
       );
       if (maxStatsRes.rows.length > 0) {
@@ -266,31 +279,35 @@ app.get('/api/channel/:channelId', async (req: Request, res: Response) => {
         live.max_likes = maxStatsRes.rows[0].max_likes;
       }
 
-      // Live stream minute-by-minute curve
+      // Live stream minute-by-minute curve (October 2026 onwards)
       const minuteRes = await p.query(
         `SELECT to_char(scrape_date, 'HH24:MI') AS scrape_date, concurrent_viewers, likes, chat_count, authors_count, comments_count
          FROM public.minute 
-         WHERE video_id = $1
+         WHERE video_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
          ORDER BY scrape_date ASC
          LIMIT 500`,
         [live.video_id]
       );
       live.data = minuteRes.rows;
 
-      // Superchats summary
+      // Superchats summary (October 2026 onwards)
       const scRes = await p.query(
-        `SELECT currency, sum(amount) AS total_amount FROM public.superchats WHERE video_id = $1 GROUP BY currency`,
+        `SELECT currency, sum(amount) AS total_amount 
+         FROM public.superchats 
+         WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}' 
+         GROUP BY currency`,
         [live.video_id]
       );
       live.superchats = scRes.rows;
     }
 
-    // Recent finished streams
+    // Recent finished streams (October 2026 onwards only)
     const finishedRes = await p.query(
       `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter
        FROM public.live l
        JOIN public.channels c ON l.channel_id = c.channel_id
        WHERE l.live <> 'live' AND c.channel_id = $1 
+         AND l.scrape_date >= '${OCT_2026_CUTOFF}'
        ORDER BY l.scrape_date DESC, l.video_id LIMIT 5`,
       [channelId]
     );
@@ -298,7 +315,9 @@ app.get('/api/channel/:channelId', async (req: Request, res: Response) => {
 
     for (const stream of finishedStreams) {
       const maxStatsRes = await p.query(
-        `SELECT MAX(concurrent_viewers) as max_users, MAX(likes) as max_likes FROM public.minute WHERE video_id = $1`,
+        `SELECT MAX(concurrent_viewers) as max_users, MAX(likes) as max_likes 
+         FROM public.minute 
+         WHERE video_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'`,
         [stream.video_id]
       );
       if (maxStatsRes.rows.length > 0) {
@@ -309,7 +328,7 @@ app.get('/api/channel/:channelId', async (req: Request, res: Response) => {
       const minData = await p.query(
         `SELECT to_char(scrape_date, 'HH24:MI') AS scrape_date, concurrent_viewers, likes, comments_count
          FROM public.minute
-         WHERE video_id = $1
+         WHERE video_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
          ORDER BY scrape_date ASC
          LIMIT 500`,
         [stream.video_id]
@@ -317,13 +336,16 @@ app.get('/api/channel/:channelId', async (req: Request, res: Response) => {
       stream.data = minData.rows;
 
       const scRes = await p.query(
-        `SELECT currency, sum(amount) AS total_amount FROM public.superchats WHERE video_id = $1 GROUP BY currency`,
+        `SELECT currency, sum(amount) AS total_amount 
+         FROM public.superchats 
+         WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}' 
+         GROUP BY currency`,
         [stream.video_id]
       );
       stream.superchats = scRes.rows;
     }
 
-    // Heatmap hour-day data (from Laravel query)
+    // Heatmap hour-day data (from Laravel query, October 2026 onwards)
     const heatmapRes = await p.query(`
       SELECT
         hour,
@@ -348,13 +370,13 @@ app.get('/api/channel/:channelId', async (req: Request, res: Response) => {
           concurrent_viewers,
           likes
         FROM public.minute
-        WHERE channel_id = $1 AND scrape_date >= NOW() - INTERVAL '30 days'
+        WHERE channel_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
       ) t
       GROUP BY hour
       ORDER BY hour;
     `, [channelId]);
 
-    // 24h Average data
+    // 24h Average data (October 2026 onwards)
     const avgRes = await p.query(`
       SELECT scrape_date1, AVG(avg_viewers)::int AS avg_viewers, AVG(avg_likes)::int AS avg_likes
       FROM (
@@ -367,7 +389,7 @@ app.get('/api/channel/:channelId', async (req: Request, res: Response) => {
           AVG(concurrent_viewers) AS avg_viewers,
           AVG(likes) AS avg_likes
         FROM public.minute
-        WHERE channel_id = $1 and scrape_date >= NOW() - INTERVAL '30 days' 
+        WHERE channel_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
         GROUP BY 
           date_trunc('hour', scrape_date) + 
           interval '10 minute' * floor(extract(minute from scrape_date)::int / 10)
@@ -390,6 +412,7 @@ app.get('/api/channel/:channelId', async (req: Request, res: Response) => {
 });
 
 // GET /api/comments - Queries public.comments and public.superchats for a specific video_id or channel
+// Strictly October 2026 onwards
 app.get('/api/comments', async (req: Request, res: Response) => {
   const videoId = req.query.video_id as string | undefined;
   const channelIdParam = req.query.channel_id as string | undefined;
@@ -403,24 +426,24 @@ app.get('/api/comments', async (req: Request, res: Response) => {
       video_id: videoId || 'sample',
       comments: [
         {
-          id: 943613,
-          created_at: new Date().toISOString(),
+          id: 934377,
+          created_at: '2026-10-30T03:05:42.773Z',
           video_id: videoId || 'sample',
-          author_id: '@comunidad_stream',
+          author_id: '@GeSe20',
           comment_id: 'LCC.EhwKGkNPWHN0b1hoNEpjREZSMjJtY3lncWdDeEF3',
           comment_text: 'Excelente programa y análisis en vivo!',
         },
         {
-          id: 943612,
-          created_at: new Date(Date.now() - 10000).toISOString(),
+          id: 934376,
+          created_at: '2026-10-30T03:05:42.453Z',
           video_id: videoId || 'sample',
-          author_id: '@oyente_fiel',
+          author_id: '@misterghoul6633',
           comment_id: 'LCC.EhwKGkNLZW5ZdVVHUG5ORXBqUkVaSFdnaEF3',
           comment_text: 'Saludos desde Córdoba capital, prendidos a la radio!',
         },
         {
-          id: 943611,
-          created_at: new Date(Date.now() - 30000).toISOString(),
+          id: 934375,
+          created_at: '2026-10-30T03:04:18.112Z',
           video_id: videoId || 'sample',
           author_id: '@lucas_cordoba',
           comment_id: 'LCC.EhwKGkNLZW1ZdVVHUG5ORXBqUkVaSFdnYEF4',
@@ -429,8 +452,8 @@ app.get('/api/comments', async (req: Request, res: Response) => {
       ],
       superchats: [
         {
-          id: 14039,
-          created_at: new Date(Date.now() - 60000).toISOString(),
+          id: 13885,
+          created_at: '2026-10-29T16:34:09.895Z',
           amount: 500,
           currency: 'ARS',
           video_id: videoId || 'sample',
@@ -460,7 +483,7 @@ app.get('/api/comments', async (req: Request, res: Response) => {
       const commentsRes = await p.query(
         `SELECT id, created_at, video_id, author_id, comment_id, comment_text 
          FROM public.comments 
-         WHERE video_id = $1 
+         WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
          ORDER BY created_at DESC 
          LIMIT 200`,
         [resolvedVideoId]
@@ -469,7 +492,7 @@ app.get('/api/comments', async (req: Request, res: Response) => {
       const superchatsRes = await p.query(
         `SELECT id, created_at, amount, currency, video_id, superchat_id, superchat_text 
          FROM public.superchats 
-         WHERE video_id = $1 
+         WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
          ORDER BY created_at DESC 
          LIMIT 200`,
         [resolvedVideoId]
@@ -490,7 +513,7 @@ app.get('/api/comments', async (req: Request, res: Response) => {
                 COALESCE(l.video_title, '') as video_title
          FROM public.comments c
          JOIN public.live l ON c.video_id = l.video_id
-         WHERE l.channel_id = $1
+         WHERE l.channel_id = $1 AND c.created_at >= '${OCT_2026_CUTOFF}'
          ORDER BY c.created_at DESC 
          LIMIT 200`,
         [resolvedChannelId]
@@ -501,7 +524,7 @@ app.get('/api/comments', async (req: Request, res: Response) => {
                 COALESCE(l.video_title, '') as video_title
          FROM public.superchats sc
          JOIN public.live l ON sc.video_id = l.video_id
-         WHERE l.channel_id = $1
+         WHERE l.channel_id = $1 AND sc.created_at >= '${OCT_2026_CUTOFF}'
          ORDER BY sc.created_at DESC 
          LIMIT 200`,
         [resolvedChannelId]
@@ -516,7 +539,7 @@ app.get('/api/comments', async (req: Request, res: Response) => {
       return;
     }
 
-    // Default if neither parameter is passed: return latest global comments
+    // Default if neither parameter is passed: return latest global comments from Oct 2026
     const latestComments = await p.query(
       `SELECT c.id, c.created_at, c.video_id, c.author_id, c.comment_id, c.comment_text,
               COALESCE(l.video_title, '') as video_title,
@@ -524,6 +547,7 @@ app.get('/api/comments', async (req: Request, res: Response) => {
        FROM public.comments c
        LEFT JOIN public.live l ON c.video_id = l.video_id
        LEFT JOIN public.channels ch ON l.channel_id = ch.channel_id
+       WHERE c.created_at >= '${OCT_2026_CUTOFF}'
        ORDER BY c.created_at DESC 
        LIMIT 100`
     );
@@ -535,6 +559,7 @@ app.get('/api/comments', async (req: Request, res: Response) => {
        FROM public.superchats sc
        LEFT JOIN public.live l ON sc.video_id = l.video_id
        LEFT JOIN public.channels ch ON l.channel_id = ch.channel_id
+       WHERE sc.created_at >= '${OCT_2026_CUTOFF}'
        ORDER BY sc.created_at DESC 
        LIMIT 100`
     );

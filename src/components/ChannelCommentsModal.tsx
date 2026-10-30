@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Channel, DbComment, DbSuperchat } from '../types';
 import { formatNumber } from '../data/mockData';
+import { isOctober2026OrLater } from '../utils/dateFilter';
 import { MessageSquare, DollarSign, X, Filter, RefreshCw, Clock, User, Search, MessageCircle, ExternalLink } from 'lucide-react';
 
 interface ChannelCommentsModalProps {
@@ -39,8 +40,10 @@ export const ChannelCommentsModal: React.FC<ChannelCommentsModalProps> = ({
       const res = await fetch(`/api/comments?channel_id=${encodeURIComponent(channel.channel_id)}&channel=${encodeURIComponent(channel.channel)}`);
       const data = await res.json();
       if (data.success) {
-        setComments(data.comments || []);
-        setSuperchats(data.superchats || []);
+        const rawComments: DbComment[] = data.comments || [];
+        const rawSuperchats: DbSuperchat[] = data.superchats || [];
+        setComments(rawComments.filter((c) => isOctober2026OrLater(c.created_at)));
+        setSuperchats(rawSuperchats.filter((sc) => isOctober2026OrLater(sc.created_at)));
       } else {
         setError(data.message || 'Error al consultar registros de la base de datos');
       }

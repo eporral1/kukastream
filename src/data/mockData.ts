@@ -1,4 +1,5 @@
 import { Channel, Stream, AvgDataPoint, HourDayData, MinuteDataPoint, CommentItem } from '../types';
+import { isOctober2026OrLater } from '../utils/dateFilter';
 
 export const CHANNELS: Channel[] = [
   {
@@ -718,69 +719,74 @@ export const PAST_STREAMS_BY_CHANNEL: Record<string, Stream[]> = {
   ],
 };
 
-// Returns past streams for any channel (falling back to generated realistic ones)
+// Returns past streams for any channel (falling back to generated realistic ones, October 2026 onwards only)
 export function getPastStreamsForChannel(channel: Channel): Stream[] {
+  let streams: Stream[] = [];
   if (PAST_STREAMS_BY_CHANNEL[channel.channel_id]) {
-    return PAST_STREAMS_BY_CHANNEL[channel.channel_id];
+    streams = PAST_STREAMS_BY_CHANNEL[channel.channel_id];
+  } else {
+    const peak = Math.round(channel.avg_viewers * 1.35);
+    streams = [
+      {
+        video_id: `${channel.channel_id}_p1`,
+        channel_id: channel.channel_id,
+        channel_name: channel.channel_name,
+        channel: channel.channel,
+        video_title: `${channel.channel_name} - Emisión En Vivo Especial`,
+        thumb: channel.thumb,
+        live: 'finished',
+        concurrent_viewers: Math.round(channel.avg_viewers * 0.4),
+        old_viewers: Math.round(channel.avg_viewers * 0.4),
+        current_likes: Math.round(channel.avg_likes * 2.5),
+        old_likes: Math.round(channel.avg_likes * 2.5),
+        scrape_date: '2026-10-29 13:00:00',
+        start_date: '2026-10-29 10:00:00',
+        max_users: peak,
+        max_likes: Math.round(channel.avg_likes * 2.5),
+        superchats: [{ currency: 'ARS', total_amount: Math.round(channel.avg_viewers * 15) }],
+        data: generateMinuteData(peak, Math.round(channel.avg_likes * 2.5), 10, 18),
+      },
+      {
+        video_id: `${channel.channel_id}_p2`,
+        channel_id: channel.channel_id,
+        channel_name: channel.channel_name,
+        channel: channel.channel,
+        video_title: `${channel.channel_name} - Programa Central de la Mañana`,
+        thumb: channel.thumb,
+        live: 'finished',
+        concurrent_viewers: Math.round(channel.avg_viewers * 0.3),
+        old_viewers: Math.round(channel.avg_viewers * 0.3),
+        current_likes: Math.round(channel.avg_likes * 1.8),
+        old_likes: Math.round(channel.avg_likes * 1.8),
+        scrape_date: '2026-10-28 13:00:00',
+        start_date: '2026-10-28 10:00:00',
+        max_users: Math.round(peak * 0.85),
+        max_likes: Math.round(channel.avg_likes * 1.8),
+        data: generateMinuteData(Math.round(peak * 0.85), Math.round(channel.avg_likes * 1.8), 10, 18),
+      },
+      {
+        video_id: `${channel.channel_id}_p3`,
+        channel_id: channel.channel_id,
+        channel_name: channel.channel_name,
+        channel: channel.channel,
+        video_title: `${channel.channel_name} - Transmisión en directo`,
+        thumb: channel.thumb,
+        live: 'finished',
+        concurrent_viewers: Math.round(channel.avg_viewers * 0.25),
+        old_viewers: Math.round(channel.avg_viewers * 0.25),
+        current_likes: Math.round(channel.avg_likes * 1.5),
+        old_likes: Math.round(channel.avg_likes * 1.5),
+        scrape_date: '2026-10-27 13:00:00',
+        start_date: '2026-10-27 10:00:00',
+        max_users: Math.round(peak * 0.78),
+        max_likes: Math.round(channel.avg_likes * 1.5),
+        data: generateMinuteData(Math.round(peak * 0.78), Math.round(channel.avg_likes * 1.5), 10, 18),
+      },
+    ];
   }
-  const peak = Math.round(channel.avg_viewers * 1.35);
-  return [
-    {
-      video_id: `${channel.channel_id}_p1`,
-      channel_id: channel.channel_id,
-      channel_name: channel.channel_name,
-      channel: channel.channel,
-      video_title: `${channel.channel_name} - Emisión En Vivo Especial`,
-      thumb: channel.thumb,
-      live: 'finished',
-      concurrent_viewers: Math.round(channel.avg_viewers * 0.4),
-      old_viewers: Math.round(channel.avg_viewers * 0.4),
-      current_likes: Math.round(channel.avg_likes * 2.5),
-      old_likes: Math.round(channel.avg_likes * 2.5),
-      scrape_date: '2026-10-29 13:00:00',
-      start_date: '2026-10-29 10:00:00',
-      max_users: peak,
-      max_likes: Math.round(channel.avg_likes * 2.5),
-      superchats: [{ currency: 'ARS', total_amount: Math.round(channel.avg_viewers * 15) }],
-      data: generateMinuteData(peak, Math.round(channel.avg_likes * 2.5), 10, 18),
-    },
-    {
-      video_id: `${channel.channel_id}_p2`,
-      channel_id: channel.channel_id,
-      channel_name: channel.channel_name,
-      channel: channel.channel,
-      video_title: `${channel.channel_name} - Programa Central de la Mañana`,
-      thumb: channel.thumb,
-      live: 'finished',
-      concurrent_viewers: Math.round(channel.avg_viewers * 0.3),
-      old_viewers: Math.round(channel.avg_viewers * 0.3),
-      current_likes: Math.round(channel.avg_likes * 1.8),
-      old_likes: Math.round(channel.avg_likes * 1.8),
-      scrape_date: '2026-10-28 13:00:00',
-      start_date: '2026-10-28 10:00:00',
-      max_users: Math.round(peak * 0.85),
-      max_likes: Math.round(channel.avg_likes * 1.8),
-      data: generateMinuteData(Math.round(peak * 0.85), Math.round(channel.avg_likes * 1.8), 10, 18),
-    },
-    {
-      video_id: `${channel.channel_id}_p3`,
-      channel_id: channel.channel_id,
-      channel_name: channel.channel_name,
-      channel: channel.channel,
-      video_title: `${channel.channel_name} - Transmisión en directo`,
-      thumb: channel.thumb,
-      live: 'finished',
-      concurrent_viewers: Math.round(channel.avg_viewers * 0.25),
-      old_viewers: Math.round(channel.avg_viewers * 0.25),
-      current_likes: Math.round(channel.avg_likes * 1.5),
-      old_likes: Math.round(channel.avg_likes * 1.5),
-      scrape_date: '2026-10-27 13:00:00',
-      start_date: '2026-10-27 10:00:00',
-      max_users: Math.round(peak * 0.78),
-      max_likes: Math.round(channel.avg_likes * 1.5),
-      data: generateMinuteData(Math.round(peak * 0.78), Math.round(channel.avg_likes * 1.5), 10, 18),
-    },
-  ];
+  return streams.filter(
+    (s) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)
+  );
 }
 
 // Format numbers with Argentine / European dot as thousands separator (e.g. 52.418)

@@ -9,6 +9,7 @@ import { DevSocialModal } from './components/DevSocialModal';
 import { StreamCommentsModal } from './components/StreamCommentsModal';
 import { Footer } from './components/Footer';
 import { CategoryTag, Stream, Channel } from './types';
+import { isOctober2026OrLater } from './utils/dateFilter';
 import { RefreshCw, Radio, Sparkles, Clock, AlertCircle } from 'lucide-react';
 
 export default function App() {
@@ -41,8 +42,12 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
-          const liveList = Array.isArray(data.streams) ? data.streams : [];
-          const recentList = Array.isArray(data.recent_streams) ? data.recent_streams : [];
+          const liveList = (Array.isArray(data.streams) ? data.streams : []).filter(
+            (s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)
+          );
+          const recentList = (Array.isArray(data.recent_streams) ? data.recent_streams : []).filter(
+            (s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)
+          );
           setStreams(liveList);
           setRecentStreams(recentList);
 

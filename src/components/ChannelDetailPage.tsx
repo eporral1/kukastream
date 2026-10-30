@@ -4,6 +4,7 @@ import { formatNumber, formatSubs, generateAvgData, generateHeatmapData, getPast
 import { HeatmapTable } from './HeatmapTable';
 import { StreamLineChart } from './StreamLineChart';
 import { StreamCommentsModal } from './StreamCommentsModal';
+import { isOctober2026OrLater } from '../utils/dateFilter';
 import { ArrowLeft, ExternalLink, Calendar, Heart, Eye, MessageSquare, Radio, RefreshCw } from 'lucide-react';
 
 interface ChannelDetailPageProps {
@@ -53,14 +54,17 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
           if (data.channel) {
             setChannel(data.channel);
           }
-          if (data.live && data.live.live === 'live') {
+          if (data.live && data.live.live === 'live' && (isOctober2026OrLater(data.live.scrape_date) || isOctober2026OrLater(data.live.start_date))) {
             setLiveStream(data.live);
           } else {
-            // If live field is 'none' or null, channel is NOT live
+            // If live field is 'none', null, or older than Oct 2026, do not show as live
             setLiveStream(undefined);
           }
           if (data.streams && data.streams.length > 0) {
-            setPastStreams(data.streams);
+            const filteredStreams = data.streams.filter(
+              (s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)
+            );
+            setPastStreams(filteredStreams);
           }
           if (data.hour_day_data && data.hour_day_data.length > 0) {
             setHeatmapData(data.hour_day_data);
@@ -223,7 +227,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                     className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
                   >
                     <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Ver Comments & Superchats de este video_id</span>
+                    <span>Ver Comentarios & Superchats</span>
                   </button>
                 </div>
               </div>
@@ -370,7 +374,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                         className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
                       >
                         <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Ver Comments de esta emisión ({pastStream.video_id})</span>
+                        <span>Comentarios y Superchats ({pastStream.video_id})</span>
                       </button>
                     </div>
                   </div>

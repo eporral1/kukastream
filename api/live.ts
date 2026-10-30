@@ -29,6 +29,8 @@ function getPool(): Pool | null {
   return pool;
 }
 
+const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const p = getPool();
   if (!p) {
@@ -56,15 +58,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       LEFT JOIN (
         SELECT video_id, SUM(amount) as total_superchats, COUNT(id) as superchats_count
         FROM public.superchats
+        WHERE created_at >= '${OCT_2026_CUTOFF}'
         GROUP BY video_id
       ) sc ON sc.video_id = l.video_id
       LEFT JOIN (
         SELECT video_id, COUNT(id) as comments_count
         FROM public.comments
+        WHERE created_at >= '${OCT_2026_CUTOFF}'
         GROUP BY video_id
       ) comm ON comm.video_id = l.video_id
       WHERE l.live = 'live' 
         AND l.concurrent_viewers > 0
+        AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
     `;
 
     const liveParams: any[] = [];
@@ -76,7 +81,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     liveQuery += ` ORDER BY l.concurrent_viewers DESC LIMIT 25;`;
     const liveResult = await p.query(liveQuery, liveParams);
 
-    // Also get recent finished streams from the last 24h
+    // Also get recent finished streams from the last 24h (strictly October 2026 onwards)
     let recentQuery = `
       SELECT 
         l.video_id, l.channel_id, l.concurrent_viewers, l.old_viewers,
@@ -91,14 +96,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       LEFT JOIN (
         SELECT video_id, SUM(amount) as total_superchats, COUNT(id) as superchats_count
         FROM public.superchats
+        WHERE created_at >= '${OCT_2026_CUTOFF}'
         GROUP BY video_id
       ) sc ON sc.video_id = l.video_id
       LEFT JOIN (
         SELECT video_id, COUNT(id) as comments_count
         FROM public.comments
+        WHERE created_at >= '${OCT_2026_CUTOFF}'
         GROUP BY video_id
       ) comm ON comm.video_id = l.video_id
       WHERE l.live <> 'live'
+        AND l.scrape_date >= '${OCT_2026_CUTOFF}'
         AND l.scrape_date >= NOW() - INTERVAL '24 hours'
     `;
 

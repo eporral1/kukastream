@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Stream, DbComment, DbSuperchat } from '../types';
 import { formatNumber } from '../data/mockData';
+import { isOctober2026OrLater } from '../utils/dateFilter';
 import { MessageSquare, X, DollarSign, Youtube, RefreshCw, Clock, User, Search, MessageCircle } from 'lucide-react';
 
 interface StreamCommentsModalProps {
@@ -37,8 +38,10 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
       const res = await fetch(`/api/comments?video_id=${encodeURIComponent(stream.video_id)}`);
       const data = await res.json();
       if (data.success) {
-        setComments(data.comments || []);
-        setSuperchats(data.superchats || []);
+        const rawComments: DbComment[] = data.comments || [];
+        const rawSuperchats: DbSuperchat[] = data.superchats || [];
+        setComments(rawComments.filter((c) => isOctober2026OrLater(c.created_at)));
+        setSuperchats(rawSuperchats.filter((sc) => isOctober2026OrLater(sc.created_at)));
       } else {
         setError(data.message || 'Error al cargar registros');
       }
@@ -322,11 +325,11 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
                     </div>
 
                     {/* Footer technical identifier */}
-                    <div className="flex items-center gap-1.5 text-[10px] text-gray-400 font-mono mt-2 pt-1.5 border-t border-gray-100">
+                    {/*<div className="flex items-center gap-1.5 text-[10px] text-gray-400 font-mono mt-2 pt-1.5 border-t border-gray-100">
                       <MessageCircle className="w-3 h-3 text-gray-300 shrink-0" />
                       <span className="font-semibold text-gray-400">comment_id:</span>
                       <span className="truncate text-gray-500">{c.comment_id}</span>
-                    </div>
+                    </div>*/}
                   </div>
                 ))}
 

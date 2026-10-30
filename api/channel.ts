@@ -29,6 +29,8 @@ function getPool(): Pool | null {
   return pool;
 }
 
+const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const p = getPool();
   let channelParam = (req.query.id as string) || '';
@@ -50,12 +52,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const channelId = channel.channel_id;
 
-    // Current live stream
+    // Current live stream (matching Laravel: l.live='live', concurrent_viewers > 0, >= Oct 2026)
     let liveRes = await p.query(
       `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter
        FROM public.live l
        JOIN public.channels c ON l.channel_id = c.channel_id
        WHERE c.channel_id = $1 AND l.live = 'live' AND l.concurrent_viewers > 0 
+         AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
        ORDER BY l.concurrent_viewers DESC LIMIT 1`,
       [channelId]
     );
@@ -66,6 +69,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
          FROM public.live l
          JOIN public.channels c ON l.channel_id = c.channel_id
          WHERE c.channel_id = $1 AND l.live = 'live'
+           AND l.scrape_date >= '${OCT_2026_CUTOFF}'
          ORDER BY l.scrape_date DESC LIMIT 1`,
         [channelId]
       );
@@ -75,7 +79,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (live) {
       const maxStatsRes = await p.query(
-        `SELECT MAX(concurrent_viewers) as max_users, MAX(likes) as max_likes FROM public.minute WHERE video_id = $1`,
+        `SELECT MAX(concurrent_viewers) as max_users, MAX(likes) as max_likes 
+         FROM public.minute 
+         WHERE video_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'`,
         [live.video_id]
       );
       if (maxStatsRes.rows.length > 0) {
@@ -86,7 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const minuteRes = await p.query(
         `SELECT to_char(scrape_date, 'HH24:MI') AS scrape_date, concurrent_viewers, likes, chat_count, authors_count, comments_count
          FROM public.minute 
-         WHERE video_id = $1
+         WHERE video_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
          ORDER BY scrape_date ASC
          LIMIT 500`,
         [live.video_id]
@@ -94,7 +100,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       live.data = minuteRes.rows;
 
       const scRes = await p.query(
-        `SELECT currency, sum(amount) AS total_amount FROM public.superchats WHERE video_id = $1 GROUP BY currency`,
+        `SELECT currency, sum(amount) AS total_amount 
+         FROM public.superchats 
+         WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}' 
+         GROUP BY currency`,
         [live.video_id]
       );
       live.superchats = scRes.rows;
@@ -105,6 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
        FROM public.live l
        JOIN public.channels c ON l.channel_id = c.channel_id
        WHERE l.live <> 'live' AND c.channel_id = $1 
+         AND l.scrape_date >= '${OCT_2026_CUTOFF}'
        ORDER BY l.scrape_date DESC, l.video_id LIMIT 5`,
       [channelId]
     );
@@ -112,7 +122,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     for (const stream of finishedStreams) {
       const maxStatsRes = await p.query(
-        `SELECT MAX(concurrent_viewers) as max_users, MAX(likes) as max_likes FROM public.minute WHERE video_id = $1`,
+        `SELECT MAX(concurrent_viewers) as max_users, MAX(likes) as max_likes 
+         FROM public.minute 
+         WHERE video_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'`,
         [stream.video_id]
       );
       if (maxStatsRes.rows.length > 0) {
@@ -123,7 +135,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const minData = await p.query(
         `SELECT to_char(scrape_date, 'HH24:MI') AS scrape_date, concurrent_viewers, likes, comments_count
          FROM public.minute
-         WHERE video_id = $1
+         WHERE video_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
          ORDER BY scrape_date ASC
          LIMIT 500`,
         [stream.video_id]
@@ -131,7 +143,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       stream.data = minData.rows;
 
       const scRes = await p.query(
-        `SELECT currency, sum(amount) AS total_amount FROM public.superchats WHERE video_id = $1 GROUP BY currency`,
+        `SELECT currency, sum(amount) AS total_amount 
+         FROM public.superchats 
+         WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}' 
+         GROUP BY currency`,
         [stream.video_id]
       );
       stream.superchats = scRes.rows;
@@ -161,7 +176,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           concurrent_viewers,
           likes
         FROM public.minute
-        WHERE channel_id = $1 AND scrape_date >= NOW() - INTERVAL '30 days'
+        WHERE channel_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
       ) t
       GROUP BY hour
       ORDER BY hour;
@@ -179,7 +194,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           AVG(concurrent_viewers) AS avg_viewers,
           AVG(likes) AS avg_likes
         FROM public.minute
-        WHERE channel_id = $1 and scrape_date >= NOW() - INTERVAL '30 days' 
+        WHERE channel_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
         GROUP BY 
           date_trunc('hour', scrape_date) + 
           interval '10 minute' * floor(extract(minute from scrape_date)::int / 10)

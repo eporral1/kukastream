@@ -29,6 +29,8 @@ function getPool(): Pool | null {
   return pool;
 }
 
+const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const videoId = (req.query.video_id as string) || '';
 
@@ -38,7 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const p = getPool();
   if (!p) {
-    // Return schema-accurate mock data (matching exact DB tables comments & superchats)
+    // Return schema-accurate mock data (matching exact DB tables comments & superchats, all October 2026)
     return res.json({
       success: true,
       fallback: true,
@@ -50,6 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           video_id: videoId,
           author_id: '@GeSe20',
           comment_id: 'LCC.EhwKGkNPWHN0b1hoNEpjREZSMjJtY3lncWdDeEF3',
+          comment_text: 'Excelente programa y análisis en vivo!',
         },
         {
           id: 934376,
@@ -57,6 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           video_id: videoId,
           author_id: '@misterghoul6633',
           comment_id: 'LCC.EhwKGkNLZW5ZdVVHUG5ORXBqUkVaSFdnaEF3',
+          comment_text: 'Saludos desde Córdoba capital, prendidos a la radio!',
         },
         {
           id: 934375,
@@ -64,6 +68,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           video_id: videoId,
           author_id: '@lucas_cordoba',
           comment_id: 'LCC.EhwKGkNLZW1ZdVVHUG5ORXBqUkVaSFdnYEF4',
+          comment_text: 'Que temazo pusieron recién',
         },
         {
           id: 934374,
@@ -71,6 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           video_id: videoId,
           author_id: '@mariana_rosario',
           comment_id: 'LCC.EhwKGkNLZWtZdVVHUG5ORXBqUkVaSFdnaUEx',
+          comment_text: 'Comunidad prendida',
         },
         {
           id: 934373,
@@ -78,6 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           video_id: videoId,
           author_id: '@juanpablo_ba',
           comment_id: 'LCC.EhwKGkNLZWhZdVVHUG5ORXBqUkVaSFdnaEEy',
+          comment_text: 'Saludos a todo el equipo',
         },
       ],
       superchats: [
@@ -88,6 +95,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           currency: 'ARS',
           video_id: videoId,
           superchat_id: 'LCC.EhwKGkNLdk53X0xUMzVjREZTMnZjZ3FDeEF3',
+          superchat_text: 'Aguante el streaming!',
         },
         {
           id: 13886,
@@ -96,6 +104,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           currency: 'ARS',
           video_id: videoId,
           superchat_id: 'LCC.EhwKGkNLcWl3X0xUMzVjREZTMnZjZ3FDeEF4',
+          superchat_text: 'Un aporte para la producción del programa, genios!',
         },
       ],
     });
@@ -103,18 +112,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const commentsRes = await p.query(
-      `SELECT id, created_at, video_id, author_id, comment_id 
+      `SELECT id, created_at, video_id, author_id, comment_id, comment_text 
        FROM public.comments 
-       WHERE video_id = $1 
+       WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
        ORDER BY created_at DESC 
        LIMIT 100`,
       [videoId]
     );
 
     const superchatsRes = await p.query(
-      `SELECT id, created_at, amount, currency, video_id, superchat_id 
+      `SELECT id, created_at, amount, currency, video_id, superchat_id, superchat_text 
        FROM public.superchats 
-       WHERE video_id = $1 
+       WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
        ORDER BY created_at DESC 
        LIMIT 100`,
       [videoId]
