@@ -1,8 +1,89 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getPool, OCT_2026_CUTOFF } from './_db';
+import { Pool } from 'pg';
+
+let pool: Pool | null = null;
+const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
+
+function getPool(): Pool | null {
+  if (pool) return pool;
+
+  const connectionString =
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.SUPABASE_DATABASE_URL ||
+    process.env.SUPABASE_DB_URL;
+
+  if (connectionString && !connectionString.includes('hjkhjk')) {
+    pool = new Pool({
+      connectionString,
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 6000,
+      idleTimeoutMillis: 10000,
+      max: 4,
+    });
+    return pool;
+  }
+
+  const host =
+    process.env.DB_HOST ||
+    process.env.POSTGRES_HOST ||
+    process.env.PGHOST;
+
+  const user =
+    process.env.DB_USERNAME ||
+    process.env.DB_USER ||
+    process.env.POSTGRES_USER ||
+    process.env.PGUSER;
+
+  const password =
+    process.env.DB_PASSWORD ||
+    process.env.POSTGRES_PASSWORD ||
+    process.env.PGPASSWORD;
+
+  const database =
+    process.env.DB_DATABASE ||
+    process.env.DB_NAME ||
+    process.env.POSTGRES_DATABASE ||
+    process.env.PGDATABASE;
+
+  const port = parseInt(
+    process.env.DB_PORT ||
+    process.env.POSTGRES_PORT ||
+    process.env.PGPORT ||
+    '5432',
+    10
+  );
+
+  if (!host || !password || host.includes('hjkhjk') || password.includes('hjkhjk')) {
+    return null;
+  }
+
+  pool = new Pool({
+    host,
+    user,
+    password,
+    database,
+    port,
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 6000,
+    idleTimeoutMillis: 10000,
+    max: 4,
+  });
+
+  return pool;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Support both /api/channel?id=... and /api/channel/:id (via rewrite or query)
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   let channelParam =
     (req.query.id as string) ||
     (req.query.channel as string) ||
@@ -12,7 +93,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     channelParam = decodeURIComponent(channelParam);
   } catch {
-    // Keep as is if decodeURIComponent fails
+    // Keep as is if decode fails
   }
 
   channelParam = channelParam.trim();
@@ -23,7 +104,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const p = getPool();
   if (!p) {
-    return res.json({ success: false, fallback: true, message: 'DB not configured' });
+    return res.status(200).json({
+      success: false,
+      configured: false,
+      error: 'Base de datos no configurada en Vercel.',
+      channel: null,
+      liveStream: null,
+      history: [],
+      stats: { totalSuperchats: 0, totalComments: 0, maxViewers: 0, avgViewers: 0 },
+    });
   }
 
   const cleanParam = channelParam.startsWith('@') ? channelParam.substring(1) : channelParam;
@@ -45,173 +134,157 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const channel = chRes.rows[0] || null;
 
     if (!channel) {
-      return res.status(404).json({ success: false, message: 'Canal no encontrado' });
+      return res.status(200).json({
+        success: false,
+        error: `Canal '${channelParam}' no encontrado en la base de datos.`,
+        channel: null,
+        liveStream: null,
+        history: [],
+        stats: { totalSuperchats: 0, totalComments: 0, maxViewers: 0, avgViewers: 0 },
+      });
     }
 
     const channelId = channel.channel_id;
 
-    // Current live stream (matching Laravel: l.live='live', concurrent_viewers > 0, >= Oct 2026)
-    let liveRes = await p.query(
-      `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter
-       FROM public.live l
-       JOIN public.channels c ON l.channel_id = c.channel_id
-       WHERE c.channel_id = $1 AND l.live = 'live' AND l.concurrent_viewers > 0 
-         AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
-       ORDER BY l.concurrent_viewers DESC LIMIT 1`,
+    // Check active live stream for this channel (must have live = 'live' and strictly October 2026 onwards)
+    const liveRes = await p.query(
+      `SELECT 
+        l.video_id, l.channel_id, l.concurrent_viewers, l.old_viewers,
+        l.current_likes, l.old_likes, l.scrape_date, l.start_date, l.live,
+        COALESCE(l.video_title, '') AS video_title,
+        COALESCE(sc.total_superchats, 0)::numeric as superchats_total,
+        COALESCE(sc.superchats_count, 0)::int as superchats_count,
+        COALESCE(comm.comments_count, 0)::int as comments_count
+      FROM public.live l
+      LEFT JOIN (
+        SELECT video_id, SUM(amount) as total_superchats, COUNT(id) as superchats_count
+        FROM public.superchats
+        WHERE created_at >= '${OCT_2026_CUTOFF}'
+        GROUP BY video_id
+      ) sc ON sc.video_id = l.video_id
+      LEFT JOIN (
+        SELECT video_id, COUNT(id) as comments_count
+        FROM public.comments
+        WHERE created_at >= '${OCT_2026_CUTOFF}'
+        GROUP BY video_id
+      ) comm ON comm.video_id = l.video_id
+      WHERE l.channel_id = $1 
+        AND l.live = 'live'
+        AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+      ORDER BY l.scrape_date DESC 
+      LIMIT 1`,
+      [channelId]
+    );
+    const liveStream = liveRes.rows[0] || null;
+
+    // History: past streams from live table strictly October 2026 onwards
+    const histRes = await p.query(
+      `SELECT 
+        l.video_id, l.concurrent_viewers, l.current_likes, l.scrape_date, l.start_date, l.live,
+        COALESCE(l.video_title, '') AS video_title,
+        COALESCE(sc.total_superchats, 0)::numeric as superchats_total,
+        COALESCE(comm.comments_count, 0)::int as comments_count
+      FROM public.live l
+      LEFT JOIN (
+        SELECT video_id, SUM(amount) as total_superchats
+        FROM public.superchats
+        WHERE created_at >= '${OCT_2026_CUTOFF}'
+        GROUP BY video_id
+      ) sc ON sc.video_id = l.video_id
+      LEFT JOIN (
+        SELECT video_id, COUNT(id) as comments_count
+        FROM public.comments
+        WHERE created_at >= '${OCT_2026_CUTOFF}'
+        GROUP BY video_id
+      ) comm ON comm.video_id = l.video_id
+      WHERE l.channel_id = $1 
+        AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+      ORDER BY l.scrape_date DESC 
+      LIMIT 50`,
       [channelId]
     );
 
-    if (liveRes.rows.length === 0) {
-      liveRes = await p.query(
-        `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter
-         FROM public.live l
-         JOIN public.channels c ON l.channel_id = c.channel_id
-         WHERE c.channel_id = $1 AND l.live = 'live'
-           AND l.scrape_date >= '${OCT_2026_CUTOFF}'
-         ORDER BY l.scrape_date DESC LIMIT 1`,
-        [channelId]
+    // Timeline chart data: minute records for this channel strictly October 2026 onwards
+    const currentVideoId = liveStream ? liveStream.video_id : histRes.rows[0]?.video_id;
+    let timelineRows: any[] = [];
+
+    if (currentVideoId) {
+      const timeRes = await p.query(
+        `SELECT video_id, viewers, likes, date 
+         FROM public.minute 
+         WHERE video_id = $1 
+           AND date >= '${OCT_2026_CUTOFF}'
+         ORDER BY date ASC 
+         LIMIT 300`,
+        [currentVideoId]
       );
+      timelineRows = timeRes.rows;
     }
 
-    let live = liveRes.rows[0] || null;
-
-    if (live) {
-      const maxStatsRes = await p.query(
-        `SELECT MAX(concurrent_viewers) as max_users, MAX(likes) as max_likes 
-         FROM public.minute 
-         WHERE video_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'`,
-        [live.video_id]
-      );
-      if (maxStatsRes.rows.length > 0) {
-        live.max_users = maxStatsRes.rows[0].max_users;
-        live.max_likes = maxStatsRes.rows[0].max_likes;
-      }
-
-      const minuteRes = await p.query(
-        `SELECT to_char(scrape_date, 'HH24:MI') AS scrape_date, concurrent_viewers, likes, chat_count, authors_count, comments_count
-         FROM public.minute 
-         WHERE video_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
-         ORDER BY scrape_date ASC
-         LIMIT 500`,
-        [live.video_id]
-      );
-      live.data = minuteRes.rows;
-
-      const scRes = await p.query(
-        `SELECT currency, sum(amount) AS total_amount 
-         FROM public.superchats 
-         WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}' 
-         GROUP BY currency`,
-        [live.video_id]
-      );
-      live.superchats = scRes.rows;
+    if (timelineRows.length === 0 && histRes.rows.length > 0) {
+      timelineRows = histRes.rows.slice(0, 30).reverse().map((r: any) => ({
+        video_id: r.video_id,
+        viewers: r.concurrent_viewers,
+        likes: r.current_likes,
+        date: r.scrape_date || r.start_date,
+      }));
     }
 
-    const finishedRes = await p.query(
-      `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter
-       FROM public.live l
-       JOIN public.channels c ON l.channel_id = c.channel_id
-       WHERE l.live <> 'live' AND c.channel_id = $1 
-         AND l.scrape_date >= '${OCT_2026_CUTOFF}'
-       ORDER BY l.scrape_date DESC, l.video_id LIMIT 5`,
-      [channelId]
-    );
-    const finishedStreams = finishedRes.rows;
-
-    for (const stream of finishedStreams) {
-      const maxStatsRes = await p.query(
-        `SELECT MAX(concurrent_viewers) as max_users, MAX(likes) as max_likes 
-         FROM public.minute 
-         WHERE video_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'`,
-        [stream.video_id]
-      );
-      if (maxStatsRes.rows.length > 0) {
-        stream.max_users = maxStatsRes.rows[0].max_users;
-        stream.max_likes = maxStatsRes.rows[0].max_likes;
-      }
-
-      const minData = await p.query(
-        `SELECT to_char(scrape_date, 'HH24:MI') AS scrape_date, concurrent_viewers, likes, comments_count
-         FROM public.minute
-         WHERE video_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
-         ORDER BY scrape_date ASC
-         LIMIT 500`,
-        [stream.video_id]
-      );
-      stream.data = minData.rows;
-
-      const scRes = await p.query(
-        `SELECT currency, sum(amount) AS total_amount 
-         FROM public.superchats 
-         WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}' 
-         GROUP BY currency`,
-        [stream.video_id]
-      );
-      stream.superchats = scRes.rows;
-    }
-
-    const heatmapRes = await p.query(
-      `SELECT
-        hour,
-        AVG(CASE WHEN dow = 1 THEN concurrent_viewers END) AS mon_viewers,
-        AVG(CASE WHEN dow = 1 THEN likes END) AS mon_likes,
-        AVG(CASE WHEN dow = 2 THEN concurrent_viewers END) AS tue_viewers,
-        AVG(CASE WHEN dow = 2 THEN likes END) AS tue_likes,
-        AVG(CASE WHEN dow = 3 THEN concurrent_viewers END) AS wed_viewers,
-        AVG(CASE WHEN dow = 3 THEN likes END) AS wed_likes,
-        AVG(CASE WHEN dow = 4 THEN concurrent_viewers END) AS thu_viewers,
-        AVG(CASE WHEN dow = 4 THEN likes END) AS thu_likes,
-        AVG(CASE WHEN dow = 5 THEN concurrent_viewers END) AS fri_viewers,
-        AVG(CASE WHEN dow = 5 THEN fri_likes END) AS fri_likes,
-        AVG(CASE WHEN dow = 6 THEN concurrent_viewers END) AS sat_viewers,
-        AVG(CASE WHEN dow = 6 THEN likes END) AS sat_likes,
-        AVG(CASE WHEN dow = 0 THEN concurrent_viewers END) AS sun_viewers,
-        AVG(CASE WHEN dow = 0 THEN likes END) AS sun_likes
-      FROM (
-        SELECT
-          DATE_PART('hour', scrape_date) AS hour,
-          EXTRACT(DOW FROM scrape_date) AS dow,
-          concurrent_viewers,
-          likes
-        FROM public.minute
-        WHERE channel_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
-      ) t
-      GROUP BY hour
-      ORDER BY hour;`,
+    // Stats aggregation strictly October 2026 onwards
+    const statsRes = await p.query(
+      `SELECT 
+        COALESCE(SUM(s.amount), 0)::numeric as total_superchats,
+        COALESCE(COUNT(DISTINCT s.id), 0)::int as superchat_count
+      FROM public.superchats s
+      WHERE s.video_id IN (
+        SELECT video_id FROM public.live WHERE channel_id = $1 AND (scrape_date >= '${OCT_2026_CUTOFF}' OR start_date >= '${OCT_2026_CUTOFF}')
+      ) AND s.created_at >= '${OCT_2026_CUTOFF}'`,
       [channelId]
     );
 
-    const avgRes = await p.query(
-      `SELECT scrape_date1, AVG(avg_viewers)::int AS avg_viewers, AVG(avg_likes)::int AS avg_likes
-      FROM (
-        SELECT 
-          to_char(
-            date_trunc('hour', scrape_date) + 
-            interval '10 minute' * floor(extract(minute from scrape_date)::int / 10),
-            'HH24:MI'
-          ) AS scrape_date1,
-          AVG(concurrent_viewers) AS avg_viewers,
-          AVG(likes) AS avg_likes
-        FROM public.minute
-        WHERE channel_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
-        GROUP BY 
-          date_trunc('hour', scrape_date) + 
-          interval '10 minute' * floor(extract(minute from scrape_date)::int / 10)
-      ) sub
-      GROUP BY scrape_date1
-      ORDER BY scrape_date1;`,
+    const commStatsRes = await p.query(
+      `SELECT COUNT(id)::int as total_comments
+      FROM public.comments
+      WHERE video_id IN (
+        SELECT video_id FROM public.live WHERE channel_id = $1 AND (scrape_date >= '${OCT_2026_CUTOFF}' OR start_date >= '${OCT_2026_CUTOFF}')
+      ) AND created_at >= '${OCT_2026_CUTOFF}'`,
       [channelId]
     );
 
-    return res.json({
+    const viewerStatsRes = await p.query(
+      `SELECT 
+        COALESCE(MAX(concurrent_viewers), 0)::int as max_viewers,
+        COALESCE(AVG(concurrent_viewers), 0)::int as avg_viewers
+      FROM public.live
+      WHERE channel_id = $1 
+        AND concurrent_viewers > 0
+        AND (scrape_date >= '${OCT_2026_CUTOFF}' OR start_date >= '${OCT_2026_CUTOFF}')`,
+      [channelId]
+    );
+
+    return res.status(200).json({
       success: true,
       channel,
-      live,
-      streams: finishedStreams,
-      hour_day_data: heatmapRes.rows,
-      avg_data: avgRes.rows,
+      liveStream,
+      history: histRes.rows,
+      timeline: timelineRows,
+      stats: {
+        totalSuperchats: Number(statsRes.rows[0]?.total_superchats || 0),
+        superchatCount: Number(statsRes.rows[0]?.superchat_count || 0),
+        totalComments: Number(commStatsRes.rows[0]?.total_comments || 0),
+        maxViewers: Number(viewerStatsRes.rows[0]?.max_viewers || 0),
+        avgViewers: Number(viewerStatsRes.rows[0]?.avg_viewers || 0),
+      },
     });
   } catch (err: any) {
-    return res.status(500).json({ success: false, error: err.message, fallback: true });
+    console.error(`Error fetching channel ${channelParam}:`, err);
+    return res.status(200).json({
+      success: false,
+      error: `Error al consultar canal: ${err.message}`,
+      channel: null,
+      liveStream: null,
+      history: [],
+      stats: { totalSuperchats: 0, totalComments: 0, maxViewers: 0, avgViewers: 0 },
+    });
   }
 }

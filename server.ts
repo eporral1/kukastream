@@ -23,24 +23,51 @@ function getPool(): Pool | null {
   const connectionString =
     process.env.DATABASE_URL ||
     process.env.POSTGRES_URL ||
-    process.env.POSTGRES_PRISMA_URL;
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.SUPABASE_DATABASE_URL ||
+    process.env.SUPABASE_DB_URL;
 
   if (connectionString && !connectionString.includes('hjkhjk')) {
     pool = new Pool({
       connectionString,
       ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 5000,
-      max: 10,
+      connectionTimeoutMillis: 6000,
       idleTimeoutMillis: 30000,
+      max: 10,
     });
     return pool;
   }
 
-  const host = process.env.DB_HOST;
-  const user = process.env.DB_USERNAME;
-  const password = process.env.DB_PASSWORD;
-  const database = process.env.DB_DATABASE;
-  const portNum = parseInt(process.env.DB_PORT || '5432', 10);
+  const host =
+    process.env.DB_HOST ||
+    process.env.POSTGRES_HOST ||
+    process.env.PGHOST;
+
+  const user =
+    process.env.DB_USERNAME ||
+    process.env.DB_USER ||
+    process.env.POSTGRES_USER ||
+    process.env.PGUSER;
+
+  const password =
+    process.env.DB_PASSWORD ||
+    process.env.POSTGRES_PASSWORD ||
+    process.env.PGPASSWORD;
+
+  const database =
+    process.env.DB_DATABASE ||
+    process.env.DB_NAME ||
+    process.env.POSTGRES_DATABASE ||
+    process.env.PGDATABASE;
+
+  const portNum = parseInt(
+    process.env.DB_PORT ||
+    process.env.POSTGRES_PORT ||
+    process.env.PGPORT ||
+    '5432',
+    10
+  );
 
   // If credentials are empty or default placeholder, do not crash; return null
   if (!host || host.includes('hjkhjk') || !password || password.includes('hjkhjk')) {
@@ -58,7 +85,7 @@ function getPool(): Pool | null {
     },
     max: 10,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    connectionTimeoutMillis: 6000,
   });
 
   return pool;

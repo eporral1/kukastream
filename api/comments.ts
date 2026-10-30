@@ -1,186 +1,204 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getPool, OCT_2026_CUTOFF } from './_db';
+import { Pool } from 'pg';
+
+let pool: Pool | null = null;
+const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
+
+function getPool(): Pool | null {
+  if (pool) return pool;
+
+  const connectionString =
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.SUPABASE_DATABASE_URL ||
+    process.env.SUPABASE_DB_URL;
+
+  if (connectionString && !connectionString.includes('hjkhjk')) {
+    pool = new Pool({
+      connectionString,
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 6000,
+      idleTimeoutMillis: 10000,
+      max: 4,
+    });
+    return pool;
+  }
+
+  const host =
+    process.env.DB_HOST ||
+    process.env.POSTGRES_HOST ||
+    process.env.PGHOST;
+
+  const user =
+    process.env.DB_USERNAME ||
+    process.env.DB_USER ||
+    process.env.POSTGRES_USER ||
+    process.env.PGUSER;
+
+  const password =
+    process.env.DB_PASSWORD ||
+    process.env.POSTGRES_PASSWORD ||
+    process.env.PGPASSWORD;
+
+  const database =
+    process.env.DB_DATABASE ||
+    process.env.DB_NAME ||
+    process.env.POSTGRES_DATABASE ||
+    process.env.PGDATABASE;
+
+  const port = parseInt(
+    process.env.DB_PORT ||
+    process.env.POSTGRES_PORT ||
+    process.env.PGPORT ||
+    '5432',
+    10
+  );
+
+  if (!host || !password || host.includes('hjkhjk') || password.includes('hjkhjk')) {
+    return null;
+  }
+
+  pool = new Pool({
+    host,
+    user,
+    password,
+    database,
+    port,
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 6000,
+    idleTimeoutMillis: 10000,
+    max: 4,
+  });
+
+  return pool;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   const videoId = req.query.video_id as string | undefined;
   const channelIdParam = req.query.channel_id as string | undefined;
   const channelParam = req.query.channel as string | undefined;
 
   const p = getPool();
   if (!p) {
-    // Return schema-accurate mock data (matching exact DB tables comments & superchats, all October 2026)
-    return res.json({
+    return res.status(200).json({
       success: true,
       fallback: true,
+      message: 'Base de datos no configurada en Vercel.',
       video_id: videoId || 'sample',
-      comments: [
-        {
-          id: 934377,
-          created_at: '2026-10-30T03:05:42.773Z',
-          video_id: videoId || 'sample',
-          author_id: '@GeSe20',
-          comment_id: 'LCC.EhwKGkNPWHN0b1hoNEpjREZSMjJtY3lncWdDeEF3',
-          comment_text: 'Excelente programa y análisis en vivo!',
-        },
-        {
-          id: 934376,
-          created_at: '2026-10-30T03:05:42.453Z',
-          video_id: videoId || 'sample',
-          author_id: '@misterghoul6633',
-          comment_id: 'LCC.EhwKGkNLZW5ZdVVHUG5ORXBqUkVaSFdnaEF3',
-          comment_text: 'Saludos desde Córdoba capital, prendidos a la radio!',
-        },
-        {
-          id: 934375,
-          created_at: '2026-10-30T03:04:18.112Z',
-          video_id: videoId || 'sample',
-          author_id: '@lucas_cordoba',
-          comment_id: 'LCC.EhwKGkNLZW1ZdVVHUG5ORXBqUkVaSFdnYEF4',
-          comment_text: 'Que temazo pusieron recién',
-        },
-        {
-          id: 934374,
-          created_at: '2026-10-30T03:03:55.670Z',
-          video_id: videoId || 'sample',
-          author_id: '@mariana_rosario',
-          comment_id: 'LCC.EhwKGkNLZWtZdVVHUG5ORXBqUkVaSFdnaUEx',
-          comment_text: 'Comunidad prendida',
-        },
-        {
-          id: 934373,
-          created_at: '2026-10-30T03:02:11.890Z',
-          video_id: videoId || 'sample',
-          author_id: '@juanpablo_ba',
-          comment_id: 'LCC.EhwKGkNLZWhZdVVHUG5ORXBqUkVaSFdnaEEy',
-          comment_text: 'Saludos a todo el equipo',
-        },
-      ],
-      superchats: [
-        {
-          id: 13885,
-          created_at: '2026-10-29T16:34:09.895Z',
-          amount: 500,
-          currency: 'ARS',
-          video_id: videoId || 'sample',
-          superchat_id: 'LCC.EhwKGkNLdk53X0xUMzVjREZTMnZjZ3FDeEF3',
-          superchat_text: 'Aguante el streaming!',
-        },
-        {
-          id: 13886,
-          created_at: '2026-10-29T16:45:22.100Z',
-          amount: 1000,
-          currency: 'ARS',
-          video_id: videoId || 'sample',
-          superchat_id: 'LCC.EhwKGkNLcWl3X0xUMzVjREZTMnZjZ3FDeEF4',
-          superchat_text: 'Un aporte para la producción del programa, genios!',
-        },
-      ],
+      comments: [],
+      superchats: [],
     });
   }
 
   try {
     let resolvedVideoId = videoId;
-    let resolvedChannelId = channelIdParam;
+    let channelVideoIds: string[] = [];
 
-    if (!resolvedVideoId && !resolvedChannelId && channelParam) {
-      const chRes = await p.query(
-        'SELECT channel_id FROM public.channels WHERE LOWER(channel) = LOWER($1) OR channel_id = $1 LIMIT 1',
-        [channelParam]
+    // If channel or channel_id provided, find the video IDs belonging to that channel (strictly October 2026 onwards)
+    if (!resolvedVideoId && (channelIdParam || channelParam)) {
+      const chId = channelIdParam || '';
+      const chName = (channelParam || '').trim();
+      const cleanChName = chName.startsWith('@') ? chName.substring(1) : chName;
+      const atChName = chName.startsWith('@') ? chName : `@${chName}`;
+
+      const vRes = await p.query(
+        `SELECT DISTINCT l.video_id 
+         FROM public.live l
+         JOIN public.channels c ON l.channel_id = c.channel_id
+         WHERE (l.channel_id = $1 OR c.channel = $2 OR c.channel = $3 OR c.channel_name = $2 OR c.channel_name = $3)
+           AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+         ORDER BY l.video_id DESC 
+         LIMIT 20`,
+        [chId, cleanChName, atChName]
       );
-      if (chRes.rows.length > 0) {
-        resolvedChannelId = chRes.rows[0].channel_id;
-      }
+      channelVideoIds = vRes.rows.map((r: any) => r.video_id);
     }
+
+    let commentsQuery = '';
+    let commentsParams: any[] = [];
+    let scQuery = '';
+    let scParams: any[] = [];
 
     if (resolvedVideoId) {
-      const commentsRes = await p.query(
-        `SELECT id, created_at, video_id, author_id, comment_id, comment_text 
-         FROM public.comments 
-         WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
-         ORDER BY created_at DESC 
-         LIMIT 200`,
-        [resolvedVideoId]
-      );
+      commentsQuery = `
+        SELECT id, created_at, video_id, author_id, comment_id, COALESCE(comment_text, '') AS comment_text
+        FROM public.comments
+        WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
+        ORDER BY created_at DESC 
+        LIMIT 60
+      `;
+      commentsParams = [resolvedVideoId];
 
-      const superchatsRes = await p.query(
-        `SELECT id, created_at, amount, currency, video_id, superchat_id, superchat_text 
-         FROM public.superchats 
-         WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
-         ORDER BY created_at DESC 
-         LIMIT 200`,
-        [resolvedVideoId]
-      );
+      scQuery = `
+        SELECT id, created_at, amount, currency, video_id, superchat_id
+        FROM public.superchats
+        WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
+        ORDER BY created_at DESC 
+        LIMIT 40
+      `;
+      scParams = [resolvedVideoId];
+    } else if (channelVideoIds.length > 0) {
+      commentsQuery = `
+        SELECT id, created_at, video_id, author_id, comment_id, COALESCE(comment_text, '') AS comment_text
+        FROM public.comments
+        WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
+        ORDER BY created_at DESC 
+        LIMIT 60
+      `;
+      commentsParams = [channelVideoIds];
 
-      return res.json({
-        success: true,
-        video_id: resolvedVideoId,
-        comments: commentsRes.rows,
-        superchats: superchatsRes.rows,
-      });
+      scQuery = `
+        SELECT id, created_at, amount, currency, video_id, superchat_id
+        FROM public.superchats
+        WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
+        ORDER BY created_at DESC 
+        LIMIT 40
+      `;
+      scParams = [channelVideoIds];
+    } else {
+      // Recent general comments and superchats strictly October 2026 onwards
+      commentsQuery = `
+        SELECT id, created_at, video_id, author_id, comment_id, COALESCE(comment_text, '') AS comment_text
+        FROM public.comments
+        WHERE created_at >= '${OCT_2026_CUTOFF}'
+        ORDER BY created_at DESC 
+        LIMIT 50
+      `;
+      scQuery = `
+        SELECT id, created_at, amount, currency, video_id, superchat_id
+        FROM public.superchats
+        WHERE created_at >= '${OCT_2026_CUTOFF}'
+        ORDER BY created_at DESC 
+        LIMIT 30
+      `;
     }
 
-    if (resolvedChannelId) {
-      const commentsRes = await p.query(
-        `SELECT c.id, c.created_at, c.video_id, c.author_id, c.comment_id, c.comment_text,
-                COALESCE(l.video_title, '') as video_title
-         FROM public.comments c
-         JOIN public.live l ON c.video_id = l.video_id
-         WHERE l.channel_id = $1 AND c.created_at >= '${OCT_2026_CUTOFF}'
-         ORDER BY c.created_at DESC 
-         LIMIT 200`,
-        [resolvedChannelId]
-      );
+    const commentsRes = await p.query(commentsQuery, commentsParams);
+    const scRes = await p.query(scQuery, scParams);
 
-      const superchatsRes = await p.query(
-        `SELECT sc.id, sc.created_at, sc.amount, sc.currency, sc.video_id, sc.superchat_id, sc.superchat_text,
-                COALESCE(l.video_title, '') as video_title
-         FROM public.superchats sc
-         JOIN public.live l ON sc.video_id = l.video_id
-         WHERE l.channel_id = $1 AND sc.created_at >= '${OCT_2026_CUTOFF}'
-         ORDER BY sc.created_at DESC 
-         LIMIT 200`,
-        [resolvedChannelId]
-      );
-
-      return res.json({
-        success: true,
-        channel_id: resolvedChannelId,
-        comments: commentsRes.rows,
-        superchats: superchatsRes.rows,
-      });
-    }
-
-    // Default if neither parameter is passed: return latest global comments from Oct 2026
-    const latestComments = await p.query(
-      `SELECT c.id, c.created_at, c.video_id, c.author_id, c.comment_id, c.comment_text,
-              COALESCE(l.video_title, '') as video_title,
-              ch.channel_name, ch.channel
-       FROM public.comments c
-       LEFT JOIN public.live l ON c.video_id = l.video_id
-       LEFT JOIN public.channels ch ON l.channel_id = ch.channel_id
-       WHERE c.created_at >= '${OCT_2026_CUTOFF}'
-       ORDER BY c.created_at DESC 
-       LIMIT 100`
-    );
-
-    const latestSuperchats = await p.query(
-      `SELECT sc.id, sc.created_at, sc.amount, sc.currency, sc.video_id, sc.superchat_id, sc.superchat_text,
-              COALESCE(l.video_title, '') as video_title,
-              ch.channel_name, ch.channel
-       FROM public.superchats sc
-       LEFT JOIN public.live l ON sc.video_id = l.video_id
-       LEFT JOIN public.channels ch ON l.channel_id = ch.channel_id
-       WHERE sc.created_at >= '${OCT_2026_CUTOFF}'
-       ORDER BY sc.created_at DESC 
-       LIMIT 100`
-    );
-
-    return res.json({
+    return res.status(200).json({
       success: true,
-      comments: latestComments.rows,
-      superchats: latestSuperchats.rows,
+      video_id: resolvedVideoId || 'all',
+      comments: commentsRes.rows,
+      superchats: scRes.rows,
     });
   } catch (err: any) {
-    return res.status(500).json({ success: false, error: err.message, fallback: false });
+    console.error('Error fetching comments in /api/comments:', err);
+    return res.status(200).json({
+      success: false,
+      error: `Error al consultar comentarios: ${err.message}`,
+      comments: [],
+      superchats: [],
+    });
   }
 }

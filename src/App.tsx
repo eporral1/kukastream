@@ -39,48 +39,56 @@ export default function App() {
 
     try {
       const res = await fetch(`/api/live?tag=${encodeURIComponent(activeCategory)}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          const liveList = (Array.isArray(data.streams) ? data.streams : []).filter(
-            (s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)
-          );
-          const recentList = (Array.isArray(data.recent_streams) ? data.recent_streams : []).filter(
-            (s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)
-          );
-          setStreams(liveList);
-          setRecentStreams(recentList);
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        // Response was not JSON
+      }
 
-          // Find the most recent scrape_date among all retrieved streams
-          const allDates = [...liveList, ...recentList]
-            .map((s: any) => s.scrape_date)
-            .filter(Boolean);
+      if (res.ok && data?.success) {
+        const liveList = (Array.isArray(data.streams) ? data.streams : []).filter(
+          (s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)
+        );
+        const recentList = (Array.isArray(data.recent_streams) ? data.recent_streams : []).filter(
+          (s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)
+        );
+        setStreams(liveList);
+        setRecentStreams(recentList);
 
-          if (allDates.length > 0) {
-            const maxDateStr = allDates.sort().reverse()[0];
-            try {
-              const d = new Date(maxDateStr);
-              if (!isNaN(d.getTime())) {
-                setLastUpdate(
-                  `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
-                );
-              } else if (maxDateStr.includes('T')) {
-                setLastUpdate(maxDateStr.split('T')[1].substring(0, 5));
-              } else if (maxDateStr.includes(' ')) {
-                setLastUpdate(maxDateStr.split(' ')[1].substring(0, 5));
-              }
-            } catch {
-              // Ignore date parsing failure
+        // Find the most recent scrape_date among all retrieved streams
+        const allDates = [...liveList, ...recentList]
+          .map((s: any) => s.scrape_date)
+          .filter(Boolean);
+
+        if (allDates.length > 0) {
+          const maxDateStr = allDates.sort().reverse()[0];
+          try {
+            const d = new Date(maxDateStr);
+            if (!isNaN(d.getTime())) {
+              setLastUpdate(
+                `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+              );
+            } else if (maxDateStr.includes('T')) {
+              setLastUpdate(maxDateStr.split('T')[1].substring(0, 5));
+            } else if (maxDateStr.includes(' ')) {
+              setLastUpdate(maxDateStr.split(' ')[1].substring(0, 5));
             }
+          } catch {
+            // Ignore date parsing failure
           }
-        } else {
-          setDbError(data.error || 'Error al obtener streams de la base de datos');
         }
       } else {
-        setDbError('No se pudo conectar con el servidor.');
+        const errorMessage =
+          data?.error ||
+          data?.message ||
+          (res.ok
+            ? 'Error al obtener streams de la base de datos'
+            : `Error del servidor (HTTP ${res.status}: ${res.statusText || 'Error de conexión'})`);
+        setDbError(errorMessage);
       }
     } catch (err: any) {
-      setDbError(err.message || 'Error de conexión');
+      setDbError(err.message || 'Error de conexión de red');
     } finally {
       setIsLoadingStreams(false);
       setIsRefreshing(false);
@@ -240,9 +248,25 @@ export default function App() {
         <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full">
           {/* DB error banner if any */}
           {dbError && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-800 text-sm">
-              <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
-              <span>{dbError}</span>
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex flex-col gap-2 text-amber-900 text-sm shadow-sm">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                <span className="font-semibold text-amber-950">{dbError}</span>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 pl-8 text-xs text-amber-800">
+                <span>
+                  Para conectar con PostgreSQL en Vercel, agrega las variables en{' '}
+                  <strong className="font-semibold">Vercel Dashboard → Project Settings → Environment Variables</strong>.
+                </span>
+                <a
+                  href="/api/status"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium underline hover:text-amber-950 bg-amber-100 hover:bg-amber-200 px-2 py-1 rounded transition-colors"
+                >
+                  Ver diagnóstico /api/status ↗
+                </a>
+              </div>
             </div>
           )}
 
