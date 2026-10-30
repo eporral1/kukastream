@@ -1,0 +1,6 @@
+{
+  "name": "KukaStream",
+  "description": "KukaStream - viendo que opninan los kukitas y sus bots. Ranking en vivo de streamings de Argentina con métricas en tiempo real.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
