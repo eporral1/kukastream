@@ -114,7 +114,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           <div className="text-2xl sm:text-3xl font-bold text-purple-600 mb-1">
             {lastUpdate && lastUpdate !== '--:--' ? lastUpdate : 'En vivo'}
           </div>
-          <div className="text-xs sm:text-sm text-gray-500">Último Scrapeo en DB</div>
+          <div className="text-xs sm:text-sm text-gray-500">Última Actualización</div>
         </div>
       </div>
     </div>

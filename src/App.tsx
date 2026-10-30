@@ -9,7 +9,7 @@ import { DevSocialModal } from './components/DevSocialModal';
 import { StreamCommentsModal } from './components/StreamCommentsModal';
 import { Footer } from './components/Footer';
 import { CategoryTag, Stream, Channel } from './types';
-import { isOctober2026OrLater } from './utils/dateFilter';
+import { isOctober2026OrLater, formatArgentinaTime } from './utils/dateFilter';
 import { RefreshCw, Radio, Sparkles, Clock, AlertCircle } from 'lucide-react';
 
 export default function App() {
@@ -63,20 +63,7 @@ export default function App() {
 
         if (allDates.length > 0) {
           const maxDateStr = allDates.sort().reverse()[0];
-          try {
-            const d = new Date(maxDateStr);
-            if (!isNaN(d.getTime())) {
-              setLastUpdate(
-                `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
-              );
-            } else if (maxDateStr.includes('T')) {
-              setLastUpdate(maxDateStr.split('T')[1].substring(0, 5));
-            } else if (maxDateStr.includes(' ')) {
-              setLastUpdate(maxDateStr.split(' ')[1].substring(0, 5));
-            }
-          } catch {
-            // Ignore date parsing failure
-          }
+          setLastUpdate(formatArgentinaTime(maxDateStr));
         }
       } else {
         const errorMessage =
@@ -325,7 +312,7 @@ export default function App() {
                       Canales ordenados por audiencia concurrente real extraída de la base de datos
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                  {/*<div className="flex items-center gap-2 self-start sm:self-auto">
                     <div className="text-xs sm:text-sm text-gray-500 bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-2xs flex items-center gap-1.5">
                       <Clock className="w-3.5 h-3.5 text-blue-600" />
                       <span>Último scrapeo:</span>
@@ -336,7 +323,7 @@ export default function App() {
                         <RefreshCw className="w-4 h-4" />
                       </div>
                     )}
-                  </div>
+                  </div>*/}
                 </div>
 
                 {isLoadingStreams && streams.length === 0 ? (

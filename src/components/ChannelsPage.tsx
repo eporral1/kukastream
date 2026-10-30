@@ -22,6 +22,13 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
     if (!Array.isArray(channels)) return [];
     return channels.filter((ch) => {
       if (!ch) return false;
+
+      // Solo mostrar los canales activos (active = 1)
+      if (ch.active !== undefined && ch.active !== null) {
+        const isActive = ch.active === 1 || ch.active === '1' || ch.active === true;
+        if (!isActive) return false;
+      }
+
       const channelName = (ch.channel_name || '').toLowerCase();
       const channelHandle = (ch.channel || '').toLowerCase();
       const description = (ch.description || '').toLowerCase();
@@ -71,7 +78,7 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
 
       {/* Filter Tabs & Superchat Filter Toggle */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pb-2">
-        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+        {/*<div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
           {['all', 'stream', 'entretenimiento', 'política', 'radio', 'tv', 'deportes'].map((tag) => (
             <button
               key={tag}
@@ -85,7 +92,7 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
               {tag === 'all' ? 'Todos los Canales' : tag}
             </button>
           ))}
-        </div>
+        </div>*/}
 
         {/* Superchat filter switch */}
         <button

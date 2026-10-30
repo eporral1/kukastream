@@ -236,19 +236,38 @@ app.get('/api/channels', async (_req: Request, res: Response) => {
   }
 
   try {
-    const query = `
+    let query = `
       SELECT 
-        c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter,
+        c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active,
         COALESCE(AVG(l.concurrent_viewers), 0)::int AS avg_viewers,
         COALESCE(AVG((l.current_likes - l.old_likes) * 6), 0)::int AS avg_likes
       FROM public.channels c
       LEFT JOIN public.live l ON l.channel_id = c.channel_id 
         AND l.scrape_date >= '${OCT_2026_CUTOFF}'
         AND l.concurrent_viewers > 0
-      GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter
+      WHERE c.active::text IN ('1', 'true')
+      GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active
       ORDER BY avg_viewers DESC;
     `;
-    const result = await p.query(query);
+    let result;
+    try {
+      result = await p.query(query);
+    } catch {
+      query = `
+        SELECT 
+          c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active,
+          COALESCE(AVG(l.concurrent_viewers), 0)::int AS avg_viewers,
+          COALESCE(AVG((l.current_likes - l.old_likes) * 6), 0)::int AS avg_likes
+        FROM public.channels c
+        LEFT JOIN public.live l ON l.channel_id = c.channel_id 
+          AND l.scrape_date >= '${OCT_2026_CUTOFF}'
+          AND l.concurrent_viewers > 0
+        WHERE c.active = 1
+        GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active
+        ORDER BY avg_viewers DESC;
+      `;
+      result = await p.query(query);
+    }
     res.json({ success: true, channels: result.rows });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message, fallback: true });

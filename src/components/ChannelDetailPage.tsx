@@ -10,7 +10,7 @@ import {
 import { HeatmapTable } from './HeatmapTable';
 import { StreamLineChart } from './StreamLineChart';
 import { StreamCommentsModal } from './StreamCommentsModal';
-import { isOctober2026OrLater } from '../utils/dateFilter';
+import { isOctober2026OrLater, formatArgentinaDateTime } from '../utils/dateFilter';
 import { ArrowLeft, ExternalLink, Calendar, Heart, Eye, MessageSquare, Radio, RefreshCw } from 'lucide-react';
 
 interface ChannelDetailPageProps {
@@ -321,7 +321,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                     En Directo
                   </span>
                   <span>•</span>
-                  <span>Iniciado: {liveStream.start_date || 'Hoy'}</span>
+                  <span>Iniciado: {formatArgentinaDateTime(liveStream.start_date) || 'Hoy'}</span>
                   {liveStream.superchats && liveStream.superchats.length > 0 && (
                     <>
                       <span>•</span>
@@ -375,9 +375,9 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                   <span>Línea de tiempo de la transmisión (minuto a minuto)</span>
                 </div>
-                <div className="text-xs text-gray-400 font-mono">
+                {/*<div className="text-xs text-gray-400 font-mono">
                   canvas id: chart-{liveStream.video_id}
-                </div>
+                </div>*/}
               </div>
 
               {activeLiveChartPoints.length > 0 ? (
@@ -463,16 +463,14 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                       {pastStream.video_title}
                     </h4>
                     <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
-                      <span className="font-mono text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
+                      {/*<span className="font-mono text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
                         video_id: {pastStream.video_id}
-                      </span>
+                      </span>*/}
                       <span>•</span>
                       <Calendar className="w-3.5 h-3.5" />
                       <span>
                         Fecha de emisión:{' '}
-                        {pastStream.start_date
-                          ? pastStream.start_date.split(' ')[0]
-                          : pastStream.scrape_date.split(' ')[0]}
+                        {formatArgentinaDateTime(pastStream.start_date || pastStream.scrape_date)}
                       </span>
                       {pastStream.superchats && pastStream.superchats.length > 0 && (
                         <>
@@ -496,7 +494,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                         className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
                       >
                         <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Comentarios y Superchats ({pastStream.video_id})</span>
+                        <span>Comentarios y Superchats</span>
                       </button>
                     </div>
                   </div>

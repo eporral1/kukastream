@@ -17,10 +17,11 @@ const CATEGORIES: { id: CategoryTag; label: string }[] = [
 ];
 
 export const CategoryFilter: React.FC<CategoryFilterProps> = ({
-  activeCategory,
-  onSelectCategory,
+  activeCategory: _activeCategory,
+  onSelectCategory: _onSelectCategory,
 }) => {
-  return (
+  return null;
+  /*(
     <div className="bg-white rounded-xl shadow-xs border border-gray-100 p-5 mb-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -51,5 +52,5 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
         </div>
       </div>
     </div>
-  );
+  )*/;
 };
