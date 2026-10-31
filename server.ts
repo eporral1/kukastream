@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
 
@@ -32,7 +33,7 @@ function getPool(): Pool | null {
     pool = new Pool({
       connectionString,
       ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 6000,
+      connectionTimeoutMillis: 15000,
       idleTimeoutMillis: 30000,
       max: 10,
     });
@@ -85,7 +86,7 @@ function getPool(): Pool | null {
     },
     max: 10,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 6000,
+    connectionTimeoutMillis: 15000,
   });
 
   return pool;
@@ -149,7 +150,8 @@ app.get('/api/live', async (req: Request, res: Response) => {
         c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter,
         COALESCE(sc.total_superchats, 0)::numeric as superchats_total,
         COALESCE(sc.superchats_count, 0)::int as superchats_count,
-        COALESCE(comm.comments_count, 0)::int as comments_count
+        COALESCE(comm.comments_count, 0)::int as comments_count,
+        COALESCE(comm.unique_commentators, 0)::int as unique_commentators
       FROM public.live l
       JOIN public.channels c ON l.channel_id = c.channel_id
       LEFT JOIN (
@@ -159,7 +161,7 @@ app.get('/api/live', async (req: Request, res: Response) => {
         GROUP BY video_id
       ) sc ON sc.video_id = l.video_id
       LEFT JOIN (
-        SELECT video_id, COUNT(id) as comments_count
+        SELECT video_id, COUNT(id) as comments_count, COUNT(DISTINCT author_id) as unique_commentators
         FROM public.comments
         WHERE created_at >= '${OCT_2026_CUTOFF}'
         GROUP BY video_id
@@ -187,7 +189,8 @@ app.get('/api/live', async (req: Request, res: Response) => {
         c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter,
         COALESCE(sc.total_superchats, 0)::numeric as superchats_total,
         COALESCE(sc.superchats_count, 0)::int as superchats_count,
-        COALESCE(comm.comments_count, 0)::int as comments_count
+        COALESCE(comm.comments_count, 0)::int as comments_count,
+        COALESCE(comm.unique_commentators, 0)::int as unique_commentators
       FROM public.live l
       JOIN public.channels c ON l.channel_id = c.channel_id
       LEFT JOIN (
@@ -197,7 +200,7 @@ app.get('/api/live', async (req: Request, res: Response) => {
         GROUP BY video_id
       ) sc ON sc.video_id = l.video_id
       LEFT JOIN (
-        SELECT video_id, COUNT(id) as comments_count
+        SELECT video_id, COUNT(id) as comments_count, COUNT(DISTINCT author_id) as unique_commentators
         FROM public.comments
         WHERE created_at >= '${OCT_2026_CUTOFF}'
         GROUP BY video_id
@@ -448,6 +451,19 @@ const channelHandler = async (req: Request, res: Response) => {
       } catch {
         live.superchats = [];
       }
+
+      // Unique commentators count for live stream
+      try {
+        const uqRes = await p.query(
+          `SELECT COUNT(DISTINCT author_id)::int as unique_commentators 
+           FROM public.comments 
+           WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'`,
+          [live.video_id]
+        );
+        live.unique_commentators = parseInt(uqRes.rows[0]?.unique_commentators || '0', 10);
+      } catch {
+        live.unique_commentators = 0;
+      }
     }
 
     // Recent finished streams (October 2026 onwards only)
@@ -463,6 +479,31 @@ const channelHandler = async (req: Request, res: Response) => {
         [channelId]
       );
       finishedStreams = finishedRes.rows;
+
+      // Batch load unique commentators for finished streams
+      if (finishedStreams.length > 0) {
+        const videoIds = finishedStreams.map((s) => s.video_id).filter(Boolean);
+        if (videoIds.length > 0) {
+          try {
+            const uqRes = await p.query(
+              `SELECT video_id, COUNT(DISTINCT author_id)::int as unique_commentators
+               FROM public.comments
+               WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
+               GROUP BY video_id`,
+              [videoIds]
+            );
+            const uqMap = new Map<string, number>();
+            for (const row of uqRes.rows) {
+              uqMap.set(row.video_id, parseInt(row.unique_commentators || '0', 10));
+            }
+            for (const s of finishedStreams) {
+              s.unique_commentators = uqMap.get(s.video_id) || 0;
+            }
+          } catch (e) {
+            console.error('Error fetching unique commentators for finished streams:', e);
+          }
+        }
+      }
 
       for (const stream of finishedStreams) {
         try {
@@ -594,12 +635,50 @@ const channelHandler = async (req: Request, res: Response) => {
 app.get('/api/channel/:channelId', channelHandler);
 app.get('/api/channel', channelHandler);
 
+// GET /api/unique-commentators?video_ids=id1,id2,id3 - Returns unique commentators count per video_id
+app.get('/api/unique-commentators', async (req: Request, res: Response) => {
+  const p = getPool();
+  const rawIds = (req.query.video_ids as string) || '';
+  const videoIds = rawIds
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  if (!p || videoIds.length === 0) {
+    res.json({ success: true, counts: {} });
+    return;
+  }
+
+  try {
+    const result = await p.query(
+      `SELECT video_id, COUNT(DISTINCT author_id)::int AS unique_count
+       FROM public.comments
+       WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
+       GROUP BY video_id`,
+      [videoIds]
+    );
+
+    const counts: Record<string, number> = {};
+    for (const row of result.rows) {
+      counts[row.video_id] = parseInt(row.unique_count || '0', 10);
+    }
+
+    res.json({ success: true, counts });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, counts: {} });
+  }
+});
+
 // GET /api/comments - Queries public.comments and public.superchats for a specific video_id or channel
-// Strictly October 2026 onwards
+// Strictly October 2026 onwards, supporting infinite scroll (limit & offset)
 app.get('/api/comments', async (req: Request, res: Response) => {
   const videoId = req.query.video_id as string | undefined;
   const channelIdParam = req.query.channel_id as string | undefined;
   const channelParam = req.query.channel as string | undefined;
+
+  const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '20', 10), 1), 100);
+  const offset = Math.max(parseInt((req.query.offset as string) || '0', 10), 0);
+  const type = (req.query.type as string) || 'all';
 
   const p = getPool();
   if (!p) {
@@ -607,43 +686,13 @@ app.get('/api/comments', async (req: Request, res: Response) => {
       success: true,
       fallback: true,
       video_id: videoId || 'sample',
-      comments: [
-        {
-          id: 934377,
-          created_at: '2026-10-30T03:05:42.773Z',
-          video_id: videoId || 'sample',
-          author_id: '@GeSe20',
-          comment_id: 'LCC.EhwKGkNPWHN0b1hoNEpjREZSMjJtY3lncWdDeEF3',
-          comment_text: 'Excelente programa y análisis en vivo!',
-        },
-        {
-          id: 934376,
-          created_at: '2026-10-30T03:05:42.453Z',
-          video_id: videoId || 'sample',
-          author_id: '@misterghoul6633',
-          comment_id: 'LCC.EhwKGkNLZW5ZdVVHUG5ORXBqUkVaSFdnaEF3',
-          comment_text: 'Saludos desde Córdoba capital, prendidos a la radio!',
-        },
-        {
-          id: 934375,
-          created_at: '2026-10-30T03:04:18.112Z',
-          video_id: videoId || 'sample',
-          author_id: '@lucas_cordoba',
-          comment_id: 'LCC.EhwKGkNLZW1ZdVVHUG5ORXBqUkVaSFdnYEF4',
-          comment_text: 'Que temazo pusieron recién',
-        },
-      ],
-      superchats: [
-        {
-          id: 13885,
-          created_at: '2026-10-29T16:34:09.895Z',
-          amount: 500,
-          currency: 'ARS',
-          video_id: videoId || 'sample',
-          superchat_id: 'LCC.EhwKGkNLdk53X0xUMzVjREZTMnZjZ3FDeEF3',
-          superchat_text: 'Un aporte para la producción del programa, genios!',
-        },
-      ],
+      comments: [],
+      superchats: [],
+      total_comments: 0,
+      total_superchats: 0,
+      has_more: false,
+      offset,
+      limit,
     });
     return;
   }
@@ -663,68 +712,136 @@ app.get('/api/comments', async (req: Request, res: Response) => {
     }
 
     if (resolvedVideoId) {
-      const commentsRes = await p.query(
-        `SELECT id, created_at, video_id, author_id, comment_id, comment_text 
-         FROM public.comments 
-         WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
-         ORDER BY created_at DESC 
-         LIMIT 200`,
+      // Total count of comments
+      const countRes = await p.query(
+        `SELECT COUNT(*)::int AS total FROM public.comments WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'`,
         [resolvedVideoId]
       );
+      const totalComments = countRes.rows[0]?.total || 0;
 
-      const superchatsRes = await p.query(
-        `SELECT id, created_at, amount, currency, video_id, superchat_id, superchat_text 
-         FROM public.superchats 
-         WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
-         ORDER BY created_at DESC 
-         LIMIT 200`,
-        [resolvedVideoId]
-      );
+      let commentsRows: any[] = [];
+      if (type !== 'superchats') {
+        const commentsRes = await p.query(
+          `SELECT id, created_at, video_id, author_id, comment_id, COALESCE(comment_text, '') AS comment_text 
+           FROM public.comments 
+           WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
+           ORDER BY created_at DESC 
+           LIMIT $2 OFFSET $3`,
+          [resolvedVideoId, limit, offset]
+        );
+        commentsRows = commentsRes.rows;
+      }
+
+      let superchatsRows: any[] = [];
+      let totalSuperchats = 0;
+      if (type !== 'comments' || offset === 0) {
+        const scCountRes = await p.query(
+          `SELECT COUNT(*)::int AS total FROM public.superchats WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'`,
+          [resolvedVideoId]
+        );
+        totalSuperchats = scCountRes.rows[0]?.total || 0;
+
+        const superchatsRes = await p.query(
+          `SELECT id, created_at, amount, currency, video_id, superchat_id, COALESCE(superchat_text, '') AS superchat_text 
+           FROM public.superchats 
+           WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
+           ORDER BY created_at DESC 
+           LIMIT 100`,
+          [resolvedVideoId]
+        );
+        superchatsRows = superchatsRes.rows;
+      }
+
+      const hasMore = offset + commentsRows.length < totalComments;
 
       res.json({
         success: true,
         video_id: resolvedVideoId,
-        comments: commentsRes.rows,
-        superchats: superchatsRes.rows,
+        comments: commentsRows,
+        superchats: superchatsRows,
+        total_comments: totalComments,
+        total_superchats: totalSuperchats,
+        has_more: hasMore,
+        offset,
+        limit,
       });
       return;
     }
 
     if (resolvedChannelId) {
-      const commentsRes = await p.query(
-        `SELECT c.id, c.created_at, c.video_id, c.author_id, c.comment_id, c.comment_text,
-                COALESCE(l.video_title, '') as video_title
+      const countRes = await p.query(
+        `SELECT COUNT(c.id)::int AS total
          FROM public.comments c
          JOIN public.live l ON c.video_id = l.video_id
-         WHERE l.channel_id = $1 AND c.created_at >= '${OCT_2026_CUTOFF}'
-         ORDER BY c.created_at DESC 
-         LIMIT 200`,
+         WHERE l.channel_id = $1 AND c.created_at >= '${OCT_2026_CUTOFF}'`,
         [resolvedChannelId]
       );
+      const totalComments = countRes.rows[0]?.total || 0;
 
-      const superchatsRes = await p.query(
-        `SELECT sc.id, sc.created_at, sc.amount, sc.currency, sc.video_id, sc.superchat_id, sc.superchat_text,
-                COALESCE(l.video_title, '') as video_title
-         FROM public.superchats sc
-         JOIN public.live l ON sc.video_id = l.video_id
-         WHERE l.channel_id = $1 AND sc.created_at >= '${OCT_2026_CUTOFF}'
-         ORDER BY sc.created_at DESC 
-         LIMIT 200`,
-        [resolvedChannelId]
-      );
+      let commentsRows: any[] = [];
+      if (type !== 'superchats') {
+        const commentsRes = await p.query(
+          `SELECT c.id, c.created_at, c.video_id, c.author_id, c.comment_id, COALESCE(c.comment_text, '') AS comment_text,
+                  COALESCE(l.video_title, '') as video_title
+           FROM public.comments c
+           JOIN public.live l ON c.video_id = l.video_id
+           WHERE l.channel_id = $1 AND c.created_at >= '${OCT_2026_CUTOFF}'
+           ORDER BY c.created_at DESC 
+           LIMIT $2 OFFSET $3`,
+          [resolvedChannelId, limit, offset]
+        );
+        commentsRows = commentsRes.rows;
+      }
+
+      let superchatsRows: any[] = [];
+      let totalSuperchats = 0;
+      if (type !== 'comments' || offset === 0) {
+        const scCountRes = await p.query(
+          `SELECT COUNT(sc.id)::int AS total
+           FROM public.superchats sc
+           JOIN public.live l ON sc.video_id = l.video_id
+           WHERE l.channel_id = $1 AND sc.created_at >= '${OCT_2026_CUTOFF}'`,
+          [resolvedChannelId]
+        );
+        totalSuperchats = scCountRes.rows[0]?.total || 0;
+
+        const superchatsRes = await p.query(
+          `SELECT sc.id, sc.created_at, sc.amount, sc.currency, sc.video_id, sc.superchat_id, COALESCE(sc.superchat_text, '') AS superchat_text,
+                  COALESCE(l.video_title, '') as video_title
+           FROM public.superchats sc
+           JOIN public.live l ON sc.video_id = l.video_id
+           WHERE l.channel_id = $1 AND sc.created_at >= '${OCT_2026_CUTOFF}'
+           ORDER BY sc.created_at DESC 
+           LIMIT 100`,
+          [resolvedChannelId]
+        );
+        superchatsRows = superchatsRes.rows;
+      }
+
+      const hasMore = offset + commentsRows.length < totalComments;
 
       res.json({
         success: true,
         channel_id: resolvedChannelId,
-        comments: commentsRes.rows,
-        superchats: superchatsRes.rows,
+        comments: commentsRows,
+        superchats: superchatsRows,
+        total_comments: totalComments,
+        total_superchats: totalSuperchats,
+        has_more: hasMore,
+        offset,
+        limit,
       });
       return;
     }
 
     // Default if neither parameter is passed: return latest global comments from Oct 2026
+    const countRes = await p.query(
+      `SELECT COUNT(*)::int AS total FROM public.comments WHERE created_at >= '${OCT_2026_CUTOFF}'`
+    );
+    const totalComments = countRes.rows[0]?.total || 0;
+
     const latestComments = await p.query(
-      `SELECT c.id, c.created_at, c.video_id, c.author_id, c.comment_id, c.comment_text,
+      `SELECT c.id, c.created_at, c.video_id, c.author_id, c.comment_id, COALESCE(c.comment_text, '') AS comment_text,
               COALESCE(l.video_title, '') as video_title,
               ch.channel_name, ch.channel
        FROM public.comments c
@@ -732,28 +849,464 @@ app.get('/api/comments', async (req: Request, res: Response) => {
        LEFT JOIN public.channels ch ON l.channel_id = ch.channel_id
        WHERE c.created_at >= '${OCT_2026_CUTOFF}'
        ORDER BY c.created_at DESC 
-       LIMIT 100`
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
     );
 
-    const latestSuperchats = await p.query(
-      `SELECT sc.id, sc.created_at, sc.amount, sc.currency, sc.video_id, sc.superchat_id, sc.superchat_text,
-              COALESCE(l.video_title, '') as video_title,
-              ch.channel_name, ch.channel
-       FROM public.superchats sc
-       LEFT JOIN public.live l ON sc.video_id = l.video_id
-       LEFT JOIN public.channels ch ON l.channel_id = ch.channel_id
-       WHERE sc.created_at >= '${OCT_2026_CUTOFF}'
-       ORDER BY sc.created_at DESC 
-       LIMIT 100`
-    );
+    let superchatsRows: any[] = [];
+    let totalSuperchats = 0;
+    if (offset === 0) {
+      const scCountRes = await p.query(
+        `SELECT COUNT(*)::int AS total FROM public.superchats WHERE created_at >= '${OCT_2026_CUTOFF}'`
+      );
+      totalSuperchats = scCountRes.rows[0]?.total || 0;
+
+      const latestSuperchats = await p.query(
+        `SELECT sc.id, sc.created_at, sc.amount, sc.currency, sc.video_id, sc.superchat_id, COALESCE(sc.superchat_text, '') AS superchat_text,
+                COALESCE(l.video_title, '') as video_title,
+                ch.channel_name, ch.channel
+         FROM public.superchats sc
+         LEFT JOIN public.live l ON sc.video_id = l.video_id
+         LEFT JOIN public.channels ch ON l.channel_id = ch.channel_id
+         WHERE sc.created_at >= '${OCT_2026_CUTOFF}'
+         ORDER BY sc.created_at DESC 
+         LIMIT 60`
+      );
+      superchatsRows = latestSuperchats.rows;
+    }
+
+    const hasMore = offset + latestComments.rows.length < totalComments;
 
     res.json({
       success: true,
       comments: latestComments.rows,
-      superchats: latestSuperchats.rows,
+      superchats: superchatsRows,
+      total_comments: totalComments,
+      total_superchats: totalSuperchats,
+      has_more: hasMore,
+      offset,
+      limit,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message, fallback: false });
+  }
+});
+
+// GET /api/top-commentators - Returns the top active commentators ranking
+app.get('/api/top-commentators', async (req: Request, res: Response) => {
+  const videoId = req.query.video_id as string | undefined;
+  const channelIdParam = req.query.channel_id as string | undefined;
+  const channelParam = req.query.channel as string | undefined;
+  const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '50', 10), 1), 100);
+
+  const p = getPool();
+  if (!p) {
+    res.json({
+      success: true,
+      commentators: [],
+      total_comments: 0,
+      unique_commentators: 0,
+      fallback: true,
+    });
+    return;
+  }
+
+  try {
+    let resolvedVideoId = videoId;
+    let resolvedChannelId = channelIdParam;
+
+    if (!resolvedVideoId && !resolvedChannelId && channelParam) {
+      const chRes = await p.query(
+        'SELECT channel_id FROM public.channels WHERE LOWER(channel) = LOWER($1) OR channel_id = $1 LIMIT 1',
+        [channelParam]
+      );
+      if (chRes.rows.length > 0) {
+        resolvedChannelId = chRes.rows[0].channel_id;
+      }
+    }
+
+    if (resolvedVideoId) {
+      const countRes = await p.query(
+        `SELECT COUNT(*)::int AS total_comments, COUNT(DISTINCT author_id)::int AS unique_commentators 
+         FROM public.comments 
+         WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}' AND author_id IS NOT NULL AND TRIM(author_id) != ''`,
+        [resolvedVideoId]
+      );
+      const totalComments = countRes.rows[0]?.total_comments || 0;
+      const uniqueCommentators = countRes.rows[0]?.unique_commentators || 0;
+
+      const topRes = await p.query(
+        `WITH top_authors AS (
+           SELECT 
+             c.author_id,
+             COUNT(c.id)::int AS comment_count,
+             MIN(c.created_at) AS first_comment_at,
+             MAX(c.created_at) AS last_comment_at
+           FROM public.comments c
+           WHERE c.video_id = $1 
+             AND c.created_at >= '${OCT_2026_CUTOFF}'
+             AND c.author_id IS NOT NULL 
+             AND TRIM(c.author_id) != ''
+           GROUP BY c.author_id
+           ORDER BY comment_count DESC
+           LIMIT $2
+         )
+         SELECT 
+           ta.*,
+           (
+             SELECT comment_text 
+             FROM public.comments 
+             WHERE video_id = $1 AND author_id = ta.author_id AND created_at >= '${OCT_2026_CUTOFF}'
+             ORDER BY created_at DESC 
+             LIMIT 1
+           ) AS latest_comment
+         FROM top_authors ta;`,
+        [resolvedVideoId, limit]
+      );
+
+      const commentators = topRes.rows.map((row: any, idx: number) => ({
+        rank: idx + 1,
+        author_id: row.author_id,
+        comment_count: row.comment_count,
+        first_comment_at: row.first_comment_at,
+        last_comment_at: row.last_comment_at,
+        latest_comment: row.latest_comment,
+        percentage: totalComments > 0 ? Number(((row.comment_count / totalComments) * 100).toFixed(1)) : 0,
+      }));
+
+      res.json({
+        success: true,
+        video_id: resolvedVideoId,
+        commentators,
+        total_comments: totalComments,
+        unique_commentators: uniqueCommentators,
+      });
+      return;
+    }
+
+    if (resolvedChannelId) {
+      const countRes = await p.query(
+        `SELECT COUNT(c.id)::int AS total_comments, COUNT(DISTINCT c.author_id)::int AS unique_commentators 
+         FROM public.comments c
+         JOIN public.live l ON c.video_id = l.video_id
+         WHERE l.channel_id = $1 AND c.created_at >= '${OCT_2026_CUTOFF}' AND c.author_id IS NOT NULL AND TRIM(c.author_id) != ''`,
+        [resolvedChannelId]
+      );
+      const totalComments = countRes.rows[0]?.total_comments || 0;
+      const uniqueCommentators = countRes.rows[0]?.unique_commentators || 0;
+
+      const topRes = await p.query(
+        `WITH top_authors AS (
+           SELECT 
+             c.author_id,
+             COUNT(c.id)::int AS comment_count,
+             COUNT(DISTINCT c.video_id)::int AS streams_count,
+             MIN(c.created_at) AS first_comment_at,
+             MAX(c.created_at) AS last_comment_at
+           FROM public.comments c
+           JOIN public.live l ON c.video_id = l.video_id
+           WHERE l.channel_id = $1 
+             AND c.created_at >= '${OCT_2026_CUTOFF}'
+             AND c.author_id IS NOT NULL 
+             AND TRIM(c.author_id) != ''
+           GROUP BY c.author_id
+           ORDER BY comment_count DESC
+           LIMIT $2
+         )
+         SELECT 
+           ta.*,
+           (
+             SELECT sub_c.comment_text 
+             FROM public.comments sub_c
+             JOIN public.live sub_l ON sub_c.video_id = sub_l.video_id
+             WHERE sub_l.channel_id = $1 AND sub_c.author_id = ta.author_id AND sub_c.created_at >= '${OCT_2026_CUTOFF}'
+             ORDER BY sub_c.created_at DESC 
+             LIMIT 1
+           ) AS latest_comment
+         FROM top_authors ta;`,
+        [resolvedChannelId, limit]
+      );
+
+      const commentators = topRes.rows.map((row: any, idx: number) => ({
+        rank: idx + 1,
+        author_id: row.author_id,
+        comment_count: row.comment_count,
+        streams_count: row.streams_count,
+        first_comment_at: row.first_comment_at,
+        last_comment_at: row.last_comment_at,
+        latest_comment: row.latest_comment,
+        percentage: totalComments > 0 ? Number(((row.comment_count / totalComments) * 100).toFixed(1)) : 0,
+      }));
+
+      res.json({
+        success: true,
+        channel_id: resolvedChannelId,
+        commentators,
+        total_comments: totalComments,
+        unique_commentators: uniqueCommentators,
+      });
+      return;
+    }
+
+    // Global Top Commentators
+    const countRes = await p.query(
+      `SELECT COUNT(*)::int AS total_comments, COUNT(DISTINCT author_id)::int AS unique_commentators 
+       FROM public.comments 
+       WHERE created_at >= '${OCT_2026_CUTOFF}' AND author_id IS NOT NULL AND TRIM(author_id) != ''`
+    );
+    const totalComments = countRes.rows[0]?.total_comments || 0;
+    const uniqueCommentators = countRes.rows[0]?.unique_commentators || 0;
+
+    const topRes = await p.query(
+      `WITH top_authors AS (
+         SELECT 
+           c.author_id,
+           COUNT(c.id)::int AS comment_count,
+           COUNT(DISTINCT c.video_id)::int AS streams_count,
+           MIN(c.created_at) AS first_comment_at,
+           MAX(c.created_at) AS last_comment_at
+         FROM public.comments c
+         WHERE c.created_at >= '${OCT_2026_CUTOFF}'
+           AND c.author_id IS NOT NULL 
+           AND TRIM(c.author_id) != ''
+         GROUP BY c.author_id
+         ORDER BY comment_count DESC
+         LIMIT $1
+       )
+       SELECT 
+         ta.*,
+         (
+           SELECT comment_text 
+           FROM public.comments 
+           WHERE author_id = ta.author_id AND created_at >= '${OCT_2026_CUTOFF}'
+           ORDER BY created_at DESC 
+           LIMIT 1
+         ) AS latest_comment
+       FROM top_authors ta;`,
+      [limit]
+    );
+
+    const commentators = topRes.rows.map((row: any, idx: number) => ({
+      rank: idx + 1,
+      author_id: row.author_id,
+      comment_count: row.comment_count,
+      streams_count: row.streams_count,
+      first_comment_at: row.first_comment_at,
+      last_comment_at: row.last_comment_at,
+      latest_comment: row.latest_comment,
+      percentage: totalComments > 0 ? Number(((row.comment_count / totalComments) * 100).toFixed(1)) : 0,
+    }));
+
+    res.json({
+      success: true,
+      commentators,
+      total_comments: totalComments,
+      unique_commentators: uniqueCommentators,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, fallback: false });
+  }
+});
+
+// POST /api/comments-query - AI Query over all comments and superchats with Gemini 3.8 Flash
+app.post('/api/comments-query', async (req: Request, res: Response) => {
+  const { video_id, channel_id, channel, question } = req.body || {};
+
+  if (!question || typeof question !== 'string' || !question.trim()) {
+    res.status(400).json({ success: false, error: 'Por favor ingresa una consulta válida.' });
+    return;
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    res.status(500).json({
+      success: false,
+      error: 'La API Key de Gemini no está configurada en GEMINI_API_KEY.',
+    });
+    return;
+  }
+
+  const p = getPool();
+  if (!p) {
+    res.status(200).json({
+      success: false,
+      error: 'Base de datos no conectada para obtener los comentarios.',
+    });
+    return;
+  }
+
+  try {
+    let resolvedVideoId = video_id;
+    let channelVideoIds: string[] = [];
+
+    if (!resolvedVideoId && (channel_id || channel)) {
+      const chId = channel_id || '';
+      const chName = (channel || '').trim();
+      const cleanChName = chName.startsWith('@') ? chName.substring(1) : chName;
+      const atChName = chName.startsWith('@') ? chName : `@${chName}`;
+
+      const vRes = await p.query(
+        `SELECT DISTINCT l.video_id 
+         FROM public.live l
+         JOIN public.channels c ON l.channel_id = c.channel_id
+         WHERE (l.channel_id = $1 OR c.channel = $2 OR c.channel = $3 OR c.channel_name = $2 OR c.channel_name = $3)
+           AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+         ORDER BY l.video_id DESC 
+         LIMIT 20`,
+        [chId, cleanChName, atChName]
+      );
+      channelVideoIds = vRes.rows.map((r: any) => r.video_id);
+    }
+
+    let commentsRows: any[] = [];
+    let superchatsRows: any[] = [];
+
+    if (resolvedVideoId) {
+      const cRes = await p.query(
+        `SELECT id, created_at, author_id, comment_id, COALESCE(comment_text, '') AS comment_text
+         FROM public.comments
+         WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
+         ORDER BY created_at DESC
+          LIMIT 40`,
+        [resolvedVideoId]
+      );
+      commentsRows = cRes.rows;
+
+      const scRes = await p.query(
+        `SELECT id, created_at, amount, currency, COALESCE(superchat_text, '') AS superchat_text
+         FROM public.superchats
+         WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
+         ORDER BY created_at DESC
+         LIMIT 20`,
+        [resolvedVideoId]
+      );
+      superchatsRows = scRes.rows;
+    } else if (channelVideoIds.length > 0) {
+      const cRes = await p.query(
+        `SELECT id, created_at, author_id, comment_id, COALESCE(comment_text, '') AS comment_text
+         FROM public.comments
+         WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
+         ORDER BY created_at DESC
+         LIMIT 40`,
+        [channelVideoIds]
+      );
+      commentsRows = cRes.rows;
+
+      const scRes = await p.query(
+        `SELECT id, created_at, amount, currency, COALESCE(superchat_text, '') AS superchat_text
+         FROM public.superchats
+         WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
+         ORDER BY created_at DESC
+         LIMIT 20`,
+        [channelVideoIds]
+      );
+      superchatsRows = scRes.rows;
+    } else {
+      const cRes = await p.query(
+        `SELECT id, created_at, author_id, comment_id, COALESCE(comment_text, '') AS comment_text
+         FROM public.comments
+         WHERE created_at >= '${OCT_2026_CUTOFF}'
+         ORDER BY created_at DESC
+         LIMIT 40`
+      );
+      commentsRows = cRes.rows;
+
+      const scRes = await p.query(
+        `SELECT id, created_at, amount, currency, COALESCE(superchat_text, '') AS superchat_text
+         FROM public.superchats
+         WHERE created_at >= '${OCT_2026_CUTOFF}'
+         ORDER BY created_at DESC
+         LIMIT 20`
+      );
+      superchatsRows = scRes.rows;
+    }
+
+    if (commentsRows.length === 0 && superchatsRows.length === 0) {
+      res.json({
+        success: true,
+        answer: 'No se encontraron comentarios ni superchats registrados en la base de datos para esta transmisión.',
+        comments_analyzed: 0,
+        superchats_analyzed: 0,
+      });
+      return;
+    }
+
+    const commentsListText = commentsRows
+      .map((c, i) => `#${i + 1} [${c.author_id}]: "${c.comment_text}"`)
+      .join('\n');
+
+    const superchatsListText = superchatsRows.length > 0
+      ? superchatsRows.map((s, i) => `#SC${i + 1} [${s.currency} $${s.amount}]: "${s.superchat_text || '(sin mensaje)'}"`).join('\n')
+      : '(No se registraron superchats)';
+
+    const prompt = `Actúas como analista especializado de chat y superchats de streaming para la plataforma KukaStream (Argentina).
+
+El usuario tiene una consulta sobre el contenido de los comentarios y superchats de la transmisión.
+
+A continuación tienes los datos reales registrados en la base de datos:
+
+=== COMENTARIOS DEL CHAT (${commentsRows.length} registros analizados) ===
+${commentsListText}
+
+=== SUPERCHATS (${superchatsRows.length} registros analizados) ===
+${superchatsListText}
+
+=== PREGUNTA / CONSULTA DEL USUARIO ===
+"${question.trim()}"
+
+Instrucciones:
+1. Responde de forma completa, precisa y directa a la solicitud del usuario.
+2. Si el usuario pide comentarios con posturas, ideas o temáticas particulares (ej: "dame comment donde se expresen ideas políticas", "comentarios en contra del conductor", "chistes"):
+   - Cita textualmente entre comillas los comentarios que mejor coinciden.
+   - Indica el autor (@usuario) de cada uno.
+   - Da un breve contexto o síntesis de lo que expresan.
+3. Si el usuario pide un resumen, un análisis de sentimiento o estadísticas:
+   - Sintetiza los temas más comentados, polémicas, preguntas recurrentes y donaciones destacadas.
+4. Si no se encuentra ningún comentario que coincida con lo solicitado, dilo con honestidad.
+5. Emplea un formato Markdown elegante, con listas o negritas para facilitar la lectura.`;
+
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+
+    let aiResponse: any = null;
+    const candidateModels = ['gemini-3.5-flash', 'gemini-3.8-flash'];
+    let lastError: any = null;
+
+    for (const model of candidateModels) {
+      try {
+        aiResponse = await ai.models.generateContent({
+          model,
+          contents: prompt,
+        });
+        if (aiResponse?.text) break;
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`Model ${model} failed, trying next:`, err.message);
+      }
+    }
+
+    if (!aiResponse || !aiResponse.text) {
+      throw lastError || new Error('No se pudo obtener respuesta del modelo.');
+    }
+
+    res.json({
+      success: true,
+      answer: aiResponse.text,
+      comments_analyzed: commentsRows.length,
+      superchats_analyzed: superchatsRows.length,
+    });
+  } catch (err: any) {
+    console.error('Error generating AI comment query in server.ts:', err);
+    res.status(500).json({
+      success: false,
+      error: `Error al procesar consulta con IA: ${err.message}`,
+    });
   }
 });
 

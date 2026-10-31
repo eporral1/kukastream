@@ -15,13 +15,22 @@ function getPool(): Pool | null {
     process.env.SUPABASE_DATABASE_URL ||
     process.env.SUPABASE_DB_URL;
 
+  const poolConfig: any = {
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 15000,
+    idleTimeoutMillis: 5000,
+    max: 3,
+    keepAlive: true,
+  };
+
   if (connectionString && !connectionString.includes('hjkhjk')) {
     pool = new Pool({
+      ...poolConfig,
       connectionString,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 6000,
-      idleTimeoutMillis: 10000,
-      max: 4,
+    });
+    pool.on('error', (err) => {
+      console.warn('PostgreSQL pool error, resetting pool:', err.message);
+      pool = null;
     });
     return pool;
   }
@@ -61,18 +70,46 @@ function getPool(): Pool | null {
   }
 
   pool = new Pool({
+    ...poolConfig,
     host,
     user,
     password,
     database,
     port,
-    ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 6000,
-    idleTimeoutMillis: 10000,
-    max: 4,
+  });
+
+  pool.on('error', (err) => {
+    console.warn('PostgreSQL pool error, resetting pool:', err.message);
+    pool = null;
   });
 
   return pool;
+}
+
+// Resilient query executor that retries once on connection termination/timeout
+async function executeQuery<T = any>(text: string, params: any[] = []): Promise<T> {
+  let p = getPool();
+  if (!p) throw new Error('Base de datos no configurada en Vercel.');
+
+  try {
+    return (await p.query(text, params)) as T;
+  } catch (err: any) {
+    const msg = String(err?.message || '').toLowerCase();
+    if (
+      msg.includes('connection terminated') ||
+      msg.includes('timeout') ||
+      msg.includes('closed') ||
+      msg.includes('socket')
+    ) {
+      console.warn('Retrying channel query after connection reset:', err.message);
+      pool = null;
+      p = getPool();
+      if (p) {
+        return (await p.query(text, params)) as T;
+      }
+    }
+    throw err;
+  }
 }
 
 // Helper to synthesize minute-by-minute timeline if database table `public.minute` has no rows yet
@@ -214,7 +251,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const withAtParam = channelParam.startsWith('@') ? channelParam : `@${channelParam}`;
 
   try {
-    const chRes = await p.query(
+    const chRes = await executeQuery(
       `SELECT * FROM public.channels 
        WHERE LOWER(channel) = LOWER($1) 
           OR LOWER(channel) = LOWER($2) 
@@ -245,7 +282,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const channelId = channel.channel_id;
 
     // Check active live stream for this channel (strictly live = 'live' and October 2026 onwards)
-    let liveRes = await p.query(
+    let liveRes = await executeQuery(
       `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter
        FROM public.live l
        JOIN public.channels c ON l.channel_id = c.channel_id
@@ -256,7 +293,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
 
     if (liveRes.rows.length === 0) {
-      liveRes = await p.query(
+      liveRes = await executeQuery(
         `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter
          FROM public.live l
          JOIN public.channels c ON l.channel_id = c.channel_id
@@ -275,7 +312,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (live) {
       // 1. Max users & max likes from minute
       try {
-        const maxStatsRes = await p.query(
+        const maxStatsRes = await executeQuery(
           `SELECT MAX(concurrent_viewers) as max_users, MAX(likes) as max_likes 
            FROM public.minute 
            WHERE video_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'`,
@@ -294,7 +331,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // 2. Minute-by-minute timeline curve for the live stream (strictly chronological)
       let minutePoints: any[] = [];
       try {
-        const minuteRes = await p.query(
+        const minuteRes = await executeQuery(
           `SELECT to_char(m.scrape_date, 'HH24:MI') AS scrape_date, 
                   m.scrape_date AS raw_date,
                   m.concurrent_viewers, m.likes, 
@@ -309,7 +346,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (errMinute) {
         // Try fallback column names if table has date / viewers
         try {
-          const altRes = await p.query(
+          const altRes = await executeQuery(
             `SELECT to_char(m.date, 'HH24:MI') AS scrape_date, 
                     m.date AS raw_date,
                     m.viewers AS concurrent_viewers, m.likes, 0 as comments_count
@@ -339,7 +376,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // 3. Superchats summary for live stream
       try {
-        const scRes = await p.query(
+        const scRes = await executeQuery(
           `SELECT currency, sum(amount) AS total_amount 
            FROM public.superchats 
            WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}' 
@@ -355,7 +392,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Finished streams (October 2026 onwards)
     let finishedStreams: any[] = [];
     try {
-      const finishedRes = await p.query(
+      const finishedRes = await executeQuery(
         `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter
          FROM public.live l
          JOIN public.channels c ON l.channel_id = c.channel_id
@@ -368,7 +405,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       for (const stream of finishedStreams) {
         try {
-          const minData = await p.query(
+          const minData = await executeQuery(
             `SELECT to_char(m.scrape_date, 'HH24:MI') AS scrape_date, 
                     m.scrape_date AS raw_date,
                     m.concurrent_viewers, m.likes, 
@@ -399,7 +436,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         try {
-          const scRes = await p.query(
+          const scRes = await executeQuery(
             `SELECT currency, sum(amount) AS total_amount 
              FROM public.superchats 
              WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}' 
@@ -418,7 +455,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Heatmap data
     let hourDayData: any[] = [];
     try {
-      const heatmapRes = await p.query(
+      const heatmapRes = await executeQuery(
         `SELECT
           hour,
           AVG(CASE WHEN dow = 1 THEN concurrent_viewers END) AS mon_viewers,
@@ -455,14 +492,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       hourDayData = [];
     }
 
-    if (hourDayData.length === 0) {
-      hourDayData = fallbackHeatmapData(channel.avg_viewers || live?.concurrent_viewers || 15000);
-    }
-
     // 24h Average data
     let avgData: any[] = [];
     try {
-      const avgRes = await p.query(
+      const avgRes = await executeQuery(
         `SELECT scrape_date1, AVG(avg_viewers)::int AS avg_viewers, AVG(avg_likes)::int AS avg_likes
         FROM (
           SELECT 
@@ -488,10 +521,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     } catch {
       avgData = [];
-    }
-
-    if (avgData.length === 0) {
-      avgData = fallbackAvgData(channel.avg_viewers || live?.concurrent_viewers || 15000);
     }
 
     return res.status(200).json({

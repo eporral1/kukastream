@@ -7,6 +7,7 @@ interface HeroSectionProps {
   activeStreamsCount: number;
   totalLikes: number;
   lastUpdate?: string;
+  isLoading?: boolean;
   onExploreChannels: () => void;
   onScrollToLive: () => void;
 }
@@ -16,6 +17,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   activeStreamsCount,
   totalLikes,
   lastUpdate,
+  isLoading = false,
   onExploreChannels,
   onScrollToLive,
 }) => {
@@ -81,9 +83,13 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-2">
             <Users className="w-4 h-4" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold text-blue-600 mb-1">
-            {formatNumber(totalLiveViewers)}
-          </div>
+          {isLoading ? (
+            <div className="h-8 sm:h-9 w-20 sm:w-24 bg-gray-200 rounded-lg animate-pulse mx-auto mb-1"></div>
+          ) : (
+            <div className="text-2xl sm:text-3xl font-bold text-blue-600 mb-1">
+              {formatNumber(totalLiveViewers)}
+            </div>
+          )}
           <div className="text-xs sm:text-sm text-gray-500">Conectados En Vivo</div>
         </div>
 
@@ -91,9 +97,13 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center mx-auto mb-2">
             <Zap className="w-4 h-4" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold text-teal-600 mb-1">
-            {activeStreamsCount}
-          </div>
+          {isLoading ? (
+            <div className="h-8 sm:h-9 w-14 sm:w-16 bg-gray-200 rounded-lg animate-pulse mx-auto mb-1"></div>
+          ) : (
+            <div className="text-2xl sm:text-3xl font-bold text-teal-600 mb-1">
+              {activeStreamsCount}
+            </div>
+          )}
           <div className="text-xs sm:text-sm text-gray-500">Canales Transmitiendo</div>
         </div>
 
@@ -101,9 +111,13 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-2">
             <Heart className="w-4 h-4" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold text-rose-500 mb-1">
-            {formatNumber(totalLikes)}
-          </div>
+          {isLoading ? (
+            <div className="h-8 sm:h-9 w-20 sm:w-24 bg-gray-200 rounded-lg animate-pulse mx-auto mb-1"></div>
+          ) : (
+            <div className="text-2xl sm:text-3xl font-bold text-rose-500 mb-1">
+              {formatNumber(totalLikes)}
+            </div>
+          )}
           <div className="text-xs sm:text-sm text-gray-500">Total Likes Acumulados</div>
         </div>
 
@@ -111,9 +125,13 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-2">
             <TrendingUp className="w-4 h-4" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold text-purple-600 mb-1">
-            {lastUpdate && lastUpdate !== '--:--' ? lastUpdate : 'En vivo'}
-          </div>
+          {isLoading ? (
+            <div className="h-8 sm:h-9 w-20 sm:w-24 bg-gray-200 rounded-lg animate-pulse mx-auto mb-1"></div>
+          ) : (
+            <div className="text-2xl sm:text-3xl font-bold text-purple-600 mb-1">
+              {lastUpdate && lastUpdate !== '--:--' ? lastUpdate : 'En vivo'}
+            </div>
+          )}
           <div className="text-xs sm:text-sm text-gray-500">Última Actualización</div>
         </div>
       </div>

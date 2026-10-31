@@ -10,7 +10,7 @@ import { StreamCommentsModal } from './components/StreamCommentsModal';
 import { Footer } from './components/Footer';
 import { CategoryTag, Stream, Channel } from './types';
 import { isOctober2026OrLater, formatArgentinaTime } from './utils/dateFilter';
-import { RefreshCw, Radio, Sparkles, Clock, AlertCircle } from 'lucide-react';
+import { RefreshCw, Radio, Sparkles, Clock, AlertCircle, X } from 'lucide-react';
 
 export default function App() {
   // Navigation state: path e.g. '/', '/channels', '/channel/@futurock'
@@ -29,6 +29,7 @@ export default function App() {
   const [isLoadingStreams, setIsLoadingStreams] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [isDbErrorDismissed, setIsDbErrorDismissed] = useState<boolean>(false);
 
   // Fetch live streams and recent 24h streams from real DB
   const fetchLiveData = useCallback(async (isBackground = false) => {
@@ -73,9 +74,13 @@ export default function App() {
             ? 'Error al obtener streams de la base de datos'
             : `Error del servidor (HTTP ${res.status}: ${res.statusText || 'Error de conexión'})`);
         setDbError(errorMessage);
+        setStreams([]);
+        setRecentStreams([]);
       }
     } catch (err: any) {
       setDbError(err.message || 'Error de conexión de red');
+      setStreams([]);
+      setRecentStreams([]);
     } finally {
       setIsLoadingStreams(false);
       setIsRefreshing(false);
@@ -90,10 +95,15 @@ export default function App() {
         const data = await res.json();
         if (data.success && Array.isArray(data.channels)) {
           setChannelsList(data.channels);
+        } else {
+          setChannelsList([]);
         }
+      } else {
+        setChannelsList([]);
       }
     } catch (err) {
       console.error('Error fetching channels:', err);
+      setChannelsList([]);
     }
   }, []);
 
@@ -120,6 +130,7 @@ export default function App() {
   // Manual refresh button
   const handleManualRefresh = () => {
     setIsRefreshing(true);
+    setIsDbErrorDismissed(false);
     fetchLiveData(false);
     fetchChannelsData();
   };
@@ -234,25 +245,45 @@ export default function App() {
         {/* Main Content Area */}
         <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full">
           {/* DB error banner if any */}
-          {dbError && (
-            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex flex-col gap-2 text-amber-900 text-sm shadow-sm">
-              <div className="flex items-center gap-3">
-                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
-                <span className="font-semibold text-amber-950">{dbError}</span>
+          {dbError && !isDbErrorDismissed && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex flex-col gap-2.5 text-amber-900 text-sm shadow-sm relative animate-in fade-in duration-200">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                  <span className="font-semibold text-amber-950">{dbError}</span>
+                </div>
+                <button
+                  onClick={() => setIsDbErrorDismissed(true)}
+                  className="text-amber-500 hover:text-amber-800 hover:bg-amber-100 p-1 rounded-md transition-colors shrink-0"
+                  title="Cerrar aviso"
+                  aria-label="Cerrar aviso"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-2 pl-8 text-xs text-amber-800">
+              <div className="flex flex-wrap items-center justify-between gap-3 pl-7 text-xs text-amber-800">
                 <span>
                   Para conectar con PostgreSQL en Vercel, agrega las variables en{' '}
                   <strong className="font-semibold">Vercel Dashboard → Project Settings → Environment Variables</strong>.
                 </span>
-                <a
-                  href="/api/status"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-medium underline hover:text-amber-950 bg-amber-100 hover:bg-amber-200 px-2 py-1 rounded transition-colors"
-                >
-                  Ver diagnóstico /api/status ↗
-                </a>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={handleManualRefresh}
+                    disabled={isRefreshing}
+                    className="inline-flex items-center gap-1.5 font-medium bg-amber-200 hover:bg-amber-300 text-amber-900 px-2.5 py-1 rounded transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    Reintentar
+                  </button>
+                  <a
+                    href="/api/status"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium underline hover:text-amber-950 bg-amber-100 hover:bg-amber-200 px-2.5 py-1 rounded transition-colors"
+                  >
+                    Diagnóstico /api/status ↗
+                  </a>
+                </div>
               </div>
             </div>
           )}
@@ -278,6 +309,7 @@ export default function App() {
                 activeStreamsCount={streams.length}
                 totalLikes={totalLikes}
                 lastUpdate={lastUpdate}
+                isLoading={isLoadingStreams && streams.length === 0}
                 onExploreChannels={() => navigate('/channels')}
                 onScrollToLive={() => {
                   const el = document.getElementById('live');
@@ -430,7 +462,7 @@ export default function App() {
                                 onClick={() => setSelectedCommentsStream(stream)}
                                 className="bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer border border-blue-200/50"
                               >
-                                💬 Comments ({stream.comments_count || 0})
+                                💬 Comments ({typeof stream.unique_commentators === 'number' ? stream.unique_commentators : (stream.comments_count || 0)})
                               </button>
                               {Number(stream.superchats_total) > 0 && (
                                 <button

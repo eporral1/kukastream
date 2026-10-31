@@ -15,13 +15,22 @@ function getPool(): Pool | null {
     process.env.SUPABASE_DATABASE_URL ||
     process.env.SUPABASE_DB_URL;
 
+  const poolConfig: any = {
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 15000,
+    idleTimeoutMillis: 5000,
+    max: 3,
+    keepAlive: true,
+  };
+
   if (connectionString && !connectionString.includes('hjkhjk')) {
     pool = new Pool({
+      ...poolConfig,
       connectionString,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 6000,
-      idleTimeoutMillis: 10000,
-      max: 4,
+    });
+    pool.on('error', (err) => {
+      console.warn('Comments pool error:', err.message);
+      pool = null;
     });
     return pool;
   }
@@ -61,15 +70,17 @@ function getPool(): Pool | null {
   }
 
   pool = new Pool({
+    ...poolConfig,
     host,
     user,
     password,
     database,
     port,
-    ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 6000,
-    idleTimeoutMillis: 10000,
-    max: 4,
+  });
+
+  pool.on('error', (err) => {
+    console.warn('Comments pool error:', err.message);
+    pool = null;
   });
 
   return pool;
@@ -88,6 +99,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const channelIdParam = req.query.channel_id as string | undefined;
   const channelParam = req.query.channel as string | undefined;
 
+  const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '20', 10), 1), 100);
+  const offset = Math.max(parseInt((req.query.offset as string) || '0', 10), 0);
+  const type = (req.query.type as string) || 'all';
+
   const p = getPool();
   if (!p) {
     return res.status(200).json({
@@ -97,6 +112,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       video_id: videoId || 'sample',
       comments: [],
       superchats: [],
+      total_comments: 0,
+      total_superchats: 0,
+      has_more: false,
+      offset,
+      limit,
     });
   }
 
@@ -118,79 +138,139 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
          WHERE (l.channel_id = $1 OR c.channel = $2 OR c.channel = $3 OR c.channel_name = $2 OR c.channel_name = $3)
            AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
          ORDER BY l.video_id DESC 
-         LIMIT 20`,
+         LIMIT 30`,
         [chId, cleanChName, atChName]
       );
       channelVideoIds = vRes.rows.map((r: any) => r.video_id);
     }
 
-    let commentsQuery = '';
-    let commentsParams: any[] = [];
-    let scQuery = '';
-    let scParams: any[] = [];
+    let commentsRows: any[] = [];
+    let superchatsRows: any[] = [];
+    let totalComments = 0;
+    let totalSuperchats = 0;
 
     if (resolvedVideoId) {
-      commentsQuery = `
-        SELECT id, created_at, video_id, author_id, comment_id, COALESCE(comment_text, '') AS comment_text
-        FROM public.comments
-        WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
-        ORDER BY created_at DESC 
-        LIMIT 60
-      `;
-      commentsParams = [resolvedVideoId];
+      // Total count of comments
+      const countRes = await p.query(
+        `SELECT COUNT(*)::int AS total FROM public.comments WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'`,
+        [resolvedVideoId]
+      );
+      totalComments = countRes.rows[0]?.total || 0;
 
-      scQuery = `
-        SELECT id, created_at, amount, currency, video_id, superchat_id
-        FROM public.superchats
-        WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
-        ORDER BY created_at DESC 
-        LIMIT 40
-      `;
-      scParams = [resolvedVideoId];
+      // Paginated comments
+      if (type !== 'superchats') {
+        const commentsRes = await p.query(
+          `SELECT id, created_at, video_id, author_id, comment_id, COALESCE(comment_text, '') AS comment_text
+           FROM public.comments
+           WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
+           ORDER BY created_at DESC 
+           LIMIT $2 OFFSET $3`,
+          [resolvedVideoId, limit, offset]
+        );
+        commentsRows = commentsRes.rows;
+      }
+
+      // Superchats (fetch on initial load or if explicitly requested)
+      if (type !== 'comments' || offset === 0) {
+        const scCountRes = await p.query(
+          `SELECT COUNT(*)::int AS total FROM public.superchats WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'`,
+          [resolvedVideoId]
+        );
+        totalSuperchats = scCountRes.rows[0]?.total || 0;
+
+        const scRes = await p.query(
+          `SELECT id, created_at, amount, currency, video_id, superchat_id, COALESCE(superchat_text, '') AS superchat_text
+           FROM public.superchats
+           WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
+           ORDER BY created_at DESC 
+           LIMIT 100`,
+          [resolvedVideoId]
+        );
+        superchatsRows = scRes.rows;
+      }
     } else if (channelVideoIds.length > 0) {
-      commentsQuery = `
-        SELECT id, created_at, video_id, author_id, comment_id, COALESCE(comment_text, '') AS comment_text
-        FROM public.comments
-        WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
-        ORDER BY created_at DESC 
-        LIMIT 60
-      `;
-      commentsParams = [channelVideoIds];
+      // Total count of comments for channel
+      const countRes = await p.query(
+        `SELECT COUNT(*)::int AS total FROM public.comments WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'`,
+        [channelVideoIds]
+      );
+      totalComments = countRes.rows[0]?.total || 0;
 
-      scQuery = `
-        SELECT id, created_at, amount, currency, video_id, superchat_id
-        FROM public.superchats
-        WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
-        ORDER BY created_at DESC 
-        LIMIT 40
-      `;
-      scParams = [channelVideoIds];
+      if (type !== 'superchats') {
+        const commentsRes = await p.query(
+          `SELECT id, created_at, video_id, author_id, comment_id, COALESCE(comment_text, '') AS comment_text
+           FROM public.comments
+           WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
+           ORDER BY created_at DESC 
+           LIMIT $2 OFFSET $3`,
+          [channelVideoIds, limit, offset]
+        );
+        commentsRows = commentsRes.rows;
+      }
+
+      if (type !== 'comments' || offset === 0) {
+        const scCountRes = await p.query(
+          `SELECT COUNT(*)::int AS total FROM public.superchats WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'`,
+          [channelVideoIds]
+        );
+        totalSuperchats = scCountRes.rows[0]?.total || 0;
+
+        const scRes = await p.query(
+          `SELECT id, created_at, amount, currency, video_id, superchat_id, COALESCE(superchat_text, '') AS superchat_text
+           FROM public.superchats
+           WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
+           ORDER BY created_at DESC 
+           LIMIT 100`,
+          [channelVideoIds]
+        );
+        superchatsRows = scRes.rows;
+      }
     } else {
-      // Recent general comments and superchats strictly October 2026 onwards
-      commentsQuery = `
-        SELECT id, created_at, video_id, author_id, comment_id, COALESCE(comment_text, '') AS comment_text
-        FROM public.comments
-        WHERE created_at >= '${OCT_2026_CUTOFF}'
-        ORDER BY created_at DESC 
-        LIMIT 50
-      `;
-      scQuery = `
-        SELECT id, created_at, amount, currency, video_id, superchat_id
-        FROM public.superchats
-        WHERE created_at >= '${OCT_2026_CUTOFF}'
-        ORDER BY created_at DESC 
-        LIMIT 30
-      `;
+      // General recent comments
+      const countRes = await p.query(
+        `SELECT COUNT(*)::int AS total FROM public.comments WHERE created_at >= '${OCT_2026_CUTOFF}'`
+      );
+      totalComments = countRes.rows[0]?.total || 0;
+
+      const commentsRes = await p.query(
+        `SELECT id, created_at, video_id, author_id, comment_id, COALESCE(comment_text, '') AS comment_text
+         FROM public.comments
+         WHERE created_at >= '${OCT_2026_CUTOFF}'
+         ORDER BY created_at DESC 
+         LIMIT $1 OFFSET $2`,
+        [limit, offset]
+      );
+      commentsRows = commentsRes.rows;
+
+      if (offset === 0) {
+        const scCountRes = await p.query(
+          `SELECT COUNT(*)::int AS total FROM public.superchats WHERE created_at >= '${OCT_2026_CUTOFF}'`
+        );
+        totalSuperchats = scCountRes.rows[0]?.total || 0;
+
+        const scRes = await p.query(
+          `SELECT id, created_at, amount, currency, video_id, superchat_id, COALESCE(superchat_text, '') AS superchat_text
+           FROM public.superchats
+           WHERE created_at >= '${OCT_2026_CUTOFF}'
+           ORDER BY created_at DESC 
+           LIMIT 60`
+        );
+        superchatsRows = scRes.rows;
+      }
     }
 
-    const commentsRes = await p.query(commentsQuery, commentsParams);
-    const scRes = await p.query(scQuery, scParams);
+    const hasMore = offset + commentsRows.length < totalComments;
 
     return res.status(200).json({
       success: true,
       video_id: resolvedVideoId || 'all',
-      comments: commentsRes.rows,
-      superchats: scRes.rows,
+      comments: commentsRows,
+      superchats: superchatsRows,
+      total_comments: totalComments,
+      total_superchats: totalSuperchats,
+      has_more: hasMore,
+      offset,
+      limit,
     });
   } catch (err: any) {
     console.error('Error fetching comments in /api/comments:', err);
@@ -199,6 +279,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       error: `Error al consultar comentarios: ${err.message}`,
       comments: [],
       superchats: [],
+      total_comments: 0,
+      total_superchats: 0,
+      has_more: false,
     });
   }
 }

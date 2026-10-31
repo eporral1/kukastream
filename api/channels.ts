@@ -15,13 +15,22 @@ function getPool(): Pool | null {
     process.env.SUPABASE_DATABASE_URL ||
     process.env.SUPABASE_DB_URL;
 
+  const poolConfig: any = {
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 15000,
+    idleTimeoutMillis: 5000,
+    max: 3,
+    keepAlive: true,
+  };
+
   if (connectionString && !connectionString.includes('hjkhjk')) {
     pool = new Pool({
+      ...poolConfig,
       connectionString,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 6000,
-      idleTimeoutMillis: 10000,
-      max: 4,
+    });
+    pool.on('error', (err) => {
+      console.warn('PostgreSQL pool error, resetting pool:', err.message);
+      pool = null;
     });
     return pool;
   }
@@ -61,18 +70,45 @@ function getPool(): Pool | null {
   }
 
   pool = new Pool({
+    ...poolConfig,
     host,
     user,
     password,
     database,
     port,
-    ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 6000,
-    idleTimeoutMillis: 10000,
-    max: 4,
+  });
+
+  pool.on('error', (err) => {
+    console.warn('PostgreSQL pool error, resetting pool:', err.message);
+    pool = null;
   });
 
   return pool;
+}
+
+async function executeQuery<T = any>(text: string, params: any[] = []): Promise<T> {
+  let p = getPool();
+  if (!p) throw new Error('Base de datos no configurada en Vercel.');
+
+  try {
+    return (await p.query(text, params)) as T;
+  } catch (err: any) {
+    const msg = String(err?.message || '').toLowerCase();
+    if (
+      msg.includes('connection terminated') ||
+      msg.includes('timeout') ||
+      msg.includes('closed') ||
+      msg.includes('socket')
+    ) {
+      console.warn('Retrying channels query after connection reset:', err.message);
+      pool = null;
+      p = getPool();
+      if (p) {
+        return (await p.query(text, params)) as T;
+      }
+    }
+    throw err;
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -108,9 +144,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active
       ORDER BY avg_viewers DESC;
     `;
-    let result;
+    let result: any;
     try {
-      result = await p.query(query);
+      result = await executeQuery(query);
     } catch {
       query = `
         SELECT 
@@ -125,7 +161,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active
         ORDER BY avg_viewers DESC;
       `;
-      result = await p.query(query);
+      result = await executeQuery(query);
     }
     return res.status(200).json({ success: true, channels: result.rows });
   } catch (err: any) {

@@ -37,17 +37,15 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => handleNav('/')}
               className="flex items-center space-x-3 text-left focus:outline-none group"
             >
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-teal-500 rounded-lg flex items-center justify-center p-0.5 shadow-sm group-hover:scale-105 transition-transform overflow-hidden">
-                <img
-                  src="/img/logo.jpg"
-                  alt="KukaStream Logo"
-                  className="w-full h-full object-cover rounded"
-                  onError={(e) => {
-                    // Fallback to text icon if image fails
-                    (e.target as HTMLElement).style.display = 'none';
-                  }}
-                />
-              </div>
+              <img
+                src="/assets/aistudio/logo_kuka_430f41ee.png"
+                alt="KukaStream Logo"
+                className="w-11 h-11 object-contain shrink-0 group-hover:scale-105 transition-transform drop-shadow-xs"
+                onError={(e) => {
+                  // Fallback if image fails
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
               <div>
                 <h1 className="text-xl font-black tracking-tight text-gray-900 group-hover:text-blue-600 transition-colors">
                   KukaStream
@@ -120,7 +118,7 @@ export const Header: React.FC<HeaderProps> = ({
               }`}
             >
               <Radio className={`w-3.5 h-3.5 ${isSimulating ? 'animate-pulse text-green-600' : ''}`} />
-              <span>{isSimulating ? 'Auto-refresh On (30s)' : 'Auto-refresh Off'}</span>
+              <span>{isSimulating ? 'Auto-refresh On' : 'Auto-refresh Off'}</span>
             </button>
 
             {/* Mobile menu button */}

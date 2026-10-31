@@ -30,7 +30,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
 
   const thumbUrl = stream.thumb || `https://i.ytimg.com/vi/${stream.video_id}/hqdefault.jpg`;
   const superchatsTotal = Number(stream.superchats_total || 0);
-  const commentsCount = Number(stream.comments_count || 0);
+  const commentsCount = stream.comments_count;
 
   return (
     <div
@@ -84,7 +84,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                   onClick={() => onNavigateChannel(stream.channel)}
                   className="bg-purple-100 hover:bg-purple-200 text-purple-800 px-2.5 py-0.5 rounded-full text-xs font-semibold transition-colors cursor-pointer"
                 >
-                  Métricas Canal
+                  Métricas Canal 
                 </button>
 
                 {onOpenComments && (

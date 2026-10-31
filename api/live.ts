@@ -15,64 +15,97 @@ function getPool(): Pool | null {
     process.env.SUPABASE_DATABASE_URL ||
     process.env.SUPABASE_DB_URL;
 
+  const poolConfig: any = {
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 15000, // 15s to avoid cold start timeouts
+    idleTimeoutMillis: 5000,
+    max: 3,
+    keepAlive: true,
+  };
+
   if (connectionString && !connectionString.includes('hjkhjk')) {
     pool = new Pool({
+      ...poolConfig,
       connectionString,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 6000,
-      idleTimeoutMillis: 10000,
-      max: 4,
     });
-    return pool;
+  } else {
+    const host =
+      process.env.DB_HOST ||
+      process.env.POSTGRES_HOST ||
+      process.env.PGHOST;
+
+    const user =
+      process.env.DB_USERNAME ||
+      process.env.DB_USER ||
+      process.env.POSTGRES_USER ||
+      process.env.PGUSER;
+
+    const password =
+      process.env.DB_PASSWORD ||
+      process.env.POSTGRES_PASSWORD ||
+      process.env.PGPASSWORD;
+
+    const database =
+      process.env.DB_DATABASE ||
+      process.env.DB_NAME ||
+      process.env.POSTGRES_DATABASE ||
+      process.env.PGDATABASE;
+
+    const port = parseInt(
+      process.env.DB_PORT ||
+      process.env.POSTGRES_PORT ||
+      process.env.PGPORT ||
+      '5432',
+      10
+    );
+
+    if (!host || !password || host.includes('hjkhjk') || password.includes('hjkhjk')) {
+      return null;
+    }
+
+    pool = new Pool({
+      ...poolConfig,
+      host,
+      user,
+      password,
+      database,
+      port,
+    });
   }
 
-  const host =
-    process.env.DB_HOST ||
-    process.env.POSTGRES_HOST ||
-    process.env.PGHOST;
-
-  const user =
-    process.env.DB_USERNAME ||
-    process.env.DB_USER ||
-    process.env.POSTGRES_USER ||
-    process.env.PGUSER;
-
-  const password =
-    process.env.DB_PASSWORD ||
-    process.env.POSTGRES_PASSWORD ||
-    process.env.PGPASSWORD;
-
-  const database =
-    process.env.DB_DATABASE ||
-    process.env.DB_NAME ||
-    process.env.POSTGRES_DATABASE ||
-    process.env.PGDATABASE;
-
-  const port = parseInt(
-    process.env.DB_PORT ||
-    process.env.POSTGRES_PORT ||
-    process.env.PGPORT ||
-    '5432',
-    10
-  );
-
-  if (!host || !password || host.includes('hjkhjk') || password.includes('hjkhjk')) {
-    return null;
-  }
-
-  pool = new Pool({
-    host,
-    user,
-    password,
-    database,
-    port,
-    ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 6000,
-    idleTimeoutMillis: 10000,
-    max: 4,
+  // Handle client error to prevent stale broken sockets in serverless
+  pool.on('error', (err) => {
+    console.warn('PostgreSQL pool error, resetting pool:', err.message);
+    pool = null;
   });
 
   return pool;
+}
+
+// Resilient query executor that retries once on connection termination/timeout
+async function executeQuery<T = any>(text: string, params: any[] = []): Promise<T> {
+  let p = getPool();
+  if (!p) throw new Error('Base de datos no configurada en Vercel.');
+
+  try {
+    return (await p.query(text, params)) as T;
+  } catch (err: any) {
+    const msg = String(err?.message || '').toLowerCase();
+    if (
+      msg.includes('connection terminated') ||
+      msg.includes('timeout') ||
+      msg.includes('closed') ||
+      msg.includes('socket')
+    ) {
+      console.warn('Retrying query after connection reset:', err.message);
+      pool = null;
+      p = getPool();
+      if (p) {
+        return (await p.query(text, params)) as T;
+      }
+    }
+    throw err;
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -138,7 +171,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     liveQuery += ` ORDER BY l.concurrent_viewers DESC LIMIT 25;`;
-    const liveResult = await p.query(liveQuery, liveParams);
+    const liveResult: any = await executeQuery(liveQuery, liveParams);
 
     // Also get recent finished streams from the last 24h (strictly October 2026 onwards)
     let recentQuery = `
@@ -176,7 +209,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     recentQuery += ` ORDER BY l.scrape_date DESC LIMIT 10;`;
-    const recentResult = await p.query(recentQuery, recentParams);
+    const recentResult: any = await executeQuery(recentQuery, recentParams);
 
     return res.status(200).json({
       success: true,

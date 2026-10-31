@@ -19,6 +19,17 @@ export interface DbComment {
   video_title?: string;
 }
 
+export interface TopCommentator {
+  rank: number;
+  author_id: string;
+  comment_count: number;
+  streams_count?: number;
+  first_comment_at?: string;
+  last_comment_at?: string;
+  latest_comment?: string | null;
+  percentage?: number;
+}
+
 export interface Superchat {
   id?: number | string;
   created_at?: string;
@@ -101,6 +112,7 @@ export interface Stream {
   superchats_total?: number | string;
   superchats_count?: number;
   comments_count?: number;
+  unique_commentators?: number;
   comments?: CommentItem[];
   data?: MinuteDataPoint[];
 }

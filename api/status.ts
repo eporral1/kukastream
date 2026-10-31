@@ -18,9 +18,14 @@ function getDiagnosticPool(): Pool | null {
     pool = new Pool({
       connectionString,
       ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 5000,
-      idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 15000,
+      idleTimeoutMillis: 5000,
       max: 2,
+      keepAlive: true,
+    });
+    pool.on('error', (err) => {
+      console.warn('Status diagnostic pool error:', err.message);
+      pool = null;
     });
     return pool;
   }
@@ -66,9 +71,15 @@ function getDiagnosticPool(): Pool | null {
     database,
     port,
     ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 5000,
-    idleTimeoutMillis: 10000,
+    connectionTimeoutMillis: 15000,
+    idleTimeoutMillis: 5000,
     max: 2,
+    keepAlive: true,
+  });
+
+  pool.on('error', (err) => {
+    console.warn('Status diagnostic pool error:', err.message);
+    pool = null;
   });
 
   return pool;

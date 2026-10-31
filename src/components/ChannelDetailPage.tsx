@@ -3,9 +3,6 @@ import { Channel, Stream, HourDayData, AvgDataPoint, MinuteDataPoint } from '../
 import {
   formatNumber,
   formatSubs,
-  generateAvgData,
-  generateHeatmapData,
-  getPastStreamsForChannel,
 } from '../data/mockData';
 import { HeatmapTable } from './HeatmapTable';
 import { StreamLineChart } from './StreamLineChart';
@@ -17,59 +14,6 @@ interface ChannelDetailPageProps {
   channel: Channel;
   liveStream?: Stream;
   onBack: () => void;
-}
-
-// Generate realistic minute-by-minute progression for an active live transmission
-function buildLiveTimelinePoints(stream: Stream): MinuteDataPoint[] {
-  const peak = Number(stream.concurrent_viewers) || 100;
-  const currentLikes = Number(stream.current_likes) || 10;
-  const commentsCount = Number(stream.comments_count) || 0;
-
-  let startDate: Date;
-  if (stream.start_date) {
-    startDate = new Date(stream.start_date);
-    if (isNaN(startDate.getTime())) {
-      startDate = new Date(Date.now() - 90 * 60 * 1000);
-    }
-  } else {
-    startDate = new Date(Date.now() - 90 * 60 * 1000);
-  }
-
-  const pointsCount = 14;
-  const points: MinuteDataPoint[] = [];
-  const startMs = startDate.getTime();
-  const endMs = stream.scrape_date ? new Date(stream.scrape_date).getTime() : Date.now();
-  const durationMs = Math.max(25 * 60 * 1000, isNaN(endMs) ? Date.now() - startMs : endMs - startMs);
-  const stepMs = durationMs / (pointsCount - 1);
-
-  for (let i = 0; i < pointsCount; i++) {
-    const pt = new Date(startMs + i * stepMs);
-    const timeStr = `${pt.getHours().toString().padStart(2, '0')}:${pt.getMinutes().toString().padStart(2, '0')}`;
-    const progress = i / (pointsCount - 1);
-
-    // Natural curve: starts at ~35%, rises steadily with minor natural variance, reaching exact 100% on the latest point
-    let factor = 0.35 + 0.65 * Math.sin(progress * (Math.PI / 2));
-    if (i === pointsCount - 1) {
-      factor = 1.0;
-    } else {
-      factor = factor * (0.96 + 0.08 * Math.sin(i * 1.6));
-    }
-
-    const viewers = Math.max(50, Math.round(peak * factor));
-    const likes = i === pointsCount - 1 ? currentLikes : Math.round(currentLikes * (0.2 + 0.8 * progress));
-    const comm = Math.round(commentsCount * (0.15 + 0.85 * progress));
-
-    points.push({
-      scrape_date: timeStr,
-      concurrent_viewers: viewers,
-      likes,
-      comments_count: comm,
-      chat_count: Math.round(comm * 1.4),
-      authors_count: Math.round(comm * 0.8),
-    });
-  }
-
-  return points;
 }
 
 // Reordena cronológicamente los puntos de transmisión que cruzan la medianoche (ej. 21:00 -> 23:45 -> 00:00 -> 04:30)
@@ -129,6 +73,15 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
   const [avgData, setAvgData] = useState<AvgDataPoint[]>([]);
   const [selectedStreamForComments, setSelectedStreamForComments] = useState<Stream | null>(null);
   const [isLoadingChannel, setIsLoadingChannel] = useState<boolean>(true);
+  const [uniqueCommentatorsMap, setUniqueCommentatorsMap] = useState<Record<string, number>>({});
+
+  // Helper to get unique commentator count
+  const getUniqueCount = (s?: Stream) => {
+    if (!s || !s.video_id) return 0;
+    if (typeof s.unique_commentators === 'number') return s.unique_commentators;
+    if (typeof uniqueCommentatorsMap[s.video_id] === 'number') return uniqueCommentatorsMap[s.video_id];
+    return 0;
+  };
 
   // Sync props if parent changes
   useEffect(() => {
@@ -139,6 +92,29 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
       setLiveStream(undefined);
     }
   }, [initialChannel, initialLiveStream]);
+
+  // Fetch unique commentator counts if not already populated on streams
+  useEffect(() => {
+    const videoIdsToFetch: string[] = [];
+    if (liveStream?.video_id && typeof liveStream.unique_commentators !== 'number') {
+      videoIdsToFetch.push(liveStream.video_id);
+    }
+    for (const ps of pastStreams) {
+      if (ps.video_id && typeof ps.unique_commentators !== 'number') {
+        videoIdsToFetch.push(ps.video_id);
+      }
+    }
+    if (videoIdsToFetch.length === 0) return;
+
+    fetch(`/api/unique-commentators?video_ids=${encodeURIComponent(videoIdsToFetch.join(','))}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.counts) {
+          setUniqueCommentatorsMap((prev) => ({ ...prev, ...data.counts }));
+        }
+      })
+      .catch((err) => console.warn('Could not fetch unique commentator counts:', err));
+  }, [liveStream?.video_id, liveStream?.unique_commentators, pastStreams]);
 
   // Fetch complete channel details from backend /api/channel
   useEffect(() => {
@@ -188,27 +164,27 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
             );
             setPastStreams(filteredStreams);
           } else {
-            setPastStreams(getPastStreamsForChannel(channel));
+            setPastStreams([]);
           }
 
           if (data.hour_day_data && data.hour_day_data.length > 0) {
             setHeatmapData(data.hour_day_data);
           } else {
-            setHeatmapData(generateHeatmapData(channel.avg_viewers || 15000));
+            setHeatmapData([]);
           }
 
           if (data.avg_data && data.avg_data.length > 0) {
             setAvgData(data.avg_data);
           } else {
-            setAvgData(generateAvgData(channel.avg_viewers || 15000));
+            setAvgData([]);
           }
         }
       } catch (err) {
-        console.warn('Could not fetch channel details from API, using fallback data:', err);
+        console.warn('Could not fetch channel details from API:', err);
         if (isMounted) {
-          setPastStreams(getPastStreamsForChannel(channel));
-          setHeatmapData(generateHeatmapData(channel.avg_viewers || 15000));
-          setAvgData(generateAvgData(channel.avg_viewers || 15000));
+          setPastStreams([]);
+          setHeatmapData([]);
+          setAvgData([]);
         }
       } finally {
         if (isMounted) setIsLoadingChannel(false);
@@ -222,26 +198,24 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
     };
   }, [channel.channel, channel.channel_id, initialLiveStream]);
 
-  // Guaranteed minute points for active live stream chart
+  // Minute points for active live stream chart (only real data)
   const activeLiveChartPoints = useMemo(() => {
     if (!liveStream) return [];
-    if (liveStream.data && liveStream.data.length >= 2) {
+    if (liveStream.data && liveStream.data.length > 0) {
       return sortTimelineChronologically(liveStream.data);
     }
-    return buildLiveTimelinePoints(liveStream);
+    return [];
   }, [liveStream]);
 
-  // Guaranteed heatmap data
+  // Heatmap data (only real data)
   const effectiveHeatmapData = useMemo(() => {
-    if (heatmapData && heatmapData.length > 0) return heatmapData;
-    return generateHeatmapData(channel.avg_viewers || liveStream?.concurrent_viewers || 15000);
-  }, [heatmapData, channel.avg_viewers, liveStream]);
+    return heatmapData || [];
+  }, [heatmapData]);
 
-  // Guaranteed 24h average data
+  // 24h average data (only real data)
   const effectiveAvgData = useMemo(() => {
-    if (avgData && avgData.length > 0) return avgData;
-    return generateAvgData(channel.avg_viewers || liveStream?.concurrent_viewers || 15000);
-  }, [avgData, channel.avg_viewers, liveStream]);
+    return avgData || [];
+  }, [avgData]);
 
   const avgLabels = effectiveAvgData.map((d) => d.scrape_date1);
   const avgViewers = effectiveAvgData.map((d) => d.avg_viewers);
@@ -387,7 +361,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                     className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
                   >
                     <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Ver Comentarios & Superchats</span>
+                    <span>Ver Comentarios & Superchats ({formatNumber(getUniqueCount(liveStream))} usuarios únicos)</span>
                   </button>
                 </div>
               </div>
@@ -490,15 +464,13 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
 
         <div className="space-y-6">
           {pastStreams.map((pastStream) => {
-            const chartData = sortTimelineChronologically(
-              pastStream.data && pastStream.data.length >= 2
-                ? pastStream.data
-                : buildLiveTimelinePoints(pastStream)
-            );
-            const chartLabels = chartData.map((d) => d.scrape_date);
-            const chartViewers = chartData.map((d) => d.concurrent_viewers);
-            const chartLikes = chartData.map((d) => d.likes);
-            const chartComments = chartData.map((d) => d.comments_count);
+            const chartData = pastStream.data && pastStream.data.length > 0
+              ? sortTimelineChronologically(pastStream.data)
+              : [];
+            const chartLabels = chartData.map((d: any) => d.scrape_date);
+            const chartViewers = chartData.map((d: any) => d.concurrent_viewers);
+            const chartLikes = chartData.map((d: any) => d.likes);
+            const chartComments = chartData.map((d: any) => d.comments_count);
 
             return (
               <div
@@ -542,7 +514,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                         className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
                       >
                         <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Comentarios y Superchats</span>
+                        <span>Ver Comentarios & Superchats ({formatNumber(getUniqueCount(pastStream))} usuarios únicos)</span>
                       </button>
                     </div>
                   </div>
