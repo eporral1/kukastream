@@ -31,9 +31,9 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
       {/* Main Title */}
       <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 mb-6 leading-tight tracking-tight">
-        En qué andan los {/*<br className="hidden sm:block" />*/}
+        Stream {/*<br className="hidden sm:block" />*/}
         <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-teal-500 bg-clip-text text-transparent">
-          kukitas ?
+          Data
         </span>
       </h1>
 

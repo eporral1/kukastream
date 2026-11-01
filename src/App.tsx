@@ -5,6 +5,7 @@ import { CategoryFilter } from './components/CategoryFilter';
 import { RankingStreamCard } from './components/RankingStreamCard';
 import { ChannelsPage } from './components/ChannelsPage';
 import { ChannelDetailPage } from './components/ChannelDetailPage';
+import { SuperchatsRankingPage } from './components/SuperchatsRankingPage';
 import { DevSocialModal } from './components/DevSocialModal';
 import { StreamCommentsModal } from './components/StreamCommentsModal';
 import { Footer } from './components/Footer';
@@ -293,6 +294,12 @@ export default function App() {
             <ChannelsPage
               channels={channelsList}
               onNavigateChannel={(handle) => navigate(`/channel/${handle}`)}
+            />
+          ) : currentPath === '/superchats' ? (
+            /* Route: Superchats Ranking */
+            <SuperchatsRankingPage
+              onNavigateChannel={(handle) => navigate(`/channel/${handle}`)}
+              onOpenStreamComments={(streamStub) => setSelectedCommentsStream(streamStub as any)}
             />
           ) : isChannelDetail && currentChannel ? (
             /* Route: Channel Detail */

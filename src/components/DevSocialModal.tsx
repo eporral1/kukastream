@@ -28,7 +28,7 @@ export const DevSocialModal: React.FC<DevSocialModalProps> = ({
     '',
     ...topStreams.map((s, i) => `${medals[i]} ${s.channel} - ${formatNumber(s.concurrent_viewers)}`),
     '',
-    'Ranking en vivo ➡️ https://kukastream.com',
+    'Ranking en vivo ➡️ https://.com',
     '',
     '#live #rating #tv #streaming #argentina #KukaStream',
   ];

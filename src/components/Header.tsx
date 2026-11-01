@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RefreshCw, Radio, Menu, X, Share2 } from 'lucide-react';
+import { RefreshCw, Radio, Menu, X, Share2, DollarSign } from 'lucide-react';
 
 interface HeaderProps {
   currentPath: string;
@@ -37,7 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => handleNav('/')}
               className="flex items-center space-x-3 text-left focus:outline-none group"
             >
-              <img
+              {/*<img
                 src="/assets/aistudio/logo_kuka_430f41ee.png"
                 alt="KukaStream Logo"
                 className="w-11 h-11 object-contain shrink-0 group-hover:scale-105 transition-transform drop-shadow-xs"
@@ -45,14 +45,14 @@ export const Header: React.FC<HeaderProps> = ({
                   // Fallback if image fails
                   (e.target as HTMLElement).style.display = 'none';
                 }}
-              />
+              />*/}
               <div>
                 <h1 className="text-xl font-black tracking-tight text-gray-900 group-hover:text-blue-600 transition-colors">
-                  KukaStream
+                  StreamData
                 </h1>
-                <p className="text-xs text-gray-500 hidden sm:flex font-medium">
+                {/*<p className="text-xs text-gray-500 hidden sm:flex font-medium">
                   Contenido que nos chupa la pija.
-                </p>
+                </p>*/}
               </div>
             </button>
           </div>
@@ -60,12 +60,12 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Right section: Navigation & Live indicator */}
           <div className="flex items-center space-x-4 md:space-x-6">
             {/* Nav Links */}
-            <nav className="hidden md:flex items-center space-x-6">
+            <nav className="hidden md:flex items-center space-x-4 lg:space-x-6">
               <button
                 onClick={() => handleNav('/')}
                 className={`font-medium transition-colors px-3 py-1.5 rounded-lg text-sm ${
                   currentPath === '/'
-                    ? 'text-blue-600 bg-blue-50'
+                    ? 'text-blue-600 bg-blue-50 font-semibold'
                     : 'text-gray-700 hover:text-blue-600 hover:bg-gray-50'
                 }`}
               >
@@ -75,11 +75,22 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={() => handleNav('/channels')}
                 className={`font-medium transition-colors px-3 py-1.5 rounded-lg text-sm ${
                   currentPath === '/channels'
-                    ? 'text-blue-600 bg-blue-50'
+                    ? 'text-blue-600 bg-blue-50 font-semibold'
                     : 'text-gray-700 hover:text-blue-600 hover:bg-gray-50'
                 }`}
               >
                 Canales
+              </button>
+              <button
+                onClick={() => handleNav('/superchats')}
+                className={`font-medium transition-colors px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${
+                  currentPath === '/superchats'
+                    ? 'text-amber-800 bg-amber-50 font-bold border border-amber-200 shadow-2xs'
+                    : 'text-gray-700 hover:text-amber-600 hover:bg-gray-50'
+                }`}
+              >
+                <DollarSign className="w-4 h-4 text-amber-500" />
+                <span>Superchats</span>
               </button>
             </nav>
 
@@ -153,6 +164,15 @@ export const Header: React.FC<HeaderProps> = ({
               }`}
             >
               Canales (Métricas y Directorio)
+            </button>
+            <button
+              onClick={() => handleNav('/superchats')}
+              className={`w-full text-left block px-3 py-2 rounded-md font-medium text-sm flex items-center gap-2 ${
+                currentPath === '/superchats' ? 'text-amber-800 bg-amber-50 font-bold' : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <DollarSign className="w-4 h-4 text-amber-500" />
+              <span>Superchats (Ganancias ARS)</span>
             </button>
             <button
               onClick={() => {

@@ -218,7 +218,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? superchatsRows.map((s, i) => `#SC${i + 1} [${s.currency} $${s.amount}]: "${s.superchat_text || '(sin mensaje)'}"`).join('\n')
       : '(No se registraron superchats)';
 
-    const prompt = `Actúas como analista especializado de chat y superchats de streaming para la plataforma KukaStream (Argentina).
+    const prompt = `Actúas como analista especializado de chat y superchats de streaming para la plataforma (Argentina).
 
 El usuario tiene una consulta sobre el contenido de los comentarios y superchats de la transmisión.
 

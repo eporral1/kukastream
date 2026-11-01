@@ -136,3 +136,28 @@ export interface Channel {
 }
 
 export type CategoryTag = 'all' | 'stream' | 'tv' | 'entretenimiento' | 'radio' | 'política' | 'deportes';
+
+export interface SuperchatChannelRanking {
+  rank: number;
+  channel_id: string;
+  channel: string;
+  channel_name: string;
+  thumb: string;
+  total_ars: number;
+  superchats_count: number;
+  streams_count: number;
+  avg_per_superchat?: number;
+}
+
+export interface SuperchatVideoRanking {
+  rank: number;
+  video_id: string;
+  video_title: string;
+  channel: string;
+  channel_name: string;
+  channel_thumb: string;
+  total_ars: number;
+  superchats_count: number;
+  last_date?: string;
+  avg_per_superchat?: number;
+}

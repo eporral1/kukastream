@@ -669,6 +669,122 @@ app.get('/api/unique-commentators', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/superchats-ranking - Ranking of Superchats in ARS (Top 20 channels and Top 20 videos)
+app.get('/api/superchats-ranking', async (_req: Request, res: Response) => {
+  const p = getPool();
+  if (!p) {
+    res.json({
+      success: true,
+      fallback: true,
+      currency: 'ARS',
+      total_ars_all: 0,
+      total_superchats_count: 0,
+      top_channels: [],
+      top_videos: [],
+    });
+    return;
+  }
+
+  try {
+    // 1. Overall stats for ARS superchats
+    const totalRes = await p.query(`
+      SELECT 
+        COALESCE(SUM(amount), 0)::numeric as total_ars_all,
+        COUNT(id)::int as total_superchats_count
+      FROM public.superchats
+      WHERE (currency = 'ARS' OR currency ILIKE '%ARS%')
+        AND created_at >= '${OCT_2026_CUTOFF}';
+    `);
+
+    // 2. Top 20 Channels by total ARS superchats
+    const channelsRes = await p.query(`
+      SELECT 
+        c.channel_id,
+        c.channel,
+        c.channel_name,
+        c.thumb,
+        SUM(s.amount)::numeric as total_ars,
+        COUNT(s.id)::int as superchats_count,
+        COUNT(DISTINCT s.video_id)::int as streams_count,
+        ROUND(AVG(s.amount))::int as avg_per_superchat
+      FROM public.superchats s
+      JOIN public.live l ON s.video_id = l.video_id
+      JOIN public.channels c ON l.channel_id = c.channel_id
+      WHERE (s.currency = 'ARS' OR s.currency ILIKE '%ARS%')
+        AND s.created_at >= '${OCT_2026_CUTOFF}'
+      GROUP BY c.channel_id, c.channel, c.channel_name, c.thumb
+      ORDER BY total_ars DESC
+      LIMIT 20;
+    `);
+
+    // 3. Top 20 Videos by total ARS superchats
+    const videosRes = await p.query(`
+      SELECT 
+        s.video_id,
+        SUM(s.amount)::numeric as total_ars,
+        COUNT(s.id)::int as superchats_count,
+        ROUND(AVG(s.amount))::int as avg_per_superchat,
+        COALESCE(MAX(l.video_title), 'Transmisión en vivo') as video_title,
+        COALESCE(MAX(c.channel), '') as channel,
+        COALESCE(MAX(c.channel_name), 'Canal') as channel_name,
+        COALESCE(MAX(c.thumb), '') as channel_thumb,
+        MAX(l.scrape_date) as last_date
+      FROM public.superchats s
+      LEFT JOIN public.live l ON s.video_id = l.video_id
+      LEFT JOIN public.channels c ON l.channel_id = c.channel_id
+      WHERE (s.currency = 'ARS' OR s.currency ILIKE '%ARS%')
+        AND s.created_at >= '${OCT_2026_CUTOFF}'
+      GROUP BY s.video_id
+      ORDER BY total_ars DESC
+      LIMIT 20;
+    `);
+
+    const topChannels = channelsRes.rows.map((row: any, index: number) => ({
+      rank: index + 1,
+      channel_id: row.channel_id,
+      channel: row.channel,
+      channel_name: row.channel_name,
+      thumb: row.thumb,
+      total_ars: Number(row.total_ars || 0),
+      superchats_count: Number(row.superchats_count || 0),
+      streams_count: Number(row.streams_count || 0),
+      avg_per_superchat: Number(row.avg_per_superchat || 0),
+    }));
+
+    const topVideos = videosRes.rows.map((row: any, index: number) => ({
+      rank: index + 1,
+      video_id: row.video_id,
+      video_title: row.video_title,
+      channel: row.channel,
+      channel_name: row.channel_name,
+      channel_thumb: row.channel_thumb,
+      total_ars: Number(row.total_ars || 0),
+      superchats_count: Number(row.superchats_count || 0),
+      avg_per_superchat: Number(row.avg_per_superchat || 0),
+      last_date: row.last_date,
+    }));
+
+    res.json({
+      success: true,
+      currency: 'ARS',
+      total_ars_all: Number(totalRes.rows[0]?.total_ars_all || 0),
+      total_superchats_count: Number(totalRes.rows[0]?.total_superchats_count || 0),
+      top_channels: topChannels,
+      top_videos: topVideos,
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: err.message,
+      currency: 'ARS',
+      total_ars_all: 0,
+      total_superchats_count: 0,
+      top_channels: [],
+      top_videos: [],
+    });
+  }
+});
+
 // GET /api/comments - Queries public.comments and public.superchats for a specific video_id or channel
 // Strictly October 2026 onwards, supporting infinite scroll (limit & offset)
 app.get('/api/comments', async (req: Request, res: Response) => {

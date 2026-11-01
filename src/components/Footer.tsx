@@ -38,7 +38,7 @@ export const Footer: React.FC = () => {
   return (
     <footer className="mt-16 pt-12 pb-16 border-t border-gray-200 text-center">
       {/* FAQ section */}
-      <div className="max-w-2xl mx-auto text-left mb-12 px-4">
+      {/*<div className="max-w-2xl mx-auto text-left mb-12 px-4">
         <h3 className="text-xl font-bold text-gray-900 mb-6 text-center">
           Preguntas Frecuentes
         </h3>
@@ -70,7 +70,7 @@ export const Footer: React.FC = () => {
             );
           })}
         </div>
-      </div>
+      </div>*/}
 
       <div className="max-w-7xl mx-auto px-4 text-xs sm:text-sm text-gray-500 space-y-3">
         {/*<p className="font-medium text-gray-600">
@@ -85,11 +85,11 @@ export const Footer: React.FC = () => {
           >
             <span>@kukastream</span>
             <ExternalLink className="w-3 h-3" />
-          </a>*/}
+          </a>*
           <span>•</span>
           <span className="inline-flex items-center gap-1">
             Hecho para la comunidad de streaming <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
-          </span>
+          </span>*/}
         </div>
       </div>
     </footer>
