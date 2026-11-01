@@ -1,20 +1,20 @@
 export interface DbSuperchat {
-  id: number | string;
+  id?: number | string;
   created_at: string;
   amount: number;
   currency: string;
   video_id: string;
-  superchat_id: string;
+  superchat_id?: string;
   superchat_text?: string | null;
   video_title?: string;
 }
 
 export interface DbComment {
-  id: number | string;
+  id?: number | string;
   created_at: string;
   video_id: string;
   author_id: string;
-  comment_id: string;
+  comment_id?: string;
   comment_text?: string | null;
   video_title?: string;
 }

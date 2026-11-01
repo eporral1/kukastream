@@ -785,14 +785,49 @@ app.get('/api/superchats-ranking', async (_req: Request, res: Response) => {
   }
 });
 
-// GET /api/comments - Queries public.comments and public.superchats for a specific video_id or channel
-// Strictly October 2026 onwards, supporting infinite scroll (limit & offset)
+// In-memory rate limiter for comments API (60 req/min per IP)
+const commentsRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+function checkCommentsRateLimit(ip: string, limit = 60, windowMs = 60000): boolean {
+  const now = Date.now();
+  if (commentsRateLimitMap.size > 2000) {
+    for (const [k, v] of commentsRateLimitMap.entries()) {
+      if (now > v.resetAt) commentsRateLimitMap.delete(k);
+    }
+  }
+  const item = commentsRateLimitMap.get(ip);
+  if (!item || now > item.resetAt) {
+    commentsRateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (item.count >= limit) {
+    return false;
+  }
+  item.count += 1;
+  return true;
+}
+
+// GET /api/comments - Queries comments and superchats for a specific video_id or channel
+// Parameter video_id or channel_id is strictly required. Limit is capped to 50 max.
 app.get('/api/comments', async (req: Request, res: Response) => {
+  const clientIp =
+    (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+    req.socket?.remoteAddress ||
+    'anonymous';
+
+  if (!checkCommentsRateLimit(clientIp, 60, 60000)) {
+    res.status(429).json({
+      success: false,
+      error: 'Demasiadas solicitudes. Por favor espera un momento antes de volver a consultar.',
+    });
+    return;
+  }
+
   const videoId = req.query.video_id as string | undefined;
   const channelIdParam = req.query.channel_id as string | undefined;
   const channelParam = req.query.channel as string | undefined;
 
-  const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '20', 10), 1), 100);
+  // Strict limit cap between 1 and 50
+  const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '20', 10), 1), 50);
   const offset = Math.max(parseInt((req.query.offset as string) || '0', 10), 0);
   const type = (req.query.type as string) || 'all';
 
@@ -827,6 +862,19 @@ app.get('/api/comments', async (req: Request, res: Response) => {
       }
     }
 
+    // Require either a video_id or channel_id to prevent bulk database dumps
+    if (!resolvedVideoId && !resolvedChannelId) {
+      res.status(400).json({
+        success: false,
+        error: 'Parámetro requerido: debes especificar video_id o channel_id para consultar comentarios.',
+        comments: [],
+        superchats: [],
+        total_comments: 0,
+        total_superchats: 0,
+      });
+      return;
+    }
+
     if (resolvedVideoId) {
       // Total count of comments
       const countRes = await p.query(
@@ -838,14 +886,20 @@ app.get('/api/comments', async (req: Request, res: Response) => {
       let commentsRows: any[] = [];
       if (type !== 'superchats') {
         const commentsRes = await p.query(
-          `SELECT id, created_at, video_id, author_id, comment_id, COALESCE(comment_text, '') AS comment_text 
+          `SELECT created_at, video_id, author_id, COALESCE(comment_text, '') AS comment_text 
            FROM public.comments 
            WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
            ORDER BY created_at DESC 
            LIMIT $2 OFFSET $3`,
           [resolvedVideoId, limit, offset]
         );
-        commentsRows = commentsRes.rows;
+        commentsRows = commentsRes.rows.map((row: any, idx: number) => ({
+          id: `cmt_${row.video_id}_${offset + idx}`,
+          created_at: row.created_at,
+          video_id: row.video_id,
+          author_id: row.author_id,
+          comment_text: row.comment_text,
+        }));
       }
 
       let superchatsRows: any[] = [];
@@ -858,14 +912,21 @@ app.get('/api/comments', async (req: Request, res: Response) => {
         totalSuperchats = scCountRes.rows[0]?.total || 0;
 
         const superchatsRes = await p.query(
-          `SELECT id, created_at, amount, currency, video_id, superchat_id, COALESCE(superchat_text, '') AS superchat_text 
+          `SELECT created_at, amount, currency, video_id, COALESCE(superchat_text, '') AS superchat_text 
            FROM public.superchats 
            WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
            ORDER BY created_at DESC 
-           LIMIT 100`,
+           LIMIT 50`,
           [resolvedVideoId]
         );
-        superchatsRows = superchatsRes.rows;
+        superchatsRows = superchatsRes.rows.map((row: any, idx: number) => ({
+          id: `sc_${row.video_id}_${idx}`,
+          created_at: row.created_at,
+          amount: Number(row.amount || 0),
+          currency: row.currency,
+          video_id: row.video_id,
+          superchat_text: row.superchat_text,
+        }));
       }
 
       const hasMore = offset + commentsRows.length < totalComments;
@@ -897,7 +958,7 @@ app.get('/api/comments', async (req: Request, res: Response) => {
       let commentsRows: any[] = [];
       if (type !== 'superchats') {
         const commentsRes = await p.query(
-          `SELECT c.id, c.created_at, c.video_id, c.author_id, c.comment_id, COALESCE(c.comment_text, '') AS comment_text,
+          `SELECT c.created_at, c.video_id, c.author_id, COALESCE(c.comment_text, '') AS comment_text,
                   COALESCE(l.video_title, '') as video_title
            FROM public.comments c
            JOIN public.live l ON c.video_id = l.video_id
@@ -906,7 +967,14 @@ app.get('/api/comments', async (req: Request, res: Response) => {
            LIMIT $2 OFFSET $3`,
           [resolvedChannelId, limit, offset]
         );
-        commentsRows = commentsRes.rows;
+        commentsRows = commentsRes.rows.map((row: any, idx: number) => ({
+          id: `cmt_${row.video_id}_${offset + idx}`,
+          created_at: row.created_at,
+          video_id: row.video_id,
+          author_id: row.author_id,
+          comment_text: row.comment_text,
+          video_title: row.video_title,
+        }));
       }
 
       let superchatsRows: any[] = [];
@@ -922,16 +990,24 @@ app.get('/api/comments', async (req: Request, res: Response) => {
         totalSuperchats = scCountRes.rows[0]?.total || 0;
 
         const superchatsRes = await p.query(
-          `SELECT sc.id, sc.created_at, sc.amount, sc.currency, sc.video_id, sc.superchat_id, COALESCE(sc.superchat_text, '') AS superchat_text,
+          `SELECT sc.created_at, sc.amount, sc.currency, sc.video_id, COALESCE(sc.superchat_text, '') AS superchat_text,
                   COALESCE(l.video_title, '') as video_title
            FROM public.superchats sc
            JOIN public.live l ON sc.video_id = l.video_id
            WHERE l.channel_id = $1 AND sc.created_at >= '${OCT_2026_CUTOFF}'
            ORDER BY sc.created_at DESC 
-           LIMIT 100`,
+           LIMIT 50`,
           [resolvedChannelId]
         );
-        superchatsRows = superchatsRes.rows;
+        superchatsRows = superchatsRes.rows.map((row: any, idx: number) => ({
+          id: `sc_${row.video_id}_${idx}`,
+          created_at: row.created_at,
+          amount: Number(row.amount || 0),
+          currency: row.currency,
+          video_id: row.video_id,
+          superchat_text: row.superchat_text,
+          video_title: row.video_title,
+        }));
       }
 
       const hasMore = offset + commentsRows.length < totalComments;
@@ -949,60 +1025,6 @@ app.get('/api/comments', async (req: Request, res: Response) => {
       });
       return;
     }
-
-    // Default if neither parameter is passed: return latest global comments from Oct 2026
-    const countRes = await p.query(
-      `SELECT COUNT(*)::int AS total FROM public.comments WHERE created_at >= '${OCT_2026_CUTOFF}'`
-    );
-    const totalComments = countRes.rows[0]?.total || 0;
-
-    const latestComments = await p.query(
-      `SELECT c.id, c.created_at, c.video_id, c.author_id, c.comment_id, COALESCE(c.comment_text, '') AS comment_text,
-              COALESCE(l.video_title, '') as video_title,
-              ch.channel_name, ch.channel
-       FROM public.comments c
-       LEFT JOIN public.live l ON c.video_id = l.video_id
-       LEFT JOIN public.channels ch ON l.channel_id = ch.channel_id
-       WHERE c.created_at >= '${OCT_2026_CUTOFF}'
-       ORDER BY c.created_at DESC 
-       LIMIT $1 OFFSET $2`,
-      [limit, offset]
-    );
-
-    let superchatsRows: any[] = [];
-    let totalSuperchats = 0;
-    if (offset === 0) {
-      const scCountRes = await p.query(
-        `SELECT COUNT(*)::int AS total FROM public.superchats WHERE created_at >= '${OCT_2026_CUTOFF}'`
-      );
-      totalSuperchats = scCountRes.rows[0]?.total || 0;
-
-      const latestSuperchats = await p.query(
-        `SELECT sc.id, sc.created_at, sc.amount, sc.currency, sc.video_id, sc.superchat_id, COALESCE(sc.superchat_text, '') AS superchat_text,
-                COALESCE(l.video_title, '') as video_title,
-                ch.channel_name, ch.channel
-         FROM public.superchats sc
-         LEFT JOIN public.live l ON sc.video_id = l.video_id
-         LEFT JOIN public.channels ch ON l.channel_id = ch.channel_id
-         WHERE sc.created_at >= '${OCT_2026_CUTOFF}'
-         ORDER BY sc.created_at DESC 
-         LIMIT 60`
-      );
-      superchatsRows = latestSuperchats.rows;
-    }
-
-    const hasMore = offset + latestComments.rows.length < totalComments;
-
-    res.json({
-      success: true,
-      comments: latestComments.rows,
-      superchats: superchatsRows,
-      total_comments: totalComments,
-      total_superchats: totalSuperchats,
-      has_more: hasMore,
-      offset,
-      limit,
-    });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message, fallback: false });
   }
@@ -1224,8 +1246,15 @@ app.get('/api/top-commentators', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/comments-query - AI Query over all comments and superchats with Gemini 3.8 Flash
+// POST /api/comments-query - AI Query deshabilitado temporalmente por motivos de seguridad
+const ENABLE_COMMENTS_QUERY = false;
+
 app.post('/api/comments-query', async (req: Request, res: Response) => {
+  if (!ENABLE_COMMENTS_QUERY) {
+    res.status(404).json({ success: false, error: 'Endpoint no disponible.' });
+    return;
+  }
+
   const { video_id, channel_id, channel, question } = req.body || {};
 
   if (!question || typeof question !== 'string' || !question.trim()) {

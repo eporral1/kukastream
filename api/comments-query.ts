@@ -78,6 +78,9 @@ function getPool(): Pool | null {
   return pool;
 }
 
+// Endpoint deshabilitado temporalmente por motivos de seguridad (riesgo de consumo no autenticado de Gemini)
+const ENABLE_COMMENTS_QUERY = false;
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -85,6 +88,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
+  }
+
+  // Deshabilitado por seguridad
+  if (!ENABLE_COMMENTS_QUERY) {
+    return res.status(404).json({
+      success: false,
+      error: 'Endpoint no disponible.',
+    });
   }
 
   if (req.method !== 'POST') {
