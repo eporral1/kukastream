@@ -12,6 +12,7 @@ import { Footer } from './components/Footer';
 import { CategoryTag, Stream, Channel } from './types';
 import { isOctober2026OrLater, formatArgentinaTime } from './utils/dateFilter';
 import { RefreshCw, Radio, Sparkles, Clock, AlertCircle, X } from 'lucide-react';
+import { SITE_NAME } from './config/site';
 
 export default function App() {
   // Navigation state: path e.g. '/', '/channels', '/channel/@futurock'
@@ -106,6 +107,11 @@ export default function App() {
       console.error('Error fetching channels:', err);
       setChannelsList([]);
     }
+  }, []);
+
+  // Set document title dynamically with SITE_NAME
+  useEffect(() => {
+    document.title = `${SITE_NAME} - Ranking de Streaming en Vivo`;
   }, []);
 
   // Initial fetch on mount & category change

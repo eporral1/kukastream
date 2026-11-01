@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, ExternalLink, Heart } from 'lucide-react';
+import { SITE_NAME } from '../config/site';
 
 export const Footer: React.FC = () => {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -7,7 +8,7 @@ export const Footer: React.FC = () => {
   const faqs = [
     {
       q: '¿Cada cuánto se actualiza el ranking?',
-      a: 'El ranking de KukaStream se actualiza automáticamente en tiempo real, registrando la cantidad más reciente de espectadores conectados en cada transmisión en vivo de YouTube.',
+      a: `El ranking de ${SITE_NAME} se actualiza automáticamente en tiempo real, registrando la cantidad más reciente de espectadores conectados en cada transmisión en vivo de YouTube.`,
     },
     {
       q: '¿De dónde provienen los datos?',
@@ -18,21 +19,9 @@ export const Footer: React.FC = () => {
       a: '“Conectados” representa el número de espectadores concurrentes que están mirando una transmisión en vivo en tiempo real (concurrent viewers). Es el indicador principal para ordenar el ranking.',
     },
     {
-      q: '¿Qué canales se incluyen en el ranking?',
-      a: 'Incluimos canales y transmisiones públicas de YouTube de kukitas radioactivos.',
+      q: `¿Qué canales se incluyen en el ranking de ${SITE_NAME}?`,
+      a: 'Incluimos canales y transmisiones públicas de YouTube de streaming y actualidad.',
     },
-    {
-      q: 'Cuánto nos importa la opinión de los kukas',
-      a: 'Nos chupa la pija.',
-    },
-    {
-      q: 'Si no les importa la opinión de los kukas, porque existe esta página',
-      a: 'Eso es exactamente lo que preguntaría un kuka.',
-    },
-   /* {
-      q: '¿Cómo se calculan los likes y el heatmap?',
-      a: 'El heatmap refleja la audiencia promedio registrada por hora y día de la semana durante los últimos 30 días, permitiendo a marcas y creadores identificar las franjas horarias con mayor tracción.',
-    },*/
   ];
 
   return (
@@ -74,16 +63,16 @@ export const Footer: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-4 text-xs sm:text-sm text-gray-500 space-y-3">
         {/*<p className="font-medium text-gray-600">
-          KukaStream &bull; 
+          {SITE_NAME} &bull; 
         </p>*/}
         <div className="flex items-center justify-center space-x-4">
           {/*<a
-            href="https://x.com/kukastream"
+            href={`https://x.com/${SITE_NAME.toLowerCase().replace(/\s+/g, '')}`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 font-semibold text-blue-600 hover:text-blue-800 transition-colors"
           >
-            <span>@kukastream</span>
+            <span>@{SITE_NAME.toLowerCase().replace(/\s+/g, '')}</span>
             <ExternalLink className="w-3 h-3" />
           </a>
           <span>•</span>

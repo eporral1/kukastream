@@ -11,6 +11,12 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    envPrefix: ['VITE_', 'SITE_'],
+    define: {
+      'process.env.SITE_NAME': JSON.stringify(
+        process.env.SITE_NAME || process.env.VITE_SITE_NAME || 'StreamData'
+      ),
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.

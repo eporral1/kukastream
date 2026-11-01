@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowRight, BarChart3, TrendingUp, Users, Heart, MessageSquare, Zap } from 'lucide-react';
 import { formatNumber } from '../data/mockData';
+import { SITE_NAME } from '../config/site';
 
 interface HeroSectionProps {
   totalLiveViewers: number;
@@ -31,15 +32,14 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
       {/* Main Title */}
       <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 mb-6 leading-tight tracking-tight">
-        Stream {/*<br className="hidden sm:block" />*/}
-        <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-teal-500 bg-clip-text text-transparent">
-          Data
+        <span className="bg-gradient-to-r font-black bg-clip-text">
+          {SITE_NAME}
         </span>
       </h1>
 
       {/* Subtitle */}
       {/*<p className="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto mb-8 leading-relaxed">
-        TODOS los kukitas
+        {SITE_NAME}
       </p>*/}
 
       {/* Feature Pills */}

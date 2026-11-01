@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Stream } from '../types';
 import { formatNumber } from '../data/mockData';
 import { Copy, Check, X, Twitter } from 'lucide-react';
+import { SITE_NAME } from '../config/site';
 
 interface DevSocialModalProps {
   isOpen: boolean;
@@ -28,9 +29,9 @@ export const DevSocialModal: React.FC<DevSocialModalProps> = ({
     '',
     ...topStreams.map((s, i) => `${medals[i]} ${s.channel} - ${formatNumber(s.concurrent_viewers)}`),
     '',
-    'Ranking en vivo ➡️ https://.com',
+    `Ranking en vivo en ${SITE_NAME}`,
     '',
-    '#live #rating #tv #streaming #argentina #KukaStream',
+    `#live #rating #tv #streaming #argentina #${SITE_NAME.replace(/\s+/g, '')}`,
   ];
 
   const tweetText = tweetLines.join('\n');

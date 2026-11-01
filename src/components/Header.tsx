@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { RefreshCw, Radio, Menu, X, Share2, DollarSign } from 'lucide-react';
+import { SITE_NAME } from '../config/site';
 
 interface HeaderProps {
   currentPath: string;
@@ -39,7 +40,7 @@ export const Header: React.FC<HeaderProps> = ({
             >
               {/*<img
                 src="/assets/aistudio/logo_kuka_430f41ee.png"
-                alt="KukaStream Logo"
+                alt={`${SITE_NAME} Logo`}
                 className="w-11 h-11 object-contain shrink-0 group-hover:scale-105 transition-transform drop-shadow-xs"
                 onError={(e) => {
                   // Fallback if image fails
@@ -48,7 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
               />*/}
               <div>
                 <h1 className="text-xl font-black tracking-tight text-gray-900 group-hover:text-blue-600 transition-colors">
-                  StreamData
+                  {SITE_NAME}
                 </h1>
                 {/*<p className="text-xs text-gray-500 hidden sm:flex font-medium">
                   Contenido que nos chupa la pija.

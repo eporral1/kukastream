@@ -1355,7 +1355,8 @@ app.post('/api/comments-query', async (req: Request, res: Response) => {
       ? superchatsRows.map((s, i) => `#SC${i + 1} [${s.currency} $${s.amount}]: "${s.superchat_text || '(sin mensaje)'}"`).join('\n')
       : '(No se registraron superchats)';
 
-    const prompt = `Actúas como analista especializado de chat y superchats de streaming para la plataforma KukaStream (Argentina).
+    const siteName = process.env.SITE_NAME || process.env.VITE_SITE_NAME || 'StreamData';
+    const prompt = `Actúas como analista especializado de chat y superchats de streaming para la plataforma ${siteName} (Argentina).
 
 El usuario tiene una consulta sobre el contenido de los comentarios y superchats de la transmisión.
 
