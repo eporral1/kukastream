@@ -85,7 +85,7 @@ export const Footer: React.FC = () => {
           >
             <span>@kukastream</span>
             <ExternalLink className="w-3 h-3" />
-          </a>*
+          </a>
           <span>•</span>
           <span className="inline-flex items-center gap-1">
             Hecho para la comunidad de streaming <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />

@@ -144,7 +144,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter,
         COALESCE(sc.total_superchats, 0)::numeric as superchats_total,
         COALESCE(sc.superchats_count, 0)::int as superchats_count,
-        COALESCE(comm.comments_count, 0)::int as comments_count
+        COALESCE(comm.comments_count, 0)::int as comments_count,
+        COALESCE(comm.unique_commentators, 0)::int as unique_commentators
       FROM public.live l
       JOIN public.channels c ON l.channel_id = c.channel_id
       LEFT JOIN (
@@ -154,7 +155,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         GROUP BY video_id
       ) sc ON sc.video_id = l.video_id
       LEFT JOIN (
-        SELECT video_id, COUNT(id) as comments_count
+        SELECT video_id, COUNT(id) as comments_count, COUNT(DISTINCT author_id) as unique_commentators
         FROM public.comments
         WHERE created_at >= '${OCT_2026_CUTOFF}'
         GROUP BY video_id
@@ -182,7 +183,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter,
         COALESCE(sc.total_superchats, 0)::numeric as superchats_total,
         COALESCE(sc.superchats_count, 0)::int as superchats_count,
-        COALESCE(comm.comments_count, 0)::int as comments_count
+        COALESCE(comm.comments_count, 0)::int as comments_count,
+        COALESCE(comm.unique_commentators, 0)::int as unique_commentators
       FROM public.live l
       JOIN public.channels c ON l.channel_id = c.channel_id
       LEFT JOIN (
@@ -192,7 +194,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         GROUP BY video_id
       ) sc ON sc.video_id = l.video_id
       LEFT JOIN (
-        SELECT video_id, COUNT(id) as comments_count
+        SELECT video_id, COUNT(id) as comments_count, COUNT(DISTINCT author_id) as unique_commentators
         FROM public.comments
         WHERE created_at >= '${OCT_2026_CUTOFF}'
         GROUP BY video_id
