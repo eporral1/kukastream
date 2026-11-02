@@ -121,6 +121,7 @@ export default function App() {
   }, [fetchLiveData]);
 
   useEffect(() => {
+    if (window.location.pathname.startsWith('/channel/')) return;
     fetchChannelsData();
   }, [fetchChannelsData]);
 
