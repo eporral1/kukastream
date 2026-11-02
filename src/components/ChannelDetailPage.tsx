@@ -379,7 +379,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                 </div>
 
                 <div className="text-center">
-                  <div className="text-xs text-gray-400 font-semibold mb-0.5">COMMENTS</div>
+                  <div className="text-xs text-gray-400 font-semibold mb-0.5">COMENTARIOS</div>
                   <div className="text-3xl font-black text-amber-500">
                     {formatNumber(liveStream.comments_count || 0)}
                   </div>

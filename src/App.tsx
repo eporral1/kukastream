@@ -469,13 +469,13 @@ export default function App() {
                                 onClick={() => navigate(`/channel/${stream.channel}`)}
                                 className="bg-purple-50 hover:bg-purple-100 text-purple-700 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors cursor-pointer"
                               >
-                                Ver Stats
+                                Ver Métricas
                               </button>
                               <button
                                 onClick={() => setSelectedCommentsStream(stream)}
                                 className="bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer border border-blue-200/50"
                               >
-                                💬 Comments ({typeof stream.unique_commentators === 'number' ? stream.unique_commentators : (stream.comments_count || 0)})
+                                💬 Comentarios ({typeof stream.unique_commentators === 'number' ? stream.unique_commentators : (stream.comments_count || 0)})
                               </button>
                               {Number(stream.superchats_total) > 0 && (
                                 <button
