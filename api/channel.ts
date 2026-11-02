@@ -419,11 +419,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         minuteQuery += ` ORDER BY m.scrape_date ASC LIMIT 500`;
 
-        const minuteRes = await executeQuery(minuteQuery, [
-          live.video_id,
-          channel.type || '',
-          live.video_title || ''
-        ]);
+        const minuteRes = await executeQuery(minuteQuery, [live.video_id]);
         minutePoints = minuteRes.rows;
       } catch (errMinute) {
         minutePoints = [];
@@ -439,6 +435,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         );
       }
 
+      if (minutePoints.length > 0) {
+        minutePoints = minutePoints.map((pt: any) => ({
+          ...pt,
+          concurrent_viewers: Number(pt.concurrent_viewers || 0),
+          likes: pt.likes !== null && pt.likes !== undefined ? Number(pt.likes) : null,
+          comments_count: Number(pt.comments_count || 0),
+        }));
+      }
       live.data = minutePoints;
 
       if (channel.type === 'eternal' && live.video_title && minutePoints.length > 0) {

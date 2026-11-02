@@ -529,6 +529,14 @@ const channelHandler = async (req: Request, res: Response) => {
           live.scrape_date
         );
       }
+      if (minuteRows.length > 0) {
+        minuteRows = minuteRows.map((pt: any) => ({
+          ...pt,
+          concurrent_viewers: Number(pt.concurrent_viewers || 0),
+          likes: pt.likes !== null && pt.likes !== undefined ? Number(pt.likes) : null,
+          comments_count: Number(pt.comments_count || 0),
+        }));
+      }
       live.data = minuteRows;
 
       if (live.type === 'eternal' && live.video_title) {
