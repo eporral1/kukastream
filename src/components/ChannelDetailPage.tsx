@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Channel, Stream, HourDayData, AvgDataPoint, MinuteDataPoint } from '../types';
 import {
   formatNumber,
@@ -74,6 +74,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
   const [selectedStreamForComments, setSelectedStreamForComments] = useState<Stream | null>(null);
   const [isLoadingChannel, setIsLoadingChannel] = useState<boolean>(true);
   const [uniqueCommentatorsMap, setUniqueCommentatorsMap] = useState<Record<string, number>>({});
+  const lastFetchedId = useRef<string | null>(null);
 
   // Helper to get unique commentator count
   const getUniqueCount = (s?: Stream) => {
@@ -119,8 +120,9 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
   // Fetch complete channel details from backend /api/channel
   useEffect(() => {
     const channelIdentifier = channel.channel || channel.channel_id;
-    if (!channelIdentifier) return;
-
+    if (!channelIdentifier || lastFetchedId.current === channelIdentifier) return;
+    
+    lastFetchedId.current = channelIdentifier;
     let isMounted = true;
     setIsLoadingChannel(true);
 

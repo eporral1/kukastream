@@ -54,7 +54,7 @@ export const StreamLineChart: React.FC<StreamLineChartProps> = ({
       chartInstanceRef.current = null;
     }
 
-    const hasComments = comments && comments.length > 0 && comments.some((c) => c > 0);
+    const hasComments = comments && comments.length > 0;
 
     const datasets: any[] = [
       {
