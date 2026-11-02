@@ -113,7 +113,8 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
 
   useEffect(() => {
     const channelIdentifier = channel.channel || channel.channel_id;
-    if (channelIdentifier) {
+    // Check if channel is already populated (has description)
+    if (channelIdentifier && channel.description === 'Canal de streaming') {
         tryFetchChannel(channelIdentifier);
     }
   }, [channel.channel, channel.channel_id, tryFetchChannel]);
