@@ -191,7 +191,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [channel.channel, channel.channel_id, initialLiveStream]);
+  }, [channel.channel, channel.channel_id]);
 
   // Minute points for active live stream chart (only real data)
   const activeLiveChartPoints = useMemo(() => {
