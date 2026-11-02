@@ -114,8 +114,9 @@ export default function App() {
     document.title = `${SITE_NAME} - Ranking de Streaming en Vivo`;
   }, []);
 
-  // Initial fetch on mount & category change
+  // Initial fetch on mount & category change (skip if on channel detail page)
   useEffect(() => {
+    if (window.location.pathname.startsWith('/channel/')) return;
     fetchLiveData();
   }, [fetchLiveData]);
 
