@@ -676,7 +676,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       success: true,
       channel,
       live,
-      liveStream: live,
       streams: finishedStreams,
       history: finishedStreams,
       timeline: live?.data || [],

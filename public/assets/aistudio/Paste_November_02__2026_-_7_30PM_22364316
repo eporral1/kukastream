@@ -1,0 +1,2216 @@
+{
+    "success": true,
+    "channel": {
+        "id": "37",
+        "created_at": "2025-09-02T19:27:13.802Z",
+        "channel": "@VorterixOficial",
+        "channel_id": "UCvCTWHCbBC0b9UIeLeNs8ug",
+        "thumb": "https://yt3.ggpht.com/MLwjpG_fQdT6e-8_CNsqcOSKghc58Q_xGoZMn5lp37fGCUUqh3PoW5L3-XUB093Iv9Ozt4C9NgU=s240-c-k-c0x00ffffff-no-rj",
+        "tags": "stream, radio",
+        "type": null,
+        "twitter": "@Vorterix",
+        "subs": 1020000,
+        "channel_name": "Vorterix",
+        "description": "El canal OFICIAL de VORTERIX.COM, el multimedio digital más importante de Argentina creado por Mario Pergolini, es un archivo imprescindible de entrevistas a músicos y artistas, shows en vivo de bandas nacionales e internacionales, producciones propias, transmisiones de festivales y bocha de otras cosas que te van a encantar! \n",
+        "enable_comments": 1,
+        "active": "1"
+    },
+    "live": {
+        "created_at": "2026-11-02T22:10:51.672Z",
+        "video_id": "6ruCv9Ev1ik",
+        "channel_id": "UCvCTWHCbBC0b9UIeLeNs8ug",
+        "channel_name": "Vorterix",
+        "video_title": "🔴 PAREN LA MANO: TRIBUNERO con Luquitas, Rober, Alfre, Germán y Joaco | VORTERIX EN VIVO",
+        "concurrent_viewers": 28652,
+        "current_likes": 1873,
+        "scrape_date": "2026-11-02T19:21:02.000Z",
+        "published": "2026-11-02T10:51:59.000Z",
+        "length": "P0D",
+        "live": "live",
+        "end_date": "Invalid DateTime",
+        "it": 27824,
+        "old_likes": 1062,
+        "start_date": "2026-11-02T19:00:34.000Z",
+        "old_viewers": 20686,
+        "start_fixed": 0,
+        "actual_start": "2026-11-02T19:00:34.000Z",
+        "channel": "@VorterixOficial",
+        "thumb": "https://yt3.ggpht.com/MLwjpG_fQdT6e-8_CNsqcOSKghc58Q_xGoZMn5lp37fGCUUqh3PoW5L3-XUB093Iv9Ozt4C9NgU=s240-c-k-c0x00ffffff-no-rj",
+        "tags": "stream, radio",
+        "subs": 1020000,
+        "twitter": "@Vorterix",
+        "type": null,
+        "comments_count": 1200,
+        "max_users": 28652,
+        "max_likes": 1873,
+        "data": [
+            {
+                "scrape_date": "19:00",
+                "concurrent_viewers": 9527,
+                "likes": 375,
+                "comments_count": 953
+            },
+            {
+                "scrape_date": "19:02",
+                "concurrent_viewers": 12876,
+                "likes": 490,
+                "comments_count": 1288
+            },
+            {
+                "scrape_date": "19:03",
+                "concurrent_viewers": 13391,
+                "likes": 605,
+                "comments_count": 1339
+            },
+            {
+                "scrape_date": "19:05",
+                "concurrent_viewers": 14261,
+                "likes": 720,
+                "comments_count": 1426
+            },
+            {
+                "scrape_date": "19:06",
+                "concurrent_viewers": 18672,
+                "likes": 836,
+                "comments_count": 1867
+            },
+            {
+                "scrape_date": "19:08",
+                "concurrent_viewers": 21223,
+                "likes": 951,
+                "comments_count": 2122
+            },
+            {
+                "scrape_date": "19:10",
+                "concurrent_viewers": 19693,
+                "likes": 1066,
+                "comments_count": 1969
+            },
+            {
+                "scrape_date": "19:11",
+                "concurrent_viewers": 21288,
+                "likes": 1181,
+                "comments_count": 2129
+            },
+            {
+                "scrape_date": "19:13",
+                "concurrent_viewers": 26266,
+                "likes": 1297,
+                "comments_count": 2627
+            },
+            {
+                "scrape_date": "19:14",
+                "concurrent_viewers": 26245,
+                "likes": 1412,
+                "comments_count": 2625
+            },
+            {
+                "scrape_date": "19:16",
+                "concurrent_viewers": 23431,
+                "likes": 1527,
+                "comments_count": 2343
+            },
+            {
+                "scrape_date": "19:17",
+                "concurrent_viewers": 26286,
+                "likes": 1642,
+                "comments_count": 2629
+            },
+            {
+                "scrape_date": "19:19",
+                "concurrent_viewers": 29941,
+                "likes": 1758,
+                "comments_count": 2994
+            },
+            {
+                "scrape_date": "19:21",
+                "concurrent_viewers": 28652,
+                "likes": 1873,
+                "comments_count": 2865
+            }
+        ],
+        "superchats": [],
+        "unique_commentators": 667
+    },
+    "liveStream": {
+        "created_at": "2026-11-02T22:10:51.672Z",
+        "video_id": "6ruCv9Ev1ik",
+        "channel_id": "UCvCTWHCbBC0b9UIeLeNs8ug",
+        "channel_name": "Vorterix",
+        "video_title": "🔴 PAREN LA MANO: TRIBUNERO con Luquitas, Rober, Alfre, Germán y Joaco | VORTERIX EN VIVO",
+        "concurrent_viewers": 28652,
+        "current_likes": 1873,
+        "scrape_date": "2026-11-02T19:21:02.000Z",
+        "published": "2026-11-02T10:51:59.000Z",
+        "length": "P0D",
+        "live": "live",
+        "end_date": "Invalid DateTime",
+        "it": 27824,
+        "old_likes": 1062,
+        "start_date": "2026-11-02T19:00:34.000Z",
+        "old_viewers": 20686,
+        "start_fixed": 0,
+        "actual_start": "2026-11-02T19:00:34.000Z",
+        "channel": "@VorterixOficial",
+        "thumb": "https://yt3.ggpht.com/MLwjpG_fQdT6e-8_CNsqcOSKghc58Q_xGoZMn5lp37fGCUUqh3PoW5L3-XUB093Iv9Ozt4C9NgU=s240-c-k-c0x00ffffff-no-rj",
+        "tags": "stream, radio",
+        "subs": 1020000,
+        "twitter": "@Vorterix",
+        "type": null,
+        "comments_count": 1200,
+        "max_users": 28652,
+        "max_likes": 1873,
+        "data": [
+            {
+                "scrape_date": "19:00",
+                "concurrent_viewers": 9527,
+                "likes": 375,
+                "comments_count": 953
+            },
+            {
+                "scrape_date": "19:02",
+                "concurrent_viewers": 12876,
+                "likes": 490,
+                "comments_count": 1288
+            },
+            {
+                "scrape_date": "19:03",
+                "concurrent_viewers": 13391,
+                "likes": 605,
+                "comments_count": 1339
+            },
+            {
+                "scrape_date": "19:05",
+                "concurrent_viewers": 14261,
+                "likes": 720,
+                "comments_count": 1426
+            },
+            {
+                "scrape_date": "19:06",
+                "concurrent_viewers": 18672,
+                "likes": 836,
+                "comments_count": 1867
+            },
+            {
+                "scrape_date": "19:08",
+                "concurrent_viewers": 21223,
+                "likes": 951,
+                "comments_count": 2122
+            },
+            {
+                "scrape_date": "19:10",
+                "concurrent_viewers": 19693,
+                "likes": 1066,
+                "comments_count": 1969
+            },
+            {
+                "scrape_date": "19:11",
+                "concurrent_viewers": 21288,
+                "likes": 1181,
+                "comments_count": 2129
+            },
+            {
+                "scrape_date": "19:13",
+                "concurrent_viewers": 26266,
+                "likes": 1297,
+                "comments_count": 2627
+            },
+            {
+                "scrape_date": "19:14",
+                "concurrent_viewers": 26245,
+                "likes": 1412,
+                "comments_count": 2625
+            },
+            {
+                "scrape_date": "19:16",
+                "concurrent_viewers": 23431,
+                "likes": 1527,
+                "comments_count": 2343
+            },
+            {
+                "scrape_date": "19:17",
+                "concurrent_viewers": 26286,
+                "likes": 1642,
+                "comments_count": 2629
+            },
+            {
+                "scrape_date": "19:19",
+                "concurrent_viewers": 29941,
+                "likes": 1758,
+                "comments_count": 2994
+            },
+            {
+                "scrape_date": "19:21",
+                "concurrent_viewers": 28652,
+                "likes": 1873,
+                "comments_count": 2865
+            }
+        ],
+        "superchats": [],
+        "unique_commentators": 667
+    },
+    "streams": [
+        {
+            "created_at": "2026-11-02T20:10:22.919Z",
+            "video_id": "Fnq_SeS5R54",
+            "channel_id": "UCvCTWHCbBC0b9UIeLeNs8ug",
+            "channel_name": "Vorterix",
+            "video_title": "🔴 ESTO NO SUCEDIÓ con Noxi, Schapira y Guille Bianchi | VORTERIX EN VIVO",
+            "concurrent_viewers": 5136,
+            "current_likes": 311,
+            "scrape_date": "2026-11-02T19:00:26.000Z",
+            "published": "2026-11-02T10:51:31.000Z",
+            "length": "P0D",
+            "live": "none",
+            "end_date": "Invalid DateTime",
+            "it": 27822,
+            "old_likes": 263,
+            "start_date": "2026-11-02T17:01:48.000Z",
+            "old_viewers": 2886,
+            "start_fixed": 0,
+            "actual_start": "2026-11-02T17:01:48.000Z",
+            "channel": "@VorterixOficial",
+            "thumb": "https://yt3.ggpht.com/MLwjpG_fQdT6e-8_CNsqcOSKghc58Q_xGoZMn5lp37fGCUUqh3PoW5L3-XUB093Iv9Ozt4C9NgU=s240-c-k-c0x00ffffff-no-rj",
+            "tags": "stream, radio",
+            "subs": 1020000,
+            "twitter": "@Vorterix",
+            "unique_commentators": 323,
+            "comments_count": 1401,
+            "data": [
+                {
+                    "scrape_date": "17:10",
+                    "raw_date": "2026-11-02T17:10:22.000Z",
+                    "concurrent_viewers": 1347,
+                    "likes": 30,
+                    "comments_count": 0
+                },
+                {
+                    "scrape_date": "17:20",
+                    "raw_date": "2026-11-02T17:20:24.000Z",
+                    "concurrent_viewers": 1443,
+                    "likes": 68,
+                    "comments_count": 153
+                },
+                {
+                    "scrape_date": "17:30",
+                    "raw_date": "2026-11-02T17:30:24.000Z",
+                    "concurrent_viewers": 1553,
+                    "likes": 88,
+                    "comments_count": 229
+                },
+                {
+                    "scrape_date": "17:40",
+                    "raw_date": "2026-11-02T17:40:27.000Z",
+                    "concurrent_viewers": 1661,
+                    "likes": 111,
+                    "comments_count": 284
+                },
+                {
+                    "scrape_date": "17:50",
+                    "raw_date": "2026-11-02T17:50:25.000Z",
+                    "concurrent_viewers": 1709,
+                    "likes": 130,
+                    "comments_count": 367
+                },
+                {
+                    "scrape_date": "18:00",
+                    "raw_date": "2026-11-02T18:00:31.000Z",
+                    "concurrent_viewers": 1699,
+                    "likes": 143,
+                    "comments_count": 433
+                },
+                {
+                    "scrape_date": "18:10",
+                    "raw_date": "2026-11-02T18:10:25.000Z",
+                    "concurrent_viewers": 1780,
+                    "likes": 159,
+                    "comments_count": 451
+                },
+                {
+                    "scrape_date": "18:20",
+                    "raw_date": "2026-11-02T18:20:25.000Z",
+                    "concurrent_viewers": 1927,
+                    "likes": 170,
+                    "comments_count": 506
+                },
+                {
+                    "scrape_date": "18:30",
+                    "raw_date": "2026-11-02T18:30:25.000Z",
+                    "concurrent_viewers": 2018,
+                    "likes": 195,
+                    "comments_count": 641
+                },
+                {
+                    "scrape_date": "18:41",
+                    "raw_date": "2026-11-02T18:41:26.000Z",
+                    "concurrent_viewers": 2372,
+                    "likes": 211,
+                    "comments_count": 835
+                },
+                {
+                    "scrape_date": "18:50",
+                    "raw_date": "2026-11-02T18:50:30.000Z",
+                    "concurrent_viewers": 2886,
+                    "likes": 263,
+                    "comments_count": 1183
+                },
+                {
+                    "scrape_date": "19:00",
+                    "raw_date": "2026-11-02T19:00:26.000Z",
+                    "concurrent_viewers": 5136,
+                    "likes": 311,
+                    "comments_count": 1401
+                }
+            ],
+            "superchats": []
+        },
+        {
+            "created_at": "2026-11-02T18:00:43.382Z",
+            "video_id": "JnsI1Za3XIU",
+            "channel_id": "UCvCTWHCbBC0b9UIeLeNs8ug",
+            "channel_name": "Vorterix",
+            "video_title": "🔴 SE NOTA MUCHO con Manu Olivari, Juana Groisman y Agos Palazzolo | VORTERIX EN VIVO",
+            "concurrent_viewers": 2062,
+            "current_likes": 341,
+            "scrape_date": "2026-11-02T18:25:01.000Z",
+            "published": "2026-11-02T10:51:04.000Z",
+            "length": "P0D",
+            "live": "none",
+            "end_date": "Invalid DateTime",
+            "it": 27807,
+            "old_likes": 444,
+            "start_date": "2026-11-02T14:57:59.000Z",
+            "old_viewers": 1777,
+            "start_fixed": 0,
+            "actual_start": "2026-11-02T14:57:59.000Z",
+            "channel": "@VorterixOficial",
+            "thumb": "https://yt3.ggpht.com/MLwjpG_fQdT6e-8_CNsqcOSKghc58Q_xGoZMn5lp37fGCUUqh3PoW5L3-XUB093Iv9Ozt4C9NgU=s240-c-k-c0x00ffffff-no-rj",
+            "tags": "stream, radio",
+            "subs": 1020000,
+            "twitter": "@Vorterix",
+            "unique_commentators": 179,
+            "comments_count": 787,
+            "data": [
+                {
+                    "scrape_date": "15:00",
+                    "raw_date": "2026-11-02T15:00:45.000Z",
+                    "concurrent_viewers": 2241,
+                    "likes": 21,
+                    "comments_count": 0
+                },
+                {
+                    "scrape_date": "15:10",
+                    "raw_date": "2026-11-02T15:10:24.000Z",
+                    "concurrent_viewers": 2257,
+                    "likes": 91,
+                    "comments_count": 82
+                },
+                {
+                    "scrape_date": "15:20",
+                    "raw_date": "2026-11-02T15:20:52.000Z",
+                    "concurrent_viewers": 2181,
+                    "likes": 142,
+                    "comments_count": 177
+                },
+                {
+                    "scrape_date": "15:30",
+                    "raw_date": "2026-11-02T15:30:52.000Z",
+                    "concurrent_viewers": 2203,
+                    "likes": 174,
+                    "comments_count": 265
+                },
+                {
+                    "scrape_date": "15:41",
+                    "raw_date": "2026-11-02T15:41:05.000Z",
+                    "concurrent_viewers": 2220,
+                    "likes": 212,
+                    "comments_count": 446
+                },
+                {
+                    "scrape_date": "15:50",
+                    "raw_date": "2026-11-02T15:50:50.000Z",
+                    "concurrent_viewers": 2119,
+                    "likes": 250,
+                    "comments_count": 577
+                },
+                {
+                    "scrape_date": "17:00",
+                    "raw_date": "2026-11-02T17:00:22.000Z",
+                    "concurrent_viewers": 1777,
+                    "likes": 444,
+                    "comments_count": 779
+                },
+                {
+                    "scrape_date": "18:25",
+                    "raw_date": "2026-11-02T18:25:02.000Z",
+                    "concurrent_viewers": 2062,
+                    "likes": 341,
+                    "comments_count": 787
+                }
+            ],
+            "superchats": []
+        },
+        {
+            "created_at": "2026-11-02T16:04:27.090Z",
+            "video_id": "ZQEbmDsqFeo",
+            "channel_id": "UCvCTWHCbBC0b9UIeLeNs8ug",
+            "channel_name": "Vorterix",
+            "video_title": "🔴 NO SE PUDO: ESCÁNDALO EN EL SUPERCLÁSICO Y VICTORIA DE BOCA | VORTERIX EN VIVO",
+            "concurrent_viewers": 7480,
+            "current_likes": 1932,
+            "scrape_date": "2026-11-02T14:51:10.000Z",
+            "published": "2026-11-02T10:50:07.000Z",
+            "length": "P0D",
+            "live": "none",
+            "end_date": "Invalid DateTime",
+            "it": 27800,
+            "old_likes": 1893,
+            "start_date": "2026-11-02T12:55:50.000Z",
+            "old_viewers": 7117,
+            "start_fixed": 0,
+            "actual_start": "2026-11-02T12:55:50.000Z",
+            "channel": "@VorterixOficial",
+            "thumb": "https://yt3.ggpht.com/MLwjpG_fQdT6e-8_CNsqcOSKghc58Q_xGoZMn5lp37fGCUUqh3PoW5L3-XUB093Iv9Ozt4C9NgU=s240-c-k-c0x00ffffff-no-rj",
+            "tags": "stream, radio",
+            "subs": 1020000,
+            "twitter": "@Vorterix",
+            "unique_commentators": 1003,
+            "comments_count": 4915,
+            "data": [
+                {
+                    "scrape_date": "13:04",
+                    "raw_date": "2026-11-02T13:04:27.000Z",
+                    "concurrent_viewers": 3135,
+                    "likes": 70,
+                    "comments_count": 0
+                },
+                {
+                    "scrape_date": "13:10",
+                    "raw_date": "2026-11-02T13:10:36.000Z",
+                    "concurrent_viewers": 5568,
+                    "likes": 707,
+                    "comments_count": 388
+                },
+                {
+                    "scrape_date": "13:20",
+                    "raw_date": "2026-11-02T13:20:55.000Z",
+                    "concurrent_viewers": 7222,
+                    "likes": 973,
+                    "comments_count": 1007
+                },
+                {
+                    "scrape_date": "13:30",
+                    "raw_date": "2026-11-02T13:30:45.000Z",
+                    "concurrent_viewers": 7859,
+                    "likes": 1161,
+                    "comments_count": 1553
+                },
+                {
+                    "scrape_date": "14:08",
+                    "raw_date": "2026-11-02T14:08:31.000Z",
+                    "concurrent_viewers": 8335,
+                    "likes": 1607,
+                    "comments_count": 3529
+                },
+                {
+                    "scrape_date": "14:10",
+                    "raw_date": "2026-11-02T14:10:50.000Z",
+                    "concurrent_viewers": 8374,
+                    "likes": 1629,
+                    "comments_count": 3621
+                },
+                {
+                    "scrape_date": "14:22",
+                    "raw_date": "2026-11-02T14:22:36.000Z",
+                    "concurrent_viewers": 8404,
+                    "likes": 1709,
+                    "comments_count": 4086
+                },
+                {
+                    "scrape_date": "14:30",
+                    "raw_date": "2026-11-02T14:30:41.000Z",
+                    "concurrent_viewers": 8045,
+                    "likes": 1778,
+                    "comments_count": 4305
+                },
+                {
+                    "scrape_date": "14:40",
+                    "raw_date": "2026-11-02T14:40:36.000Z",
+                    "concurrent_viewers": 7234,
+                    "likes": 1861,
+                    "comments_count": 4666
+                },
+                {
+                    "scrape_date": "14:45",
+                    "raw_date": "2026-11-02T14:45:54.000Z",
+                    "concurrent_viewers": 7117,
+                    "likes": 1893,
+                    "comments_count": 4774
+                },
+                {
+                    "scrape_date": "14:51",
+                    "raw_date": "2026-11-02T14:51:11.000Z",
+                    "concurrent_viewers": 7480,
+                    "likes": 1932,
+                    "comments_count": 4915
+                }
+            ],
+            "superchats": [
+                {
+                    "currency": "ARS",
+                    "total_amount": 300
+                }
+            ]
+        },
+        {
+            "created_at": "2026-11-02T13:00:16.786Z",
+            "video_id": "Zz91TlTtx0M",
+            "channel_id": "UCvCTWHCbBC0b9UIeLeNs8ug",
+            "channel_name": "Vorterix",
+            "video_title": "🔴 Y QUÉ? con Guille Aquino, Damián Kuc, Navaja Crimen y Anacleta | VORTERIX EN VIVO",
+            "concurrent_viewers": 6520,
+            "current_likes": 2209,
+            "scrape_date": "2026-11-02T12:50:28.000Z",
+            "published": "2026-11-02T09:55:53.000Z",
+            "length": "P0D",
+            "live": "none",
+            "end_date": "Invalid DateTime",
+            "it": 27785,
+            "old_likes": 2154,
+            "start_date": "2026-11-02T09:56:46.000Z",
+            "old_viewers": 6384,
+            "start_fixed": 0,
+            "actual_start": "2026-11-02T09:56:46.000Z",
+            "channel": "@VorterixOficial",
+            "thumb": "https://yt3.ggpht.com/MLwjpG_fQdT6e-8_CNsqcOSKghc58Q_xGoZMn5lp37fGCUUqh3PoW5L3-XUB093Iv9Ozt4C9NgU=s240-c-k-c0x00ffffff-no-rj",
+            "tags": "stream, radio",
+            "subs": 1020000,
+            "twitter": "@Vorterix",
+            "unique_commentators": 931,
+            "comments_count": 7177,
+            "data": [
+                {
+                    "scrape_date": "10:00",
+                    "raw_date": "2026-11-02T10:00:16.000Z",
+                    "concurrent_viewers": 4904,
+                    "likes": 91,
+                    "comments_count": 0
+                },
+                {
+                    "scrape_date": "10:10",
+                    "raw_date": "2026-11-02T10:10:20.000Z",
+                    "concurrent_viewers": 5614,
+                    "likes": 483,
+                    "comments_count": 503
+                },
+                {
+                    "scrape_date": "10:20",
+                    "raw_date": "2026-11-02T10:20:29.000Z",
+                    "concurrent_viewers": 5814,
+                    "likes": 617,
+                    "comments_count": 736
+                },
+                {
+                    "scrape_date": "10:30",
+                    "raw_date": "2026-11-02T10:30:21.000Z",
+                    "concurrent_viewers": 6279,
+                    "likes": 736,
+                    "comments_count": 1125
+                },
+                {
+                    "scrape_date": "10:42",
+                    "raw_date": "2026-11-02T10:42:21.000Z",
+                    "concurrent_viewers": 6404,
+                    "likes": 827,
+                    "comments_count": 1664
+                },
+                {
+                    "scrape_date": "10:50",
+                    "raw_date": "2026-11-02T10:50:29.000Z",
+                    "concurrent_viewers": 6780,
+                    "likes": 925,
+                    "comments_count": 1921
+                },
+                {
+                    "scrape_date": "11:02",
+                    "raw_date": "2026-11-02T11:02:22.000Z",
+                    "concurrent_viewers": 6680,
+                    "likes": 1291,
+                    "comments_count": 2328
+                },
+                {
+                    "scrape_date": "11:10",
+                    "raw_date": "2026-11-02T11:10:40.000Z",
+                    "concurrent_viewers": 6501,
+                    "likes": 1466,
+                    "comments_count": 2429
+                },
+                {
+                    "scrape_date": "11:20",
+                    "raw_date": "2026-11-02T11:20:26.000Z",
+                    "concurrent_viewers": 6881,
+                    "likes": 1552,
+                    "comments_count": 2925
+                },
+                {
+                    "scrape_date": "11:30",
+                    "raw_date": "2026-11-02T11:30:36.000Z",
+                    "concurrent_viewers": 7293,
+                    "likes": 1618,
+                    "comments_count": 3566
+                },
+                {
+                    "scrape_date": "11:40",
+                    "raw_date": "2026-11-02T11:40:26.000Z",
+                    "concurrent_viewers": 7136,
+                    "likes": 1681,
+                    "comments_count": 4176
+                },
+                {
+                    "scrape_date": "11:50",
+                    "raw_date": "2026-11-02T11:50:26.000Z",
+                    "concurrent_viewers": 7298,
+                    "likes": 1779,
+                    "comments_count": 4936
+                },
+                {
+                    "scrape_date": "12:00",
+                    "raw_date": "2026-11-02T12:00:40.000Z",
+                    "concurrent_viewers": 7117,
+                    "likes": 1834,
+                    "comments_count": 5480
+                },
+                {
+                    "scrape_date": "12:10",
+                    "raw_date": "2026-11-02T12:10:52.000Z",
+                    "concurrent_viewers": 6922,
+                    "likes": 1882,
+                    "comments_count": 6152
+                },
+                {
+                    "scrape_date": "12:20",
+                    "raw_date": "2026-11-02T12:20:38.000Z",
+                    "concurrent_viewers": 6466,
+                    "likes": 1939,
+                    "comments_count": 6293
+                },
+                {
+                    "scrape_date": "12:30",
+                    "raw_date": "2026-11-02T12:30:27.000Z",
+                    "concurrent_viewers": 6656,
+                    "likes": 2080,
+                    "comments_count": 6518
+                },
+                {
+                    "scrape_date": "12:40",
+                    "raw_date": "2026-11-02T12:40:58.000Z",
+                    "concurrent_viewers": 6384,
+                    "likes": 2154,
+                    "comments_count": 6766
+                },
+                {
+                    "scrape_date": "12:50",
+                    "raw_date": "2026-11-02T12:50:28.000Z",
+                    "concurrent_viewers": 6520,
+                    "likes": 2209,
+                    "comments_count": 7177
+                }
+            ],
+            "superchats": [
+                {
+                    "currency": "ARS",
+                    "total_amount": 500
+                }
+            ]
+        },
+        {
+            "created_at": "2026-11-02T10:52:25.843Z",
+            "video_id": "2tZ3LXE9qCM",
+            "channel_id": "UCvCTWHCbBC0b9UIeLeNs8ug",
+            "channel_name": "Vorterix",
+            "video_title": "🔴 NO PREGUNTES POR RUSIA con Mario Pergolini, Nacho Corral y Nico Etevenaux | VORTERIX EN VIVO",
+            "concurrent_viewers": 13987,
+            "current_likes": 835,
+            "scrape_date": "2026-11-02T09:50:50.000Z",
+            "published": "2026-11-02T07:47:44.000Z",
+            "length": "P0D",
+            "live": "none",
+            "end_date": "Invalid DateTime",
+            "it": 27767,
+            "old_likes": 791,
+            "start_date": "2026-11-02T07:50:09.000Z",
+            "old_viewers": 14063,
+            "start_fixed": 0,
+            "actual_start": "2026-11-02T07:50:09.000Z",
+            "channel": "@VorterixOficial",
+            "thumb": "https://yt3.ggpht.com/MLwjpG_fQdT6e-8_CNsqcOSKghc58Q_xGoZMn5lp37fGCUUqh3PoW5L3-XUB093Iv9Ozt4C9NgU=s240-c-k-c0x00ffffff-no-rj",
+            "tags": "stream, radio",
+            "subs": 1020000,
+            "twitter": "@Vorterix",
+            "unique_commentators": 450,
+            "comments_count": 2322,
+            "data": [
+                {
+                    "scrape_date": "07:52",
+                    "raw_date": "2026-11-02T07:52:26.000Z",
+                    "concurrent_viewers": 176,
+                    "likes": 12,
+                    "comments_count": 0
+                },
+                {
+                    "scrape_date": "07:56",
+                    "raw_date": "2026-11-02T07:56:27.000Z",
+                    "concurrent_viewers": 563,
+                    "likes": 28,
+                    "comments_count": 55
+                },
+                {
+                    "scrape_date": "08:00",
+                    "raw_date": "2026-11-02T08:00:28.000Z",
+                    "concurrent_viewers": 994,
+                    "likes": 50,
+                    "comments_count": 71
+                },
+                {
+                    "scrape_date": "08:05",
+                    "raw_date": "2026-11-02T08:05:29.000Z",
+                    "concurrent_viewers": 1910,
+                    "likes": 97,
+                    "comments_count": 107
+                },
+                {
+                    "scrape_date": "08:08",
+                    "raw_date": "2026-11-02T08:08:24.000Z",
+                    "concurrent_viewers": 3367,
+                    "likes": 139,
+                    "comments_count": 158
+                },
+                {
+                    "scrape_date": "08:12",
+                    "raw_date": "2026-11-02T08:12:34.000Z",
+                    "concurrent_viewers": 7339,
+                    "likes": 198,
+                    "comments_count": 258
+                },
+                {
+                    "scrape_date": "08:16",
+                    "raw_date": "2026-11-02T08:16:28.000Z",
+                    "concurrent_viewers": 9138,
+                    "likes": 260,
+                    "comments_count": 424
+                },
+                {
+                    "scrape_date": "08:20",
+                    "raw_date": "2026-11-02T08:20:27.000Z",
+                    "concurrent_viewers": 10130,
+                    "likes": 294,
+                    "comments_count": 526
+                },
+                {
+                    "scrape_date": "08:24",
+                    "raw_date": "2026-11-02T08:24:24.000Z",
+                    "concurrent_viewers": 10521,
+                    "likes": 329,
+                    "comments_count": 641
+                },
+                {
+                    "scrape_date": "08:28",
+                    "raw_date": "2026-11-02T08:28:15.000Z",
+                    "concurrent_viewers": 11170,
+                    "likes": 351,
+                    "comments_count": 692
+                },
+                {
+                    "scrape_date": "08:32",
+                    "raw_date": "2026-11-02T08:32:15.000Z",
+                    "concurrent_viewers": 11721,
+                    "likes": 386,
+                    "comments_count": 756
+                },
+                {
+                    "scrape_date": "08:36",
+                    "raw_date": "2026-11-02T08:36:35.000Z",
+                    "concurrent_viewers": 11997,
+                    "likes": 409,
+                    "comments_count": 978
+                },
+                {
+                    "scrape_date": "08:40",
+                    "raw_date": "2026-11-02T08:40:15.000Z",
+                    "concurrent_viewers": 12655,
+                    "likes": 440,
+                    "comments_count": 1031
+                },
+                {
+                    "scrape_date": "08:44",
+                    "raw_date": "2026-11-02T08:44:15.000Z",
+                    "concurrent_viewers": 13083,
+                    "likes": 467,
+                    "comments_count": 1075
+                },
+                {
+                    "scrape_date": "08:48",
+                    "raw_date": "2026-11-02T08:48:16.000Z",
+                    "concurrent_viewers": 13200,
+                    "likes": 487,
+                    "comments_count": 1130
+                },
+                {
+                    "scrape_date": "08:52",
+                    "raw_date": "2026-11-02T08:52:17.000Z",
+                    "concurrent_viewers": 13660,
+                    "likes": 510,
+                    "comments_count": 1230
+                },
+                {
+                    "scrape_date": "08:56",
+                    "raw_date": "2026-11-02T08:56:16.000Z",
+                    "concurrent_viewers": 13823,
+                    "likes": 526,
+                    "comments_count": 1270
+                },
+                {
+                    "scrape_date": "09:00",
+                    "raw_date": "2026-11-02T09:00:18.000Z",
+                    "concurrent_viewers": 13653,
+                    "likes": 548,
+                    "comments_count": 1324
+                },
+                {
+                    "scrape_date": "09:10",
+                    "raw_date": "2026-11-02T09:10:54.000Z",
+                    "concurrent_viewers": 14227,
+                    "likes": 604,
+                    "comments_count": 1706
+                },
+                {
+                    "scrape_date": "09:16",
+                    "raw_date": "2026-11-02T09:16:26.000Z",
+                    "concurrent_viewers": 14169,
+                    "likes": 641,
+                    "comments_count": 1817
+                },
+                {
+                    "scrape_date": "09:21",
+                    "raw_date": "2026-11-02T09:21:39.000Z",
+                    "concurrent_viewers": 14720,
+                    "likes": 662,
+                    "comments_count": 2040
+                },
+                {
+                    "scrape_date": "09:25",
+                    "raw_date": "2026-11-02T09:25:19.000Z",
+                    "concurrent_viewers": 14286,
+                    "likes": 707,
+                    "comments_count": 2044
+                },
+                {
+                    "scrape_date": "09:34",
+                    "raw_date": "2026-11-02T09:34:26.000Z",
+                    "concurrent_viewers": 13618,
+                    "likes": 756,
+                    "comments_count": 2138
+                },
+                {
+                    "scrape_date": "09:42",
+                    "raw_date": "2026-11-02T09:42:53.000Z",
+                    "concurrent_viewers": 14063,
+                    "likes": 791,
+                    "comments_count": 2247
+                },
+                {
+                    "scrape_date": "09:50",
+                    "raw_date": "2026-11-02T09:50:50.000Z",
+                    "concurrent_viewers": 13987,
+                    "likes": 835,
+                    "comments_count": 2322
+                }
+            ],
+            "superchats": []
+        }
+    ],
+    "history": [
+        {
+            "created_at": "2026-11-02T20:10:22.919Z",
+            "video_id": "Fnq_SeS5R54",
+            "channel_id": "UCvCTWHCbBC0b9UIeLeNs8ug",
+            "channel_name": "Vorterix",
+            "video_title": "🔴 ESTO NO SUCEDIÓ con Noxi, Schapira y Guille Bianchi | VORTERIX EN VIVO",
+            "concurrent_viewers": 5136,
+            "current_likes": 311,
+            "scrape_date": "2026-11-02T19:00:26.000Z",
+            "published": "2026-11-02T10:51:31.000Z",
+            "length": "P0D",
+            "live": "none",
+            "end_date": "Invalid DateTime",
+            "it": 27822,
+            "old_likes": 263,
+            "start_date": "2026-11-02T17:01:48.000Z",
+            "old_viewers": 2886,
+            "start_fixed": 0,
+            "actual_start": "2026-11-02T17:01:48.000Z",
+            "channel": "@VorterixOficial",
+            "thumb": "https://yt3.ggpht.com/MLwjpG_fQdT6e-8_CNsqcOSKghc58Q_xGoZMn5lp37fGCUUqh3PoW5L3-XUB093Iv9Ozt4C9NgU=s240-c-k-c0x00ffffff-no-rj",
+            "tags": "stream, radio",
+            "subs": 1020000,
+            "twitter": "@Vorterix",
+            "unique_commentators": 323,
+            "comments_count": 1401,
+            "data": [
+                {
+                    "scrape_date": "17:10",
+                    "raw_date": "2026-11-02T17:10:22.000Z",
+                    "concurrent_viewers": 1347,
+                    "likes": 30,
+                    "comments_count": 0
+                },
+                {
+                    "scrape_date": "17:20",
+                    "raw_date": "2026-11-02T17:20:24.000Z",
+                    "concurrent_viewers": 1443,
+                    "likes": 68,
+                    "comments_count": 153
+                },
+                {
+                    "scrape_date": "17:30",
+                    "raw_date": "2026-11-02T17:30:24.000Z",
+                    "concurrent_viewers": 1553,
+                    "likes": 88,
+                    "comments_count": 229
+                },
+                {
+                    "scrape_date": "17:40",
+                    "raw_date": "2026-11-02T17:40:27.000Z",
+                    "concurrent_viewers": 1661,
+                    "likes": 111,
+                    "comments_count": 284
+                },
+                {
+                    "scrape_date": "17:50",
+                    "raw_date": "2026-11-02T17:50:25.000Z",
+                    "concurrent_viewers": 1709,
+                    "likes": 130,
+                    "comments_count": 367
+                },
+                {
+                    "scrape_date": "18:00",
+                    "raw_date": "2026-11-02T18:00:31.000Z",
+                    "concurrent_viewers": 1699,
+                    "likes": 143,
+                    "comments_count": 433
+                },
+                {
+                    "scrape_date": "18:10",
+                    "raw_date": "2026-11-02T18:10:25.000Z",
+                    "concurrent_viewers": 1780,
+                    "likes": 159,
+                    "comments_count": 451
+                },
+                {
+                    "scrape_date": "18:20",
+                    "raw_date": "2026-11-02T18:20:25.000Z",
+                    "concurrent_viewers": 1927,
+                    "likes": 170,
+                    "comments_count": 506
+                },
+                {
+                    "scrape_date": "18:30",
+                    "raw_date": "2026-11-02T18:30:25.000Z",
+                    "concurrent_viewers": 2018,
+                    "likes": 195,
+                    "comments_count": 641
+                },
+                {
+                    "scrape_date": "18:41",
+                    "raw_date": "2026-11-02T18:41:26.000Z",
+                    "concurrent_viewers": 2372,
+                    "likes": 211,
+                    "comments_count": 835
+                },
+                {
+                    "scrape_date": "18:50",
+                    "raw_date": "2026-11-02T18:50:30.000Z",
+                    "concurrent_viewers": 2886,
+                    "likes": 263,
+                    "comments_count": 1183
+                },
+                {
+                    "scrape_date": "19:00",
+                    "raw_date": "2026-11-02T19:00:26.000Z",
+                    "concurrent_viewers": 5136,
+                    "likes": 311,
+                    "comments_count": 1401
+                }
+            ],
+            "superchats": []
+        },
+        {
+            "created_at": "2026-11-02T18:00:43.382Z",
+            "video_id": "JnsI1Za3XIU",
+            "channel_id": "UCvCTWHCbBC0b9UIeLeNs8ug",
+            "channel_name": "Vorterix",
+            "video_title": "🔴 SE NOTA MUCHO con Manu Olivari, Juana Groisman y Agos Palazzolo | VORTERIX EN VIVO",
+            "concurrent_viewers": 2062,
+            "current_likes": 341,
+            "scrape_date": "2026-11-02T18:25:01.000Z",
+            "published": "2026-11-02T10:51:04.000Z",
+            "length": "P0D",
+            "live": "none",
+            "end_date": "Invalid DateTime",
+            "it": 27807,
+            "old_likes": 444,
+            "start_date": "2026-11-02T14:57:59.000Z",
+            "old_viewers": 1777,
+            "start_fixed": 0,
+            "actual_start": "2026-11-02T14:57:59.000Z",
+            "channel": "@VorterixOficial",
+            "thumb": "https://yt3.ggpht.com/MLwjpG_fQdT6e-8_CNsqcOSKghc58Q_xGoZMn5lp37fGCUUqh3PoW5L3-XUB093Iv9Ozt4C9NgU=s240-c-k-c0x00ffffff-no-rj",
+            "tags": "stream, radio",
+            "subs": 1020000,
+            "twitter": "@Vorterix",
+            "unique_commentators": 179,
+            "comments_count": 787,
+            "data": [
+                {
+                    "scrape_date": "15:00",
+                    "raw_date": "2026-11-02T15:00:45.000Z",
+                    "concurrent_viewers": 2241,
+                    "likes": 21,
+                    "comments_count": 0
+                },
+                {
+                    "scrape_date": "15:10",
+                    "raw_date": "2026-11-02T15:10:24.000Z",
+                    "concurrent_viewers": 2257,
+                    "likes": 91,
+                    "comments_count": 82
+                },
+                {
+                    "scrape_date": "15:20",
+                    "raw_date": "2026-11-02T15:20:52.000Z",
+                    "concurrent_viewers": 2181,
+                    "likes": 142,
+                    "comments_count": 177
+                },
+                {
+                    "scrape_date": "15:30",
+                    "raw_date": "2026-11-02T15:30:52.000Z",
+                    "concurrent_viewers": 2203,
+                    "likes": 174,
+                    "comments_count": 265
+                },
+                {
+                    "scrape_date": "15:41",
+                    "raw_date": "2026-11-02T15:41:05.000Z",
+                    "concurrent_viewers": 2220,
+                    "likes": 212,
+                    "comments_count": 446
+                },
+                {
+                    "scrape_date": "15:50",
+                    "raw_date": "2026-11-02T15:50:50.000Z",
+                    "concurrent_viewers": 2119,
+                    "likes": 250,
+                    "comments_count": 577
+                },
+                {
+                    "scrape_date": "17:00",
+                    "raw_date": "2026-11-02T17:00:22.000Z",
+                    "concurrent_viewers": 1777,
+                    "likes": 444,
+                    "comments_count": 779
+                },
+                {
+                    "scrape_date": "18:25",
+                    "raw_date": "2026-11-02T18:25:02.000Z",
+                    "concurrent_viewers": 2062,
+                    "likes": 341,
+                    "comments_count": 787
+                }
+            ],
+            "superchats": []
+        },
+        {
+            "created_at": "2026-11-02T16:04:27.090Z",
+            "video_id": "ZQEbmDsqFeo",
+            "channel_id": "UCvCTWHCbBC0b9UIeLeNs8ug",
+            "channel_name": "Vorterix",
+            "video_title": "🔴 NO SE PUDO: ESCÁNDALO EN EL SUPERCLÁSICO Y VICTORIA DE BOCA | VORTERIX EN VIVO",
+            "concurrent_viewers": 7480,
+            "current_likes": 1932,
+            "scrape_date": "2026-11-02T14:51:10.000Z",
+            "published": "2026-11-02T10:50:07.000Z",
+            "length": "P0D",
+            "live": "none",
+            "end_date": "Invalid DateTime",
+            "it": 27800,
+            "old_likes": 1893,
+            "start_date": "2026-11-02T12:55:50.000Z",
+            "old_viewers": 7117,
+            "start_fixed": 0,
+            "actual_start": "2026-11-02T12:55:50.000Z",
+            "channel": "@VorterixOficial",
+            "thumb": "https://yt3.ggpht.com/MLwjpG_fQdT6e-8_CNsqcOSKghc58Q_xGoZMn5lp37fGCUUqh3PoW5L3-XUB093Iv9Ozt4C9NgU=s240-c-k-c0x00ffffff-no-rj",
+            "tags": "stream, radio",
+            "subs": 1020000,
+            "twitter": "@Vorterix",
+            "unique_commentators": 1003,
+            "comments_count": 4915,
+            "data": [
+                {
+                    "scrape_date": "13:04",
+                    "raw_date": "2026-11-02T13:04:27.000Z",
+                    "concurrent_viewers": 3135,
+                    "likes": 70,
+                    "comments_count": 0
+                },
+                {
+                    "scrape_date": "13:10",
+                    "raw_date": "2026-11-02T13:10:36.000Z",
+                    "concurrent_viewers": 5568,
+                    "likes": 707,
+                    "comments_count": 388
+                },
+                {
+                    "scrape_date": "13:20",
+                    "raw_date": "2026-11-02T13:20:55.000Z",
+                    "concurrent_viewers": 7222,
+                    "likes": 973,
+                    "comments_count": 1007
+                },
+                {
+                    "scrape_date": "13:30",
+                    "raw_date": "2026-11-02T13:30:45.000Z",
+                    "concurrent_viewers": 7859,
+                    "likes": 1161,
+                    "comments_count": 1553
+                },
+                {
+                    "scrape_date": "14:08",
+                    "raw_date": "2026-11-02T14:08:31.000Z",
+                    "concurrent_viewers": 8335,
+                    "likes": 1607,
+                    "comments_count": 3529
+                },
+                {
+                    "scrape_date": "14:10",
+                    "raw_date": "2026-11-02T14:10:50.000Z",
+                    "concurrent_viewers": 8374,
+                    "likes": 1629,
+                    "comments_count": 3621
+                },
+                {
+                    "scrape_date": "14:22",
+                    "raw_date": "2026-11-02T14:22:36.000Z",
+                    "concurrent_viewers": 8404,
+                    "likes": 1709,
+                    "comments_count": 4086
+                },
+                {
+                    "scrape_date": "14:30",
+                    "raw_date": "2026-11-02T14:30:41.000Z",
+                    "concurrent_viewers": 8045,
+                    "likes": 1778,
+                    "comments_count": 4305
+                },
+                {
+                    "scrape_date": "14:40",
+                    "raw_date": "2026-11-02T14:40:36.000Z",
+                    "concurrent_viewers": 7234,
+                    "likes": 1861,
+                    "comments_count": 4666
+                },
+                {
+                    "scrape_date": "14:45",
+                    "raw_date": "2026-11-02T14:45:54.000Z",
+                    "concurrent_viewers": 7117,
+                    "likes": 1893,
+                    "comments_count": 4774
+                },
+                {
+                    "scrape_date": "14:51",
+                    "raw_date": "2026-11-02T14:51:11.000Z",
+                    "concurrent_viewers": 7480,
+                    "likes": 1932,
+                    "comments_count": 4915
+                }
+            ],
+            "superchats": [
+                {
+                    "currency": "ARS",
+                    "total_amount": 300
+                }
+            ]
+        },
+        {
+            "created_at": "2026-11-02T13:00:16.786Z",
+            "video_id": "Zz91TlTtx0M",
+            "channel_id": "UCvCTWHCbBC0b9UIeLeNs8ug",
+            "channel_name": "Vorterix",
+            "video_title": "🔴 Y QUÉ? con Guille Aquino, Damián Kuc, Navaja Crimen y Anacleta | VORTERIX EN VIVO",
+            "concurrent_viewers": 6520,
+            "current_likes": 2209,
+            "scrape_date": "2026-11-02T12:50:28.000Z",
+            "published": "2026-11-02T09:55:53.000Z",
+            "length": "P0D",
+            "live": "none",
+            "end_date": "Invalid DateTime",
+            "it": 27785,
+            "old_likes": 2154,
+            "start_date": "2026-11-02T09:56:46.000Z",
+            "old_viewers": 6384,
+            "start_fixed": 0,
+            "actual_start": "2026-11-02T09:56:46.000Z",
+            "channel": "@VorterixOficial",
+            "thumb": "https://yt3.ggpht.com/MLwjpG_fQdT6e-8_CNsqcOSKghc58Q_xGoZMn5lp37fGCUUqh3PoW5L3-XUB093Iv9Ozt4C9NgU=s240-c-k-c0x00ffffff-no-rj",
+            "tags": "stream, radio",
+            "subs": 1020000,
+            "twitter": "@Vorterix",
+            "unique_commentators": 931,
+            "comments_count": 7177,
+            "data": [
+                {
+                    "scrape_date": "10:00",
+                    "raw_date": "2026-11-02T10:00:16.000Z",
+                    "concurrent_viewers": 4904,
+                    "likes": 91,
+                    "comments_count": 0
+                },
+                {
+                    "scrape_date": "10:10",
+                    "raw_date": "2026-11-02T10:10:20.000Z",
+                    "concurrent_viewers": 5614,
+                    "likes": 483,
+                    "comments_count": 503
+                },
+                {
+                    "scrape_date": "10:20",
+                    "raw_date": "2026-11-02T10:20:29.000Z",
+                    "concurrent_viewers": 5814,
+                    "likes": 617,
+                    "comments_count": 736
+                },
+                {
+                    "scrape_date": "10:30",
+                    "raw_date": "2026-11-02T10:30:21.000Z",
+                    "concurrent_viewers": 6279,
+                    "likes": 736,
+                    "comments_count": 1125
+                },
+                {
+                    "scrape_date": "10:42",
+                    "raw_date": "2026-11-02T10:42:21.000Z",
+                    "concurrent_viewers": 6404,
+                    "likes": 827,
+                    "comments_count": 1664
+                },
+                {
+                    "scrape_date": "10:50",
+                    "raw_date": "2026-11-02T10:50:29.000Z",
+                    "concurrent_viewers": 6780,
+                    "likes": 925,
+                    "comments_count": 1921
+                },
+                {
+                    "scrape_date": "11:02",
+                    "raw_date": "2026-11-02T11:02:22.000Z",
+                    "concurrent_viewers": 6680,
+                    "likes": 1291,
+                    "comments_count": 2328
+                },
+                {
+                    "scrape_date": "11:10",
+                    "raw_date": "2026-11-02T11:10:40.000Z",
+                    "concurrent_viewers": 6501,
+                    "likes": 1466,
+                    "comments_count": 2429
+                },
+                {
+                    "scrape_date": "11:20",
+                    "raw_date": "2026-11-02T11:20:26.000Z",
+                    "concurrent_viewers": 6881,
+                    "likes": 1552,
+                    "comments_count": 2925
+                },
+                {
+                    "scrape_date": "11:30",
+                    "raw_date": "2026-11-02T11:30:36.000Z",
+                    "concurrent_viewers": 7293,
+                    "likes": 1618,
+                    "comments_count": 3566
+                },
+                {
+                    "scrape_date": "11:40",
+                    "raw_date": "2026-11-02T11:40:26.000Z",
+                    "concurrent_viewers": 7136,
+                    "likes": 1681,
+                    "comments_count": 4176
+                },
+                {
+                    "scrape_date": "11:50",
+                    "raw_date": "2026-11-02T11:50:26.000Z",
+                    "concurrent_viewers": 7298,
+                    "likes": 1779,
+                    "comments_count": 4936
+                },
+                {
+                    "scrape_date": "12:00",
+                    "raw_date": "2026-11-02T12:00:40.000Z",
+                    "concurrent_viewers": 7117,
+                    "likes": 1834,
+                    "comments_count": 5480
+                },
+                {
+                    "scrape_date": "12:10",
+                    "raw_date": "2026-11-02T12:10:52.000Z",
+                    "concurrent_viewers": 6922,
+                    "likes": 1882,
+                    "comments_count": 6152
+                },
+                {
+                    "scrape_date": "12:20",
+                    "raw_date": "2026-11-02T12:20:38.000Z",
+                    "concurrent_viewers": 6466,
+                    "likes": 1939,
+                    "comments_count": 6293
+                },
+                {
+                    "scrape_date": "12:30",
+                    "raw_date": "2026-11-02T12:30:27.000Z",
+                    "concurrent_viewers": 6656,
+                    "likes": 2080,
+                    "comments_count": 6518
+                },
+                {
+                    "scrape_date": "12:40",
+                    "raw_date": "2026-11-02T12:40:58.000Z",
+                    "concurrent_viewers": 6384,
+                    "likes": 2154,
+                    "comments_count": 6766
+                },
+                {
+                    "scrape_date": "12:50",
+                    "raw_date": "2026-11-02T12:50:28.000Z",
+                    "concurrent_viewers": 6520,
+                    "likes": 2209,
+                    "comments_count": 7177
+                }
+            ],
+            "superchats": [
+                {
+                    "currency": "ARS",
+                    "total_amount": 500
+                }
+            ]
+        },
+        {
+            "created_at": "2026-11-02T10:52:25.843Z",
+            "video_id": "2tZ3LXE9qCM",
+            "channel_id": "UCvCTWHCbBC0b9UIeLeNs8ug",
+            "channel_name": "Vorterix",
+            "video_title": "🔴 NO PREGUNTES POR RUSIA con Mario Pergolini, Nacho Corral y Nico Etevenaux | VORTERIX EN VIVO",
+            "concurrent_viewers": 13987,
+            "current_likes": 835,
+            "scrape_date": "2026-11-02T09:50:50.000Z",
+            "published": "2026-11-02T07:47:44.000Z",
+            "length": "P0D",
+            "live": "none",
+            "end_date": "Invalid DateTime",
+            "it": 27767,
+            "old_likes": 791,
+            "start_date": "2026-11-02T07:50:09.000Z",
+            "old_viewers": 14063,
+            "start_fixed": 0,
+            "actual_start": "2026-11-02T07:50:09.000Z",
+            "channel": "@VorterixOficial",
+            "thumb": "https://yt3.ggpht.com/MLwjpG_fQdT6e-8_CNsqcOSKghc58Q_xGoZMn5lp37fGCUUqh3PoW5L3-XUB093Iv9Ozt4C9NgU=s240-c-k-c0x00ffffff-no-rj",
+            "tags": "stream, radio",
+            "subs": 1020000,
+            "twitter": "@Vorterix",
+            "unique_commentators": 450,
+            "comments_count": 2322,
+            "data": [
+                {
+                    "scrape_date": "07:52",
+                    "raw_date": "2026-11-02T07:52:26.000Z",
+                    "concurrent_viewers": 176,
+                    "likes": 12,
+                    "comments_count": 0
+                },
+                {
+                    "scrape_date": "07:56",
+                    "raw_date": "2026-11-02T07:56:27.000Z",
+                    "concurrent_viewers": 563,
+                    "likes": 28,
+                    "comments_count": 55
+                },
+                {
+                    "scrape_date": "08:00",
+                    "raw_date": "2026-11-02T08:00:28.000Z",
+                    "concurrent_viewers": 994,
+                    "likes": 50,
+                    "comments_count": 71
+                },
+                {
+                    "scrape_date": "08:05",
+                    "raw_date": "2026-11-02T08:05:29.000Z",
+                    "concurrent_viewers": 1910,
+                    "likes": 97,
+                    "comments_count": 107
+                },
+                {
+                    "scrape_date": "08:08",
+                    "raw_date": "2026-11-02T08:08:24.000Z",
+                    "concurrent_viewers": 3367,
+                    "likes": 139,
+                    "comments_count": 158
+                },
+                {
+                    "scrape_date": "08:12",
+                    "raw_date": "2026-11-02T08:12:34.000Z",
+                    "concurrent_viewers": 7339,
+                    "likes": 198,
+                    "comments_count": 258
+                },
+                {
+                    "scrape_date": "08:16",
+                    "raw_date": "2026-11-02T08:16:28.000Z",
+                    "concurrent_viewers": 9138,
+                    "likes": 260,
+                    "comments_count": 424
+                },
+                {
+                    "scrape_date": "08:20",
+                    "raw_date": "2026-11-02T08:20:27.000Z",
+                    "concurrent_viewers": 10130,
+                    "likes": 294,
+                    "comments_count": 526
+                },
+                {
+                    "scrape_date": "08:24",
+                    "raw_date": "2026-11-02T08:24:24.000Z",
+                    "concurrent_viewers": 10521,
+                    "likes": 329,
+                    "comments_count": 641
+                },
+                {
+                    "scrape_date": "08:28",
+                    "raw_date": "2026-11-02T08:28:15.000Z",
+                    "concurrent_viewers": 11170,
+                    "likes": 351,
+                    "comments_count": 692
+                },
+                {
+                    "scrape_date": "08:32",
+                    "raw_date": "2026-11-02T08:32:15.000Z",
+                    "concurrent_viewers": 11721,
+                    "likes": 386,
+                    "comments_count": 756
+                },
+                {
+                    "scrape_date": "08:36",
+                    "raw_date": "2026-11-02T08:36:35.000Z",
+                    "concurrent_viewers": 11997,
+                    "likes": 409,
+                    "comments_count": 978
+                },
+                {
+                    "scrape_date": "08:40",
+                    "raw_date": "2026-11-02T08:40:15.000Z",
+                    "concurrent_viewers": 12655,
+                    "likes": 440,
+                    "comments_count": 1031
+                },
+                {
+                    "scrape_date": "08:44",
+                    "raw_date": "2026-11-02T08:44:15.000Z",
+                    "concurrent_viewers": 13083,
+                    "likes": 467,
+                    "comments_count": 1075
+                },
+                {
+                    "scrape_date": "08:48",
+                    "raw_date": "2026-11-02T08:48:16.000Z",
+                    "concurrent_viewers": 13200,
+                    "likes": 487,
+                    "comments_count": 1130
+                },
+                {
+                    "scrape_date": "08:52",
+                    "raw_date": "2026-11-02T08:52:17.000Z",
+                    "concurrent_viewers": 13660,
+                    "likes": 510,
+                    "comments_count": 1230
+                },
+                {
+                    "scrape_date": "08:56",
+                    "raw_date": "2026-11-02T08:56:16.000Z",
+                    "concurrent_viewers": 13823,
+                    "likes": 526,
+                    "comments_count": 1270
+                },
+                {
+                    "scrape_date": "09:00",
+                    "raw_date": "2026-11-02T09:00:18.000Z",
+                    "concurrent_viewers": 13653,
+                    "likes": 548,
+                    "comments_count": 1324
+                },
+                {
+                    "scrape_date": "09:10",
+                    "raw_date": "2026-11-02T09:10:54.000Z",
+                    "concurrent_viewers": 14227,
+                    "likes": 604,
+                    "comments_count": 1706
+                },
+                {
+                    "scrape_date": "09:16",
+                    "raw_date": "2026-11-02T09:16:26.000Z",
+                    "concurrent_viewers": 14169,
+                    "likes": 641,
+                    "comments_count": 1817
+                },
+                {
+                    "scrape_date": "09:21",
+                    "raw_date": "2026-11-02T09:21:39.000Z",
+                    "concurrent_viewers": 14720,
+                    "likes": 662,
+                    "comments_count": 2040
+                },
+                {
+                    "scrape_date": "09:25",
+                    "raw_date": "2026-11-02T09:25:19.000Z",
+                    "concurrent_viewers": 14286,
+                    "likes": 707,
+                    "comments_count": 2044
+                },
+                {
+                    "scrape_date": "09:34",
+                    "raw_date": "2026-11-02T09:34:26.000Z",
+                    "concurrent_viewers": 13618,
+                    "likes": 756,
+                    "comments_count": 2138
+                },
+                {
+                    "scrape_date": "09:42",
+                    "raw_date": "2026-11-02T09:42:53.000Z",
+                    "concurrent_viewers": 14063,
+                    "likes": 791,
+                    "comments_count": 2247
+                },
+                {
+                    "scrape_date": "09:50",
+                    "raw_date": "2026-11-02T09:50:50.000Z",
+                    "concurrent_viewers": 13987,
+                    "likes": 835,
+                    "comments_count": 2322
+                }
+            ],
+            "superchats": []
+        }
+    ],
+    "timeline": [
+        {
+            "scrape_date": "19:00",
+            "concurrent_viewers": 9527,
+            "likes": 375,
+            "comments_count": 953
+        },
+        {
+            "scrape_date": "19:02",
+            "concurrent_viewers": 12876,
+            "likes": 490,
+            "comments_count": 1288
+        },
+        {
+            "scrape_date": "19:03",
+            "concurrent_viewers": 13391,
+            "likes": 605,
+            "comments_count": 1339
+        },
+        {
+            "scrape_date": "19:05",
+            "concurrent_viewers": 14261,
+            "likes": 720,
+            "comments_count": 1426
+        },
+        {
+            "scrape_date": "19:06",
+            "concurrent_viewers": 18672,
+            "likes": 836,
+            "comments_count": 1867
+        },
+        {
+            "scrape_date": "19:08",
+            "concurrent_viewers": 21223,
+            "likes": 951,
+            "comments_count": 2122
+        },
+        {
+            "scrape_date": "19:10",
+            "concurrent_viewers": 19693,
+            "likes": 1066,
+            "comments_count": 1969
+        },
+        {
+            "scrape_date": "19:11",
+            "concurrent_viewers": 21288,
+            "likes": 1181,
+            "comments_count": 2129
+        },
+        {
+            "scrape_date": "19:13",
+            "concurrent_viewers": 26266,
+            "likes": 1297,
+            "comments_count": 2627
+        },
+        {
+            "scrape_date": "19:14",
+            "concurrent_viewers": 26245,
+            "likes": 1412,
+            "comments_count": 2625
+        },
+        {
+            "scrape_date": "19:16",
+            "concurrent_viewers": 23431,
+            "likes": 1527,
+            "comments_count": 2343
+        },
+        {
+            "scrape_date": "19:17",
+            "concurrent_viewers": 26286,
+            "likes": 1642,
+            "comments_count": 2629
+        },
+        {
+            "scrape_date": "19:19",
+            "concurrent_viewers": 29941,
+            "likes": 1758,
+            "comments_count": 2994
+        },
+        {
+            "scrape_date": "19:21",
+            "concurrent_viewers": 28652,
+            "likes": 1873,
+            "comments_count": 2865
+        }
+    ],
+    "hour_day_data": [
+        {
+            "hour": 7,
+            "mon_viewers": "369.5000000000000000",
+            "mon_likes": "20.0000000000000000",
+            "tue_viewers": null,
+            "tue_likes": null,
+            "wed_viewers": null,
+            "wed_likes": null,
+            "thu_viewers": null,
+            "thu_likes": null,
+            "fri_viewers": null,
+            "fri_likes": null,
+            "sat_viewers": null,
+            "sat_likes": null,
+            "sun_viewers": null,
+            "sun_likes": null
+        },
+        {
+            "hour": 8,
+            "mon_viewers": "9647.2000000000000000",
+            "mon_likes": "329.5333333333333333",
+            "tue_viewers": null,
+            "tue_likes": null,
+            "wed_viewers": null,
+            "wed_likes": null,
+            "thu_viewers": null,
+            "thu_likes": null,
+            "fri_viewers": "12683.500000000000",
+            "fri_likes": "649.5000000000000000",
+            "sat_viewers": null,
+            "sat_likes": null,
+            "sun_viewers": null,
+            "sun_likes": null
+        },
+        {
+            "hour": 9,
+            "mon_viewers": "14090.375000000000",
+            "mon_likes": "693.0000000000000000",
+            "tue_viewers": null,
+            "tue_likes": null,
+            "wed_viewers": null,
+            "wed_likes": null,
+            "thu_viewers": null,
+            "thu_likes": null,
+            "fri_viewers": null,
+            "fri_likes": null,
+            "sat_viewers": null,
+            "sat_likes": null,
+            "sun_viewers": null,
+            "sun_likes": null
+        },
+        {
+            "hour": 10,
+            "mon_viewers": "5965.8333333333333333",
+            "mon_likes": "613.1666666666666667",
+            "tue_viewers": null,
+            "tue_likes": null,
+            "wed_viewers": null,
+            "wed_likes": null,
+            "thu_viewers": null,
+            "thu_likes": null,
+            "fri_viewers": null,
+            "fri_likes": null,
+            "sat_viewers": null,
+            "sat_likes": null,
+            "sun_viewers": null,
+            "sun_likes": null
+        },
+        {
+            "hour": 11,
+            "mon_viewers": "6964.8333333333333333",
+            "mon_likes": "1564.5000000000000000",
+            "tue_viewers": null,
+            "tue_likes": null,
+            "wed_viewers": null,
+            "wed_likes": null,
+            "thu_viewers": null,
+            "thu_likes": null,
+            "fri_viewers": null,
+            "fri_likes": null,
+            "sat_viewers": null,
+            "sat_likes": null,
+            "sun_viewers": null,
+            "sun_likes": null
+        },
+        {
+            "hour": 12,
+            "mon_viewers": "6677.5000000000000000",
+            "mon_likes": "2016.3333333333333333",
+            "tue_viewers": null,
+            "tue_likes": null,
+            "wed_viewers": null,
+            "wed_likes": null,
+            "thu_viewers": null,
+            "thu_likes": null,
+            "fri_viewers": null,
+            "fri_likes": null,
+            "sat_viewers": null,
+            "sat_likes": null,
+            "sun_viewers": null,
+            "sun_likes": null
+        },
+        {
+            "hour": 13,
+            "mon_viewers": "5946.0000000000000000",
+            "mon_likes": "727.7500000000000000",
+            "tue_viewers": null,
+            "tue_likes": null,
+            "wed_viewers": null,
+            "wed_likes": null,
+            "thu_viewers": null,
+            "thu_likes": null,
+            "fri_viewers": null,
+            "fri_likes": null,
+            "sat_viewers": null,
+            "sat_likes": null,
+            "sun_viewers": null,
+            "sun_likes": null
+        },
+        {
+            "hour": 14,
+            "mon_viewers": "7855.5714285714285714",
+            "mon_likes": "1772.7142857142857143",
+            "tue_viewers": null,
+            "tue_likes": null,
+            "wed_viewers": null,
+            "wed_likes": null,
+            "thu_viewers": null,
+            "thu_likes": null,
+            "fri_viewers": null,
+            "fri_likes": null,
+            "sat_viewers": null,
+            "sat_likes": null,
+            "sun_viewers": null,
+            "sun_likes": null
+        },
+        {
+            "hour": 15,
+            "mon_viewers": "2203.5000000000000000",
+            "mon_likes": "148.3333333333333333",
+            "tue_viewers": null,
+            "tue_likes": null,
+            "wed_viewers": null,
+            "wed_likes": null,
+            "thu_viewers": null,
+            "thu_likes": null,
+            "fri_viewers": null,
+            "fri_likes": null,
+            "sat_viewers": null,
+            "sat_likes": null,
+            "sun_viewers": null,
+            "sun_likes": null
+        },
+        {
+            "hour": 17,
+            "mon_viewers": "1581.6666666666666667",
+            "mon_likes": "145.1666666666666667",
+            "tue_viewers": null,
+            "tue_likes": null,
+            "wed_viewers": null,
+            "wed_likes": null,
+            "thu_viewers": null,
+            "thu_likes": null,
+            "fri_viewers": null,
+            "fri_likes": null,
+            "sat_viewers": null,
+            "sat_likes": null,
+            "sun_viewers": null,
+            "sun_likes": null
+        },
+        {
+            "hour": 18,
+            "mon_viewers": "2106.2857142857142857",
+            "mon_likes": "211.7142857142857143",
+            "tue_viewers": null,
+            "tue_likes": null,
+            "wed_viewers": null,
+            "wed_likes": null,
+            "thu_viewers": null,
+            "thu_likes": null,
+            "fri_viewers": null,
+            "fri_likes": null,
+            "sat_viewers": null,
+            "sat_likes": null,
+            "sun_viewers": null,
+            "sun_likes": null
+        },
+        {
+            "hour": 19,
+            "mon_viewers": "18158.000000000000",
+            "mon_likes": "1082.0000000000000000",
+            "tue_viewers": null,
+            "tue_likes": null,
+            "wed_viewers": null,
+            "wed_likes": null,
+            "thu_viewers": null,
+            "thu_likes": null,
+            "fri_viewers": null,
+            "fri_likes": null,
+            "sat_viewers": null,
+            "sat_likes": null,
+            "sun_viewers": null,
+            "sun_likes": null
+        }
+    ],
+    "avg_data": [
+        {
+            "scrape_date1": "07:50",
+            "avg_viewers": 370,
+            "avg_likes": 20
+        },
+        {
+            "scrape_date1": "08:00",
+            "avg_viewers": 2090,
+            "avg_likes": 95
+        },
+        {
+            "scrape_date1": "08:10",
+            "avg_viewers": 8239,
+            "avg_likes": 229
+        },
+        {
+            "scrape_date1": "08:20",
+            "avg_viewers": 10607,
+            "avg_likes": 325
+        },
+        {
+            "scrape_date1": "08:30",
+            "avg_viewers": 11859,
+            "avg_likes": 398
+        },
+        {
+            "scrape_date1": "08:40",
+            "avg_viewers": 12979,
+            "avg_likes": 465
+        },
+        {
+            "scrape_date1": "08:50",
+            "avg_viewers": 13213,
+            "avg_likes": 584
+        },
+        {
+            "scrape_date1": "09:00",
+            "avg_viewers": 13653,
+            "avg_likes": 548
+        },
+        {
+            "scrape_date1": "09:10",
+            "avg_viewers": 14198,
+            "avg_likes": 623
+        },
+        {
+            "scrape_date1": "09:20",
+            "avg_viewers": 14503,
+            "avg_likes": 685
+        },
+        {
+            "scrape_date1": "09:30",
+            "avg_viewers": 13618,
+            "avg_likes": 756
+        },
+        {
+            "scrape_date1": "09:40",
+            "avg_viewers": 14063,
+            "avg_likes": 791
+        },
+        {
+            "scrape_date1": "09:50",
+            "avg_viewers": 13987,
+            "avg_likes": 835
+        },
+        {
+            "scrape_date1": "10:00",
+            "avg_viewers": 4904,
+            "avg_likes": 91
+        },
+        {
+            "scrape_date1": "10:10",
+            "avg_viewers": 5614,
+            "avg_likes": 483
+        },
+        {
+            "scrape_date1": "10:20",
+            "avg_viewers": 5814,
+            "avg_likes": 617
+        },
+        {
+            "scrape_date1": "10:30",
+            "avg_viewers": 6279,
+            "avg_likes": 736
+        },
+        {
+            "scrape_date1": "10:40",
+            "avg_viewers": 6404,
+            "avg_likes": 827
+        },
+        {
+            "scrape_date1": "10:50",
+            "avg_viewers": 6780,
+            "avg_likes": 925
+        },
+        {
+            "scrape_date1": "11:00",
+            "avg_viewers": 6680,
+            "avg_likes": 1291
+        },
+        {
+            "scrape_date1": "11:10",
+            "avg_viewers": 6501,
+            "avg_likes": 1466
+        },
+        {
+            "scrape_date1": "11:20",
+            "avg_viewers": 6881,
+            "avg_likes": 1552
+        },
+        {
+            "scrape_date1": "11:30",
+            "avg_viewers": 7293,
+            "avg_likes": 1618
+        },
+        {
+            "scrape_date1": "11:40",
+            "avg_viewers": 7136,
+            "avg_likes": 1681
+        },
+        {
+            "scrape_date1": "11:50",
+            "avg_viewers": 7298,
+            "avg_likes": 1779
+        },
+        {
+            "scrape_date1": "12:00",
+            "avg_viewers": 7117,
+            "avg_likes": 1834
+        },
+        {
+            "scrape_date1": "12:10",
+            "avg_viewers": 6922,
+            "avg_likes": 1882
+        },
+        {
+            "scrape_date1": "12:20",
+            "avg_viewers": 6466,
+            "avg_likes": 1939
+        },
+        {
+            "scrape_date1": "12:30",
+            "avg_viewers": 6656,
+            "avg_likes": 2080
+        },
+        {
+            "scrape_date1": "12:40",
+            "avg_viewers": 6384,
+            "avg_likes": 2154
+        },
+        {
+            "scrape_date1": "12:50",
+            "avg_viewers": 6520,
+            "avg_likes": 2209
+        },
+        {
+            "scrape_date1": "13:00",
+            "avg_viewers": 3135,
+            "avg_likes": 70
+        },
+        {
+            "scrape_date1": "13:10",
+            "avg_viewers": 5568,
+            "avg_likes": 707
+        },
+        {
+            "scrape_date1": "13:20",
+            "avg_viewers": 7222,
+            "avg_likes": 973
+        },
+        {
+            "scrape_date1": "13:30",
+            "avg_viewers": 7859,
+            "avg_likes": 1161
+        },
+        {
+            "scrape_date1": "14:00",
+            "avg_viewers": 8335,
+            "avg_likes": 1607
+        },
+        {
+            "scrape_date1": "14:10",
+            "avg_viewers": 8374,
+            "avg_likes": 1629
+        },
+        {
+            "scrape_date1": "14:20",
+            "avg_viewers": 8404,
+            "avg_likes": 1709
+        },
+        {
+            "scrape_date1": "14:30",
+            "avg_viewers": 8045,
+            "avg_likes": 1778
+        },
+        {
+            "scrape_date1": "14:40",
+            "avg_viewers": 7176,
+            "avg_likes": 1877
+        },
+        {
+            "scrape_date1": "14:50",
+            "avg_viewers": 7480,
+            "avg_likes": 1932
+        },
+        {
+            "scrape_date1": "15:00",
+            "avg_viewers": 2241,
+            "avg_likes": 21
+        },
+        {
+            "scrape_date1": "15:10",
+            "avg_viewers": 2257,
+            "avg_likes": 91
+        },
+        {
+            "scrape_date1": "15:20",
+            "avg_viewers": 2181,
+            "avg_likes": 142
+        },
+        {
+            "scrape_date1": "15:30",
+            "avg_viewers": 2203,
+            "avg_likes": 174
+        },
+        {
+            "scrape_date1": "15:40",
+            "avg_viewers": 2220,
+            "avg_likes": 212
+        },
+        {
+            "scrape_date1": "15:50",
+            "avg_viewers": 2119,
+            "avg_likes": 250
+        },
+        {
+            "scrape_date1": "17:00",
+            "avg_viewers": 1777,
+            "avg_likes": 444
+        },
+        {
+            "scrape_date1": "17:10",
+            "avg_viewers": 1347,
+            "avg_likes": 30
+        },
+        {
+            "scrape_date1": "17:20",
+            "avg_viewers": 1443,
+            "avg_likes": 68
+        },
+        {
+            "scrape_date1": "17:30",
+            "avg_viewers": 1553,
+            "avg_likes": 88
+        },
+        {
+            "scrape_date1": "17:40",
+            "avg_viewers": 1661,
+            "avg_likes": 111
+        },
+        {
+            "scrape_date1": "17:50",
+            "avg_viewers": 1709,
+            "avg_likes": 130
+        },
+        {
+            "scrape_date1": "18:00",
+            "avg_viewers": 1699,
+            "avg_likes": 143
+        },
+        {
+            "scrape_date1": "18:10",
+            "avg_viewers": 1780,
+            "avg_likes": 159
+        },
+        {
+            "scrape_date1": "18:20",
+            "avg_viewers": 1995,
+            "avg_likes": 256
+        },
+        {
+            "scrape_date1": "18:30",
+            "avg_viewers": 2018,
+            "avg_likes": 195
+        },
+        {
+            "scrape_date1": "18:40",
+            "avg_viewers": 2372,
+            "avg_likes": 211
+        },
+        {
+            "scrape_date1": "18:50",
+            "avg_viewers": 2886,
+            "avg_likes": 263
+        },
+        {
+            "scrape_date1": "19:00",
+            "avg_viewers": 5136,
+            "avg_likes": 311
+        },
+        {
+            "scrape_date1": "19:10",
+            "avg_viewers": 20686,
+            "avg_likes": 1062
+        },
+        {
+            "scrape_date1": "19:20",
+            "avg_viewers": 28652,
+            "avg_likes": 1873
+        }
+    ]
+}

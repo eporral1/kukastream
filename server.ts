@@ -487,6 +487,7 @@ const channelHandler = async (req: Request, res: Response) => {
     if (live && live.live !== 'live') {
       live = null;
     }
+    console.log('[DEBUG] Live stream data for comments:', live ? { video_id: live.video_id, comments_count: live.comments_count } : 'no live stream');
 
     if (live) {
       // Max users & max likes (from Laravel web.php, October 2026 onwards)

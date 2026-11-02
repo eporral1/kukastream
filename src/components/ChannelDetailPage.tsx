@@ -89,6 +89,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
     lastFetchedId.current = channelIdentifier;
 
     setIsLoadingChannel(true);
+    console.log(`[DEBUG] tryFetchChannel called for: ${channelIdentifier}`);
     try {
         const res = await fetch(`/api/channel?id=${encodeURIComponent(channelIdentifier)}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -96,7 +97,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
         
         if (data.success) {
           if (data.channel) setChannel(data.channel);
-          const liveData = data.live || data.liveStream;
+          const liveData = data.live;
           setLiveStream(liveData?.live === 'live' && (isOctober2026OrLater(liveData.scrape_date) || isOctober2026OrLater(liveData.start_date)) ? liveData : undefined);
           const streamList = data.streams || data.history || [];
           setPastStreams(streamList.filter((s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)));
@@ -124,7 +125,9 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
   const activeLiveChartPoints = useMemo(() => {
     if (!liveStream) return [];
     if (liveStream.data && liveStream.data.length > 0) {
-      return sortTimelineChronologically(liveStream.data);
+      const data = sortTimelineChronologically(liveStream.data);
+      console.log('[DEBUG] Live chart data comments:', data.map((d: any) => d.comments_count));
+      return data;
     }
     return [];
   }, [liveStream]);

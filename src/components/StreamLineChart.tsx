@@ -168,6 +168,7 @@ export const StreamLineChart: React.FC<StreamLineChartProps> = ({
         beginAtZero: true,
         grid: {
           drawOnChartArea: false,
+          display: false,
         },
         ticks: {
           color: '#f59e0b',
