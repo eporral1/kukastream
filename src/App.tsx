@@ -129,7 +129,7 @@ export default function App() {
 
     const interval = setInterval(() => {
       fetchLiveData(true); // background silent update
-    }, 30000);
+    }, 300000);
 
     return () => clearInterval(interval);
   }, [autoRefresh, fetchLiveData]);

@@ -126,12 +126,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
 
     const tryFetchChannel = async () => {
       try {
-        // Try query param format first: /api/channel?id=@handle (works natively on Vercel and Express)
-        let res = await fetch(`/api/channel?id=${encodeURIComponent(channelIdentifier)}`);
-        // If not JSON or not OK, try path format: /api/channel/@handle
-        if (!res.ok || !res.headers.get('content-type')?.includes('application/json')) {
-          res = await fetch(`/api/channel/${encodeURIComponent(channelIdentifier)}`);
-        }
+        const res = await fetch(`/api/channel?id=${encodeURIComponent(channelIdentifier)}`);
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         }
@@ -368,11 +363,11 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
 
               <div className="flex items-center gap-6">
                 <div className="text-center">
-                  <div className="text-xs text-gray-400 font-semibold mb-0.5">EN VIVO</div>
+                  <div className="text-xs text-gray-400 font-semibold mb-0.5">ESPECTADORES</div>
                   <div className="text-3xl font-black text-gray-900">
                     {formatNumber(liveStream.concurrent_viewers)}
                   </div>
-                  <div className="text-xs text-gray-500">espectadores</div>
+                  <div className="text-[10px] text-gray-500">ACTUALES</div>
                 </div>
 
                 <div className="text-center">
@@ -380,7 +375,15 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                   <div className="text-3xl font-black text-rose-500">
                     {formatNumber(liveStream.current_likes)}
                   </div>
-                  <div className="text-xs text-gray-500">acumulados</div>
+                  <div className="text-[10px] text-gray-500">TOTALES</div>
+                </div>
+
+                <div className="text-center">
+                  <div className="text-xs text-gray-400 font-semibold mb-0.5">COMMENTS</div>
+                  <div className="text-3xl font-black text-amber-500">
+                    {formatNumber(liveStream.comments_count || 0)}
+                  </div>
+                  <div className="text-[10px] text-gray-500">TOTALES</div>
                 </div>
               </div>
             </div>
@@ -390,7 +393,11 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
               <div className="flex items-center justify-between mb-2">
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <span>Línea de tiempo de la transmisión (minuto a minuto)</span>
+                  <span>
+                    {channel.type === 'eternal'
+                      ? 'Línea de tiempo de la transmisión (Este canal utiliza el mismo video para todo el día)'
+                      : 'Línea de tiempo de la transmisión (minuto a minuto)'}
+                  </span>
                 </div>
                 {/*<div className="text-xs text-gray-400 font-mono">
                   canvas id: chart-{liveStream.video_id}
@@ -523,12 +530,12 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                     <div className="text-center">
                       <div className="text-xs text-gray-400 font-medium mb-0.5 flex items-center gap-1 justify-center">
                         <Eye className="w-3 h-3 text-blue-500" />
-                        <span>Pico Máximo</span>
+                        <span>Espectadores</span>
                       </div>
                       <div className="text-xl font-black text-gray-900">
                         {formatNumber(pastStream.max_users || pastStream.concurrent_viewers)}
                       </div>
-                      <div className="text-xs text-gray-500">max. conectados</div>
+                      <div className="text-xs text-gray-500">Pico Máximo</div>
                     </div>
 
                     <div className="text-center">
@@ -538,6 +545,17 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                       </div>
                       <div className="text-xl font-black text-gray-900">
                         {formatNumber(pastStream.max_likes || pastStream.current_likes)}
+                      </div>
+                      <div className="text-xs text-gray-500">total programa</div>
+                    </div>
+
+                    <div className="text-center">
+                      <div className="text-xs text-gray-400 font-medium mb-0.5 flex items-center gap-1 justify-center">
+                        <MessageSquare className="w-3 h-3 text-amber-500" />
+                        <span>Comments</span>
+                      </div>
+                      <div className="text-xl font-black text-amber-600">
+                        {formatNumber(pastStream.comments_count || 0)}
                       </div>
                       <div className="text-xs text-gray-500">total programa</div>
                     </div>

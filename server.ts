@@ -145,27 +145,56 @@ app.get('/api/live', async (req: Request, res: Response) => {
     let liveQuery = `
       SELECT 
         l.video_id, l.channel_id, l.concurrent_viewers, l.old_viewers,
-        l.current_likes, l.old_likes, l.scrape_date, l.start_date, l.live,
+        l.old_likes, l.scrape_date, l.start_date, l.live,
         COALESCE(l.video_title, '') AS video_title,
-        c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter,
-        COALESCE(sc.total_superchats, 0)::numeric as superchats_total,
-        COALESCE(sc.superchats_count, 0)::int as superchats_count,
+        c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter, c.type,
+        0::numeric as superchats_total,
+        0::int as superchats_count,
         COALESCE(comm.comments_count, 0)::int as comments_count,
-        COALESCE(comm.unique_commentators, 0)::int as unique_commentators
+        0::int as unique_commentators,
+        CASE 
+          WHEN c.type = 'eternal' THEN (
+            SELECT COALESCE(m.likes, l.current_likes) - COALESCE((
+              SELECT sub.likes 
+              FROM public.minute sub 
+              WHERE sub.video_id = l.video_id AND sub.video_title = l.video_title 
+              ORDER BY sub.scrape_date ASC, sub.id ASC 
+              LIMIT 1
+            ), COALESCE(m.likes, l.current_likes))
+            FROM public.minute m 
+            WHERE m.video_id = l.video_id 
+            ORDER BY m.scrape_date DESC, m.id DESC 
+            LIMIT 1
+          )
+          ELSE l.current_likes
+        END::int as current_likes
       FROM public.live l
       JOIN public.channels c ON l.channel_id = c.channel_id
-      LEFT JOIN (
-        SELECT video_id, SUM(amount) as total_superchats, COUNT(id) as superchats_count
-        FROM public.superchats
-        WHERE created_at >= '${OCT_2026_CUTOFF}'
-        GROUP BY video_id
-      ) sc ON sc.video_id = l.video_id
-      LEFT JOIN (
-        SELECT video_id, COUNT(id) as comments_count, COUNT(DISTINCT author_id) as unique_commentators
-        FROM public.comments
-        WHERE created_at >= '${OCT_2026_CUTOFF}'
-        GROUP BY video_id
-      ) comm ON comm.video_id = l.video_id
+      LEFT JOIN LATERAL (
+        SELECT 
+          CASE 
+            WHEN c.type = 'eternal' THEN (
+              SELECT m.comments_count - COALESCE((
+                SELECT sub.comments_count 
+                FROM public.minute sub 
+                WHERE sub.video_id = l.video_id AND sub.video_title = l.video_title 
+                ORDER BY sub.scrape_date ASC, sub.id ASC 
+                LIMIT 1
+              ), m.comments_count)
+              FROM public.minute m 
+              WHERE m.video_id = l.video_id 
+              ORDER BY m.scrape_date DESC, m.id DESC 
+              LIMIT 1
+            )
+            ELSE (
+              SELECT m.comments_count 
+              FROM public.minute m 
+              WHERE m.video_id = l.video_id 
+              ORDER BY m.scrape_date DESC, m.id DESC 
+              LIMIT 1
+            )
+          END as comments_count
+      ) comm ON true
       WHERE l.live = 'live' 
         AND l.concurrent_viewers > 0
         AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
@@ -187,24 +216,12 @@ app.get('/api/live', async (req: Request, res: Response) => {
         l.current_likes, l.old_likes, l.scrape_date, l.start_date, l.live,
         COALESCE(l.video_title, '') AS video_title,
         c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter,
-        COALESCE(sc.total_superchats, 0)::numeric as superchats_total,
-        COALESCE(sc.superchats_count, 0)::int as superchats_count,
-        COALESCE(comm.comments_count, 0)::int as comments_count,
-        COALESCE(comm.unique_commentators, 0)::int as unique_commentators
+        0::numeric as superchats_total,
+        0::int as superchats_count,
+        0::int as comments_count,
+        0::int as unique_commentators
       FROM public.live l
       JOIN public.channels c ON l.channel_id = c.channel_id
-      LEFT JOIN (
-        SELECT video_id, SUM(amount) as total_superchats, COUNT(id) as superchats_count
-        FROM public.superchats
-        WHERE created_at >= '${OCT_2026_CUTOFF}'
-        GROUP BY video_id
-      ) sc ON sc.video_id = l.video_id
-      LEFT JOIN (
-        SELECT video_id, COUNT(id) as comments_count, COUNT(DISTINCT author_id) as unique_commentators
-        FROM public.comments
-        WHERE created_at >= '${OCT_2026_CUTOFF}'
-        GROUP BY video_id
-      ) comm ON comm.video_id = l.video_id
       WHERE l.live <> 'live'
         AND l.scrape_date >= '${OCT_2026_CUTOFF}'
         AND l.scrape_date >= NOW() - INTERVAL '24 hours'
@@ -368,7 +385,45 @@ const channelHandler = async (req: Request, res: Response) => {
 
     // Current live stream (matching Laravel: l.live='live', concurrent_viewers > 0, >= Oct 2026)
     let liveRes = await p.query(
-      `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter
+      `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter, c.type,
+        CASE 
+          WHEN c.type = 'eternal' THEN (
+            SELECT COALESCE(m.likes, l.current_likes) - COALESCE((
+              SELECT sub.likes 
+              FROM public.minute sub 
+              WHERE sub.video_id = l.video_id AND sub.video_title = l.video_title 
+              ORDER BY sub.scrape_date ASC, id ASC 
+              LIMIT 1
+            ), COALESCE(m.likes, l.current_likes))
+            FROM public.minute m 
+            WHERE m.video_id = l.video_id 
+            ORDER BY m.scrape_date DESC, m.id DESC 
+            LIMIT 1
+          )
+          ELSE l.current_likes
+        END::int as current_likes,
+        CASE 
+          WHEN c.type = 'eternal' THEN (
+            SELECT m.comments_count - COALESCE((
+              SELECT sub.comments_count 
+              FROM public.minute sub 
+              WHERE sub.video_id = l.video_id AND sub.video_title = l.video_title 
+              ORDER BY sub.scrape_date ASC, id ASC 
+              LIMIT 1
+            ), m.comments_count)
+            FROM public.minute m 
+            WHERE m.video_id = l.video_id 
+            ORDER BY m.scrape_date DESC, m.id DESC 
+            LIMIT 1
+          )
+          ELSE COALESCE((
+            SELECT m.comments_count 
+            FROM public.minute m 
+            WHERE m.video_id = l.video_id 
+            ORDER BY m.scrape_date DESC, m.id DESC 
+            LIMIT 1
+          ), 0)
+        END::int as comments_count
        FROM public.live l
        JOIN public.channels c ON l.channel_id = c.channel_id
        WHERE c.channel_id = $1 AND l.live = 'live' AND l.concurrent_viewers > 0 
@@ -380,7 +435,45 @@ const channelHandler = async (req: Request, res: Response) => {
     // Fallback if live stream flag is set but concurrent_viewers is transitioning
     if (liveRes.rows.length === 0) {
       liveRes = await p.query(
-        `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter
+        `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter, c.type,
+          CASE 
+            WHEN c.type = 'eternal' THEN (
+              SELECT COALESCE(m.likes, l.current_likes) - COALESCE((
+                SELECT sub.likes 
+                FROM public.minute sub 
+                WHERE sub.video_id = l.video_id AND sub.video_title = l.video_title 
+                ORDER BY sub.scrape_date ASC, id ASC 
+                LIMIT 1
+              ), COALESCE(m.likes, l.current_likes))
+              FROM public.minute m 
+              WHERE m.video_id = l.video_id 
+              ORDER BY m.scrape_date DESC, m.id DESC 
+              LIMIT 1
+            )
+            ELSE l.current_likes
+          END::int as current_likes,
+          CASE 
+            WHEN c.type = 'eternal' THEN (
+              SELECT m.comments_count - COALESCE((
+                SELECT sub.comments_count 
+                FROM public.minute sub 
+                WHERE sub.video_id = l.video_id AND sub.video_title = l.video_title 
+                ORDER BY sub.scrape_date ASC, id ASC 
+                LIMIT 1
+              ), m.comments_count)
+              FROM public.minute m 
+              WHERE m.video_id = l.video_id 
+              ORDER BY m.scrape_date DESC, m.id DESC 
+              LIMIT 1
+            )
+            ELSE COALESCE((
+              SELECT m.comments_count 
+              FROM public.minute m 
+              WHERE m.video_id = l.video_id 
+              ORDER BY m.scrape_date DESC, m.id DESC 
+              LIMIT 1
+            ), 0)
+          END::int as comments_count
          FROM public.live l
          JOIN public.channels c ON l.channel_id = c.channel_id
          WHERE c.channel_id = $1 AND l.live = 'live' 
@@ -415,7 +508,6 @@ const channelHandler = async (req: Request, res: Response) => {
           `SELECT to_char(m.scrape_date, 'HH24:MI') AS scrape_date, 
                   m.scrape_date AS raw_date,
                   m.concurrent_viewers, m.likes, 
-                  COALESCE(m.chat_count, 0) as chat_count, COALESCE(m.authors_count, 0) as authors_count, 
                   COALESCE(m.comments_count, 0) as comments_count
            FROM public.minute m
            WHERE m.video_id = $1 AND m.scrape_date >= '${OCT_2026_CUTOFF}'
@@ -437,6 +529,20 @@ const channelHandler = async (req: Request, res: Response) => {
         );
       }
       live.data = minuteRows;
+
+      if (live.type === 'eternal' && live.video_title) {
+        try {
+          const firstScrapeRes = await p.query(
+            `SELECT scrape_date FROM public.minute WHERE video_id = $1 AND video_title = $2 ORDER BY scrape_date ASC, id ASC LIMIT 1`,
+            [live.video_id, live.video_title]
+          );
+          if (firstScrapeRes.rows.length > 0 && firstScrapeRes.rows[0].scrape_date) {
+            live.start_date = firstScrapeRes.rows[0].scrape_date;
+          }
+        } catch {
+          // ignore
+        }
+      }
 
       // Superchats summary (October 2026 onwards)
       try {
@@ -480,7 +586,7 @@ const channelHandler = async (req: Request, res: Response) => {
       );
       finishedStreams = finishedRes.rows;
 
-      // Batch load unique commentators for finished streams
+      // Batch load unique commentators and total comments count for finished streams
       if (finishedStreams.length > 0) {
         const videoIds = finishedStreams.map((s) => s.video_id).filter(Boolean);
         if (videoIds.length > 0) {
@@ -496,11 +602,25 @@ const channelHandler = async (req: Request, res: Response) => {
             for (const row of uqRes.rows) {
               uqMap.set(row.video_id, parseInt(row.unique_commentators || '0', 10));
             }
+
+            const totalCommRes = await p.query(
+              `SELECT video_id, COUNT(*)::int as total_comments
+               FROM public.comments
+               WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
+               GROUP BY video_id`,
+              [videoIds]
+            );
+            const totalCommMap = new Map<string, number>();
+            for (const row of totalCommRes.rows || []) {
+              totalCommMap.set(row.video_id, parseInt(row.total_comments || '0', 10));
+            }
+
             for (const s of finishedStreams) {
               s.unique_commentators = uqMap.get(s.video_id) || 0;
+              s.comments_count = totalCommMap.get(s.video_id) || 0;
             }
           } catch (e) {
-            console.error('Error fetching unique commentators for finished streams:', e);
+            console.error('Error fetching commentators/comments for finished streams:', e);
           }
         }
       }
@@ -548,6 +668,12 @@ const channelHandler = async (req: Request, res: Response) => {
           );
         }
         stream.data = minDataRows;
+        if (Array.isArray(stream.data) && stream.data.length > 0) {
+          const maxComments = Math.max(...stream.data.map((d: any) => Number(d.comments_count || 0)));
+          if (maxComments > 0) {
+            stream.comments_count = maxComments;
+          }
+        }
 
         try {
           const scRes = await p.query(

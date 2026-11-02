@@ -73,11 +73,11 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                   {stream.channel_name}
                 </button>
                 <span className="text-xs text-gray-400 font-mono">
-                  {stream.channel}
+                  {stream.channel} {/* stream.type */}
                 </span>
               </div>
               <p className="text-sm text-gray-600 truncate mt-1" title={stream.video_title}>
-                {stream.video_title || 'Transmisión en vivo'}
+                {stream.video_title || 'Transmisión en vivo'} 
               </p>
               <div className="mt-2.5 flex items-center gap-2 flex-wrap">
                 <button
@@ -125,38 +125,32 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
           <div className="flex items-center space-x-6 shrink-0 pl-2">
             {/* Live Viewers */}
             <div className="text-center min-w-[90px]">
-              <div className="flex items-center justify-center space-x-1 text-red-500 mb-1">
-                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                <span className="text-xs font-semibold uppercase tracking-wider">Live</span>
-              </div>
-              <div className="font-extrabold text-xl text-gray-900">
+              <div className="text-xs text-gray-400 font-semibold mb-0.5">ESPECTADORES</div>
+              <div className="font-extrabold text-2xl text-gray-900">
                 {formatNumber(stream.concurrent_viewers)}
               </div>
-              <div className="text-xs text-gray-500">conectados</div>
+              <div className="text-[10px] text-gray-500">ACTUALES</div>
             </div>
 
-            {/* 10 min viewers delta */}
-            <div className="text-center min-w-[80px]">
-              <div className="text-xs text-gray-400 mb-1">tendencia</div>
-              <div
-                className={`font-bold text-base ${
-                  diffViewers >= 0 ? 'text-green-600' : 'text-red-600'
-                }`}
-              >
-                {diffViewers >= 0 ? '+' : ''}
-                {formatNumber(diffViewers)}
-              </div>
-              <div className="text-xs text-gray-500">últimos 10 min.</div>
-            </div>
-
-            {/* Likes delta */}
+            {/* Likes Count */}
             <div className="text-center min-w-[75px]">
-              <div className="text-xs text-gray-500 mb-1">👍 likes</div>
-              <div className="font-bold text-base text-gray-900">
-                {diffLikes > 0 ? `+${formatNumber(diffLikes)}` : (stream.current_likes ? formatNumber(stream.current_likes) : '-')}
+              <div className="text-xs text-gray-400 font-semibold mb-0.5">LIKES</div>
+              <div className="font-extrabold text-2xl text-rose-500">
+                {formatNumber(stream.current_likes || 0)}
               </div>
-              <div className="text-xs text-gray-500">
-                {diffLikes > 0 ? 'últimos 10 min.' : 'acumulados'}
+              <div className="text-[10px] text-gray-500">
+                TOTALES
+              </div>
+            </div>
+
+            {/* Comments Count */}
+            <div className="text-center min-w-[75px]">
+              <div className="text-xs text-gray-400 font-semibold mb-0.5">COMMENTS</div>
+              <div className="font-extrabold text-2xl text-amber-500">
+                {formatNumber(stream.comments_count || 0)}
+              </div>
+              <div className="text-[10px] text-gray-500">
+                TOTALES
               </div>
             </div>
           </div>

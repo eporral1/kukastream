@@ -283,7 +283,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Check active live stream for this channel (strictly live = 'live' and October 2026 onwards)
     let liveRes = await executeQuery(
-      `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter
+      `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter, c.type,
+        CASE 
+          WHEN c.type = 'eternal' THEN (
+            SELECT COALESCE(m.likes, l.current_likes) - COALESCE((
+              SELECT sub.likes 
+              FROM public.minute sub 
+              WHERE sub.video_id = l.video_id AND sub.video_title = l.video_title 
+              ORDER BY sub.scrape_date ASC, sub.id ASC 
+              LIMIT 1
+            ), COALESCE(m.likes, l.current_likes))
+            FROM public.minute m 
+            WHERE m.video_id = l.video_id 
+            ORDER BY m.scrape_date DESC, m.id DESC 
+            LIMIT 1
+          )
+          ELSE l.current_likes
+        END::int as current_likes,
+        CASE 
+          WHEN c.type = 'eternal' THEN (
+            SELECT m.comments_count - COALESCE((
+              SELECT sub.comments_count 
+              FROM public.minute sub 
+              WHERE sub.video_id = l.video_id AND sub.video_title = l.video_title 
+              ORDER BY sub.scrape_date ASC, sub.id ASC 
+              LIMIT 1
+            ), m.comments_count)
+            FROM public.minute m 
+            WHERE m.video_id = l.video_id 
+            ORDER BY m.scrape_date DESC, m.id DESC 
+            LIMIT 1
+          )
+          ELSE COALESCE((
+            SELECT m.comments_count 
+            FROM public.minute m 
+            WHERE m.video_id = l.video_id 
+            ORDER BY m.scrape_date DESC, m.id DESC 
+            LIMIT 1
+          ), 0)
+        END::int as comments_count
        FROM public.live l
        JOIN public.channels c ON l.channel_id = c.channel_id
        WHERE c.channel_id = $1 AND l.live = 'live' AND l.concurrent_viewers > 0 
@@ -294,7 +332,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (liveRes.rows.length === 0) {
       liveRes = await executeQuery(
-        `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter
+        `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter, c.type,
+          CASE 
+            WHEN c.type = 'eternal' THEN (
+              SELECT COALESCE(m.likes, l.current_likes) - COALESCE((
+                SELECT sub.likes 
+                FROM public.minute sub 
+                WHERE sub.video_id = l.video_id AND sub.video_title = l.video_title 
+                ORDER BY sub.scrape_date ASC, id ASC 
+                LIMIT 1
+              ), COALESCE(m.likes, l.current_likes))
+              FROM public.minute m 
+              WHERE m.video_id = l.video_id 
+              ORDER BY m.scrape_date DESC, m.id DESC 
+              LIMIT 1
+            )
+            ELSE l.current_likes
+          END::int as current_likes,
+          CASE 
+            WHEN c.type = 'eternal' THEN (
+              SELECT m.comments_count - COALESCE((
+                SELECT sub.comments_count 
+                FROM public.minute sub 
+                WHERE sub.video_id = l.video_id AND sub.video_title = l.video_title 
+                ORDER BY sub.scrape_date ASC, id ASC 
+                LIMIT 1
+              ), m.comments_count)
+              FROM public.minute m 
+              WHERE m.video_id = l.video_id 
+              ORDER BY m.scrape_date DESC, m.id DESC 
+              LIMIT 1
+            )
+            ELSE COALESCE((
+              SELECT m.comments_count 
+              FROM public.minute m 
+              WHERE m.video_id = l.video_id 
+              ORDER BY m.scrape_date DESC, m.id DESC 
+              LIMIT 1
+            ), 0)
+          END::int as comments_count
          FROM public.live l
          JOIN public.channels c ON l.channel_id = c.channel_id
          WHERE c.channel_id = $1 AND l.live = 'live' 
@@ -331,35 +407,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // 2. Minute-by-minute timeline curve for the live stream (strictly chronological)
       let minutePoints: any[] = [];
       try {
-        const minuteRes = await executeQuery(
-          `SELECT to_char(m.scrape_date, 'HH24:MI') AS scrape_date, 
+        let minuteQuery = `
+          SELECT to_char(m.scrape_date, 'HH24:MI') AS scrape_date, 
                   m.scrape_date AS raw_date,
-                  m.concurrent_viewers, m.likes, 
+                  m.concurrent_viewers, 
+                  m.likes,
                   COALESCE(m.comments_count, 0) as comments_count
            FROM public.minute m
            WHERE m.video_id = $1 AND m.scrape_date >= '${OCT_2026_CUTOFF}'
-           ORDER BY m.scrape_date ASC
-           LIMIT 500`,
-          [live.video_id]
-        );
+        `;
+
+        minuteQuery += ` ORDER BY m.scrape_date ASC LIMIT 500`;
+
+        const minuteRes = await executeQuery(minuteQuery, [
+          live.video_id,
+          channel.type || '',
+          live.video_title || ''
+        ]);
         minutePoints = minuteRes.rows;
       } catch (errMinute) {
-        // Try fallback column names if table has date / viewers
-        try {
-          const altRes = await executeQuery(
-            `SELECT to_char(m.date, 'HH24:MI') AS scrape_date, 
-                    m.date AS raw_date,
-                    m.viewers AS concurrent_viewers, m.likes, 0 as comments_count
-             FROM public.minute m
-             WHERE m.video_id = $1 AND m.date >= '${OCT_2026_CUTOFF}'
-             ORDER BY m.date ASC
-             LIMIT 500`,
-            [live.video_id]
-          );
-          minutePoints = altRes.rows;
-        } catch {
-          minutePoints = [];
-        }
+        minutePoints = [];
       }
 
       // If database has 0 or 1 point for the current stream, synthesize realistic progression points
@@ -373,6 +440,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       live.data = minutePoints;
+
+      if (channel.type === 'eternal' && live.video_title && minutePoints.length > 0) {
+        const firstPoint = minutePoints[0];
+        if (firstPoint && firstPoint.raw_date) {
+          live.start_date = firstPoint.raw_date;
+        }
+      }
 
       // 3. Superchats summary for live stream
       try {
@@ -405,18 +479,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Finished streams (October 2026 onwards)
     let finishedStreams: any[] = [];
     try {
-      const finishedRes = await executeQuery(
-        `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter
-         FROM public.live l
-         JOIN public.channels c ON l.channel_id = c.channel_id
-         WHERE l.live <> 'live' AND c.channel_id = $1 
-           AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
-         ORDER BY l.scrape_date DESC, l.video_id LIMIT 5`,
-        [channelId]
-      );
-      finishedStreams = finishedRes.rows;
+      if (channel.type === 'eternal') {
+        const titlesRes = await executeQuery(
+          `SELECT DISTINCT video_id, video_title, MAX(scrape_date) AS scrape_date, MIN(scrape_date) AS start_date, MAX(concurrent_viewers) AS concurrent_viewers, MAX(likes) AS current_likes
+           FROM public.minute
+           WHERE video_id IN (SELECT video_id FROM public.live WHERE channel_id = $1)
+             AND scrape_date >= '${OCT_2026_CUTOFF}'
+             AND video_title IS NOT NULL AND video_title <> ''
+           GROUP BY video_id, video_title
+           ORDER BY scrape_date DESC LIMIT 10`,
+          [channelId]
+        );
+        finishedStreams = titlesRes.rows.map((r: any) => ({
+          ...r,
+          live: 'finished'
+        }));
+      } else {
+        const finishedRes = await executeQuery(
+          `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter
+           FROM public.live l
+           JOIN public.channels c ON l.channel_id = c.channel_id
+           WHERE l.live <> 'live' AND c.channel_id = $1 
+             AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+           ORDER BY l.scrape_date DESC, l.video_id LIMIT 5`,
+          [channelId]
+        );
+        finishedStreams = finishedRes.rows;
+      }
 
-      // Batch load unique commentators for finished streams
+      // Batch load unique commentators and total comments count for finished streams
       if (finishedStreams.length > 0) {
         const videoIds = finishedStreams.map((s) => s.video_id).filter(Boolean);
         if (videoIds.length > 0) {
@@ -432,11 +523,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             for (const row of uqRes.rows || []) {
               uqMap.set(row.video_id, parseInt(row.unique_commentators || '0', 10));
             }
+
+            const totalCommRes = await executeQuery(
+              `SELECT video_id, COUNT(*)::int as total_comments
+               FROM public.comments
+               WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
+               GROUP BY video_id`,
+              [videoIds]
+            );
+            const totalCommMap = new Map<string, number>();
+            for (const row of totalCommRes.rows || []) {
+              totalCommMap.set(row.video_id, parseInt(row.total_comments || '0', 10));
+            }
+
             for (const s of finishedStreams) {
               s.unique_commentators = uqMap.get(s.video_id) || 0;
+              s.comments_count = totalCommMap.get(s.video_id) || 0;
             }
           } catch (e) {
-            console.error('Error fetching unique commentators for finished streams:', e);
+            console.error('Error fetching commentators/comments for finished streams:', e);
           }
         }
       }
@@ -463,6 +568,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               stream.start_date,
               stream.scrape_date
             );
+          }
+          if (Array.isArray(stream.data) && stream.data.length > 0) {
+            const maxComments = Math.max(...stream.data.map((d: any) => Number(d.comments_count || 0)));
+            if (maxComments > 0) {
+              stream.comments_count = maxComments;
+            }
           }
         } catch {
           stream.data = synthesizeTimeline(

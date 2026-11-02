@@ -115,6 +115,7 @@ export interface Stream {
   unique_commentators?: number;
   comments?: CommentItem[];
   data?: MinuteDataPoint[];
+  type?: string;
 }
 
 export interface Channel {
@@ -128,6 +129,7 @@ export interface Channel {
   twitter?: string;
   avg_viewers: number;
   avg_likes: number;
+  type?: string;
   banner?: string;
   superchats_count?: number;
   superchats_total_ars?: number;
