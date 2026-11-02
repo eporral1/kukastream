@@ -84,116 +84,40 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
     return 0;
   };
 
-  // Sync props if parent changes
-  useEffect(() => {
-    setChannel(initialChannel);
-    if (initialLiveStream?.live === 'live') {
-      setLiveStream(initialLiveStream);
-    } else {
-      setLiveStream(undefined);
-    }
-  }, [initialChannel, initialLiveStream]);
+  const tryFetchChannel = React.useCallback(async (channelIdentifier: string) => {
+    if (lastFetchedId.current === channelIdentifier) return;
+    lastFetchedId.current = channelIdentifier;
 
-  // Fetch unique commentator counts if not already populated on streams
-  useEffect(() => {
-    const videoIdsToFetch: string[] = [];
-    if (liveStream?.video_id && typeof liveStream.unique_commentators !== 'number') {
-      videoIdsToFetch.push(liveStream.video_id);
-    }
-    for (const ps of pastStreams) {
-      if (ps.video_id && typeof ps.unique_commentators !== 'number') {
-        videoIdsToFetch.push(ps.video_id);
-      }
-    }
-    if (videoIdsToFetch.length === 0) return;
-
-    fetch(`/api/unique-commentators?video_ids=${encodeURIComponent(videoIdsToFetch.join(','))}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.counts) {
-          setUniqueCommentatorsMap((prev) => ({ ...prev, ...data.counts }));
+    setIsLoadingChannel(true);
+    try {
+        const res = await fetch(`/api/channel?id=${encodeURIComponent(channelIdentifier)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        const data = await res.json();
+        
+        if (data.success) {
+          if (data.channel) setChannel(data.channel);
+          const liveData = data.live || data.liveStream;
+          setLiveStream(liveData?.live === 'live' && (isOctober2026OrLater(liveData.scrape_date) || isOctober2026OrLater(liveData.start_date)) ? liveData : undefined);
+          const streamList = data.streams || data.history || [];
+          setPastStreams(streamList.filter((s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)));
+          setHeatmapData(data.hour_day_data || []);
+          setAvgData(data.avg_data || []);
         }
-      })
-      .catch((err) => console.warn('Could not fetch unique commentator counts:', err));
-  }, [liveStream?.video_id, liveStream?.unique_commentators, pastStreams]);
+    } catch (err) {
+        console.warn('Could not fetch channel details from API:', err);
+        setPastStreams([]); setHeatmapData([]); setAvgData([]);
+    } finally {
+        setIsLoadingChannel(false);
+    }
+  }, []);
 
-  // Fetch complete channel details from backend /api/channel
   useEffect(() => {
     const channelIdentifier = channel.channel || channel.channel_id;
-    if (!channelIdentifier || lastFetchedId.current === channelIdentifier) return;
-    
-    lastFetchedId.current = channelIdentifier;
-    let isMounted = true;
-    setIsLoadingChannel(true);
+    if (channelIdentifier) {
+        tryFetchChannel(channelIdentifier);
+    }
+  }, [channel.channel, channel.channel_id, tryFetchChannel]);
 
-    const tryFetchChannel = async () => {
-      try {
-        const res = await fetch(`/api/channel?id=${encodeURIComponent(channelIdentifier)}`);
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-        }
-        const contentType = res.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-          throw new Error(`Expected JSON but received ${contentType || 'non-JSON'}`);
-        }
-        const data = await res.json();
-        if (!isMounted) return;
-
-        if (data.success) {
-          if (data.channel) {
-            setChannel(data.channel);
-          }
-          const liveData = data.live || data.liveStream;
-          if (
-            liveData &&
-            liveData.live === 'live' &&
-            (isOctober2026OrLater(liveData.scrape_date) || isOctober2026OrLater(liveData.start_date))
-          ) {
-            setLiveStream(liveData);
-          } else {
-            setLiveStream(undefined);
-          }
-
-          const streamList = data.streams || data.history || [];
-          if (streamList.length > 0) {
-            const filteredStreams = streamList.filter(
-              (s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)
-            );
-            setPastStreams(filteredStreams);
-          } else {
-            setPastStreams([]);
-          }
-
-          if (data.hour_day_data && data.hour_day_data.length > 0) {
-            setHeatmapData(data.hour_day_data);
-          } else {
-            setHeatmapData([]);
-          }
-
-          if (data.avg_data && data.avg_data.length > 0) {
-            setAvgData(data.avg_data);
-          } else {
-            setAvgData([]);
-          }
-        }
-      } catch (err) {
-        console.warn('Could not fetch channel details from API:', err);
-        if (isMounted) {
-          setPastStreams([]);
-          setHeatmapData([]);
-          setAvgData([]);
-        }
-      } finally {
-        if (isMounted) setIsLoadingChannel(false);
-      }
-    };
-
-    tryFetchChannel();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [channel.channel, channel.channel_id]);
 
   // Minute points for active live stream chart (only real data)
   const activeLiveChartPoints = useMemo(() => {
