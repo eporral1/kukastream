@@ -131,7 +131,7 @@ export const SuperchatsRankingPage: React.FC<SuperchatsRankingPageProps> = ({
               <span>Actualizar Ranking</span>
             </button>
             <div className="text-xs text-amber-100/90 font-medium">
-              Datos extraídos de la base de datos de transmisiones
+             
             </div>
           </div>
         </div>
@@ -641,7 +641,7 @@ export const SuperchatsRankingPage: React.FC<SuperchatsRankingPageProps> = ({
                               })
                             }
                             className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
-                            title="Ver los comentarios y superchats de este video"
+                            title="Ver los mensajes y superchats de este video"
                           >
                             <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
                             <span className="hidden sm:inline">Ver Superchats</span>

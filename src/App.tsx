@@ -489,7 +489,7 @@ export default function App() {
                                 onClick={() => setSelectedCommentsStream(stream)}
                                 className="bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer border border-blue-200/50"
                               >
-                                💬 Comentarios ({(stream.comments_count || 0).toLocaleString('es-AR')})
+                                💬 Mensajes ({(stream.comments_count || 0).toLocaleString('es-AR')})
                               </button>
                               {Number(stream.superchats_total) > 0 && (
                                 <button

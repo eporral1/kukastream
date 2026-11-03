@@ -247,7 +247,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                 </div>
                 <div className="text-left md:text-right">
                   <div className="text-xs text-gray-500 uppercase tracking-wider font-semibold">
-                    Comentarios / Hora
+                    mensajes / Hora
                   </div>
                   <div className="text-xl sm:text-2xl font-black text-amber-500">
                     {formatNumber(Math.max(0, channel.avg_comments || 0))}
@@ -307,7 +307,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                     className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
                   >
                     <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Ver Comentarios & Superchats</span>
+                    <span>Mensajes & Superchats</span>
                   </button>
                 </div>
               </div>
@@ -330,7 +330,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                 </div>
 
                 <div className="text-center">
-                  <div className="text-xs text-gray-400 font-semibold mb-0.5">COMENTARIOS</div>
+                  <div className="text-xs text-gray-400 font-semibold mb-0.5">MENSAJES</div>
                   <div className="text-3xl font-black text-amber-500">
                     {formatNumber(liveStream.comments_count || 0)}
                   </div>
@@ -472,7 +472,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                         className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
                       >
                         <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Ver Comentarios & Superchats</span>
+                        <span>Mensajes & Superchats</span>
                       </button>
                     </div>
                   </div>

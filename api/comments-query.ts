@@ -120,7 +120,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!p) {
     return res.status(200).json({
       success: false,
-      error: 'Base de datos no configurada en Vercel para recuperar los comentarios.',
+      error: 'Base de datos no configurada en Vercel para recuperar los chats.',
     });
   }
 
@@ -214,7 +214,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (commentsRows.length === 0 && superchatsRows.length === 0) {
       return res.status(200).json({
         success: true,
-        answer: 'No se encontraron comentarios ni superchats registrados en la base de datos para esta transmisión.',
+        answer: 'No se encontraron chats ni superchats registrados en la base de datos para esta transmisión.',
         comments_analyzed: 0,
         superchats_analyzed: 0,
       });
@@ -232,7 +232,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const siteName = process.env.SITE_NAME || process.env.VITE_SITE_NAME || 'StreamData';
     const prompt = `Actúas como analista especializado de chat y superchats de streaming para la plataforma ${siteName} (Argentina).
 
-El usuario tiene una consulta sobre el contenido de los comentarios y superchats de la transmisión.
+El usuario tiene una consulta sobre el contenido de los chats y superchats de la transmisión.
 
 A continuación tienes los datos reales registrados en la base de datos:
 
@@ -247,8 +247,8 @@ ${superchatsListText}
 
 Instrucciones:
 1. Responde de forma completa, precisa y directa a la solicitud del usuario.
-2. Si el usuario pide comentarios con posturas, ideas o temáticas particulares (ej: "dame comment donde se expresen ideas políticas", "comentarios en contra del conductor", "chistes"):
-   - Cita textualmente entre comillas los comentarios que mejor coinciden.
+2. Si el usuario pide chats con posturas, ideas o temáticas particulares (ej: "dame comment donde se expresen ideas políticas", "comentarios en contra del conductor", "chistes"):
+   - Cita textualmente entre comillas los chats que mejor coinciden.
    - Indica el autor (@usuario) de cada uno.
    - Da un breve contexto o síntesis de lo que expresan.
 3. Si el usuario pide un resumen, un análisis de sentimiento o estadísticas:

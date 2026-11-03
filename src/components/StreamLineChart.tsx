@@ -85,7 +85,7 @@ export const StreamLineChart: React.FC<StreamLineChartProps> = ({
 
     if (hasComments) {
       datasets.push({
-        label: 'Comentarios',
+        label: 'Chats',
         data: comments,
         borderColor: '#f59e0b',
         backgroundColor: 'rgba(245, 158, 11, 0.05)',

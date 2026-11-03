@@ -249,8 +249,8 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
 
   const quickPrompts = [
     'dame comments donde se expresen ideas políticas',
-    'resumí qué opinan los comentarios',
-    'comentarios más picantes o graciosos',
+    'resumí qué opinan los chats',
+    'chats más picantes o graciosos',
     'análisis de superchats y temas principales',
   ];
 
@@ -289,7 +289,7 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
             <button
               onClick={() => fetchInitialData(true)}
               disabled={isRefreshing || loading}
-              title="Actualizar comentarios"
+              title="Actualizar chats"
               className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
             >
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`} />
@@ -314,7 +314,7 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
             }`}
           >
             <MessageSquare className="w-4 h-4" />
-            <span>Comentarios & Superchats</span>
+            <span>Mensajes & Superchats</span>
             {totalComments > 0 && (
               <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded-full font-bold ml-0.5">
                 {formatNumber(totalComments + totalSuperchats)}
@@ -356,7 +356,7 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
           )}
         </div>
 
-        {/* Tab 1: Comentarios & Superchats */}
+        {/* Tab 1: Chats & Superchats */}
         {activeTab === 'comments' && (
           <div className="flex flex-col flex-1 min-h-0">
             {/* Database Totals & Filter Tabs Bar */}
@@ -466,7 +466,7 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
               {loading ? (
                 <div className="py-20 text-center text-gray-500 flex flex-col items-center justify-center space-y-3">
                   <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
-                  <span className="text-xs font-medium">Cargando comentarios y superchats desde la base de datos...</span>
+                  <span className="text-xs font-medium">Cargando mensajes y superchats desde la base de datos...</span>
                 </div>
               ) : error ? (
                 <div className="p-4 bg-red-50 text-red-700 rounded-xl text-xs border border-red-200">
@@ -557,7 +557,7 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
                     <div className="py-14 text-center text-gray-400 text-xs">
                       <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-40 text-gray-400" />
                       {searchQuery ? (
-                        <p>No se encontraron comentarios que coincidan con "{searchQuery}".</p>
+                        <p>No se encontraron chats que coincidan con "{searchQuery}".</p>
                       ) : (
                         <p>No se encontraron registros en la tabla para este video_id.</p>
                       )}
@@ -570,7 +570,7 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
                       {isLoadingMore ? (
                         <div className="inline-flex items-center gap-2 text-xs font-semibold text-blue-600 bg-blue-50 px-4 py-2 rounded-full border border-blue-100">
                           <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />
-                          <span>Cargando más comentarios... (20 por lote)</span>
+                          <span>Cargando más chats... (20 por lote)</span>
                         </div>
                       ) : hasMoreComments ? (
                         <button
@@ -579,12 +579,12 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
                         >
                           <ChevronDown className="w-4 h-4" />
                           <span>
-                            Cargar más comentarios ({comments.length} de {totalComments})
+                            Cargar más chats ({comments.length} de {totalComments})
                           </span>
                         </button>
                       ) : comments.length > 0 ? (
                         <span className="text-[11px] text-gray-400 font-medium">
-                          ✓ Todos los {comments.length} comentarios han sido cargados.
+                          ✓ Todos los {comments.length} chats han sido cargados.
                         </span>
                       ) : null}
                     </div>
@@ -616,10 +616,10 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
                 </div>
                 <div>
                   <h3 className="text-sm sm:text-base font-extrabold text-gray-900 tracking-tight">
-                    Consulta inteligente con Gemini sobre los comentarios
+                    Consulta inteligente con Gemini sobre los chats
                   </h3>
                   <p className="text-xs text-gray-500">
-                    Preguntá cualquier cosa sobre la totalidad de comentarios y superchats registrados en la base de datos.
+                    Preguntá cualquier cosa sobre la totalidad de mensajes y superchats registrados en la base de datos.
                   </p>
                 </div>
               </div>
@@ -694,9 +694,9 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
               <div className="p-5 bg-white rounded-2xl border border-blue-200/80 shadow-xs flex items-center space-x-3.5 animate-pulse">
                 <RefreshCw className="w-6 h-6 text-blue-600 animate-spin shrink-0" />
                 <div className="space-y-1 text-xs">
-                  <p className="font-bold text-gray-900 text-sm">Analizando comentarios con Gemini...</p>
+                  <p className="font-bold text-gray-900 text-sm">Analizando chats con Gemini...</p>
                   <p className="text-gray-500">
-                    Examinando miles de comentarios y superchats de la base de datos para sintetizar y responder tu consulta.
+                    Examinando miles de mensajes y superchats de la base de datos para sintetizar y responder tu consulta.
                   </p>
                 </div>
               </div>

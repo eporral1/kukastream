@@ -248,7 +248,7 @@ export const ChannelCommentsModal: React.FC<ChannelCommentsModalProps> = ({
   const quickPrompts = [
     `temas más comentados en ${channel.channel_name}`,
     'qué dicen sobre los conductores',
-    'comentarios más polémicos o graciosos',
+    'mensajes  más polémicos o graciosos',
     'resumen de superchats y donaciones',
   ];
 
@@ -276,7 +276,7 @@ export const ChannelCommentsModal: React.FC<ChannelCommentsModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-gray-600 line-clamp-1 font-medium">
-                Comentarios y Superchats de transmisiones del canal
+                Mensajes y Superchats de transmisiones del canal
               </p>
             </div>
           </div>
@@ -309,7 +309,7 @@ export const ChannelCommentsModal: React.FC<ChannelCommentsModalProps> = ({
             }`}
           >
             <MessageSquare className="w-4 h-4" />
-            <span>Comentarios & Superchats</span>
+            <span>Mensajes & Superchats</span>
             {totalComments > 0 && (
               <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded-full font-bold ml-0.5">
                 {formatNumber(totalComments + totalSuperchats)}
@@ -351,7 +351,7 @@ export const ChannelCommentsModal: React.FC<ChannelCommentsModalProps> = ({
           )}
         </div>
 
-        {/* Tab 1: Comentarios & Superchats */}
+        {/* Tab 1: Mensajes & Superchats */}
         {activeTab === 'comments' && (
           <div className="flex flex-col flex-1 min-h-0">
             {/* Database Totals & Filter Tabs Bar */}
@@ -412,7 +412,7 @@ export const ChannelCommentsModal: React.FC<ChannelCommentsModalProps> = ({
                       : 'text-blue-800 hover:bg-blue-50'
                   }`}
                 >
-                  💬 Comments ({totalComments || comments.length})
+                  💬 Mensajes ({totalComments || comments.length})
                 </button>
               </div>
             </div>
@@ -461,7 +461,7 @@ export const ChannelCommentsModal: React.FC<ChannelCommentsModalProps> = ({
               {loading ? (
                 <div className="py-20 text-center text-gray-500 flex flex-col items-center justify-center space-y-3">
                   <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
-                  <span className="text-xs font-medium">Cargando comentarios y superchats de {channel.channel_name}...</span>
+                  <span className="text-xs font-medium">Cargando mensajes y superchats de {channel.channel_name}...</span>
                 </div>
               ) : error ? (
                 <div className="p-4 bg-red-50 text-red-700 rounded-xl text-xs border border-red-200">
@@ -564,7 +564,7 @@ export const ChannelCommentsModal: React.FC<ChannelCommentsModalProps> = ({
                     <div className="py-14 text-center text-gray-400 text-xs">
                       <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-40 text-gray-400" />
                       {searchQuery ? (
-                        <p>No se encontraron comentarios que coincidan con "{searchQuery}".</p>
+                        <p>No se encontraron chats que coincidan con "{searchQuery}".</p>
                       ) : (
                         <p>No se encontraron registros en la tabla para este canal.</p>
                       )}
@@ -577,7 +577,7 @@ export const ChannelCommentsModal: React.FC<ChannelCommentsModalProps> = ({
                       {isLoadingMore ? (
                         <div className="inline-flex items-center gap-2 text-xs font-semibold text-blue-600 bg-blue-50 px-4 py-2 rounded-full border border-blue-100">
                           <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />
-                          <span>Cargando más comentarios... (20 por lote)</span>
+                          <span>Cargando más mensajes... (20 por lote)</span>
                         </div>
                       ) : hasMoreComments ? (
                         <button
@@ -586,12 +586,12 @@ export const ChannelCommentsModal: React.FC<ChannelCommentsModalProps> = ({
                         >
                           <ChevronDown className="w-4 h-4" />
                           <span>
-                            Cargar más comentarios ({comments.length} de {totalComments})
+                            Cargar más mensajes ({comments.length} de {totalComments})
                           </span>
                         </button>
                       ) : comments.length > 0 ? (
                         <span className="text-[11px] text-gray-400 font-medium">
-                          ✓ Todos los {comments.length} comentarios han sido cargados.
+                          ✓ Todos los {comments.length} chats han sido cargados.
                         </span>
                       ) : null}
                     </div>
@@ -624,10 +624,10 @@ export const ChannelCommentsModal: React.FC<ChannelCommentsModalProps> = ({
                 </div>
                 <div>
                   <h3 className="text-sm sm:text-base font-extrabold text-gray-900 tracking-tight">
-                    Consulta inteligente con Gemini sobre los comentarios de {channel.channel_name}
+                    Consulta inteligente con Gemini sobre los mensajes de {channel.channel_name}
                   </h3>
                   <p className="text-xs text-gray-500">
-                    Preguntá cualquier cosa sobre la totalidad de comentarios y superchats del canal en la base de datos.
+                    Preguntá cualquier cosa sobre la totalidad de mensajes y superchats del canal en la base de datos.
                   </p>
                 </div>
               </div>
@@ -702,9 +702,9 @@ export const ChannelCommentsModal: React.FC<ChannelCommentsModalProps> = ({
               <div className="p-5 bg-white rounded-2xl border border-blue-200/80 shadow-xs flex items-center space-x-3.5 animate-pulse">
                 <RefreshCw className="w-6 h-6 text-blue-600 animate-spin shrink-0" />
                 <div className="space-y-1 text-xs">
-                  <p className="font-bold text-gray-900 text-sm">Analizando comentarios con Gemini...</p>
+                  <p className="font-bold text-gray-900 text-sm">Analizando mensajes con Gemini...</p>
                   <p className="text-gray-500">
-                    Examinando miles de comentarios y superchats del canal para responder tu consulta.
+                    Examinando miles de mensajes y superchats del canal para responder tu consulta.
                   </p>
                 </div>
               </div>

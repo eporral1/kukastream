@@ -100,7 +100,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         l.video_id, l.channel_id, l.concurrent_viewers, l.old_viewers,
         l.current_likes, l.old_likes, l.scrape_date, l.start_date, l.live,
         COALESCE(l.video_title, '') AS video_title,
-        c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter, c.type,
+        c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter, c.type, c.active,
         COALESCE(comm.comments_count, 0)::int as comments_count,
         0::numeric as superchats_total,
         0::int as superchats_count
@@ -113,7 +113,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ORDER BY m.scrape_date DESC, m.id DESC 
         LIMIT 1
       ) comm ON true
-      WHERE (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+      WHERE c.active::text IN ('1', 'true') and (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
         AND l.concurrent_viewers > 0
     `;
 

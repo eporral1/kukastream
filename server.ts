@@ -162,7 +162,8 @@ app.get('/api/live', async (req: Request, res: Response) => {
         ORDER BY m.scrape_date DESC, m.id DESC 
         LIMIT 1
       ) comm ON true
-      WHERE l.live = 'live' 
+      WHERE c.active::text IN ('1', 'true')
+        AND l.live = 'live' 
         AND l.concurrent_viewers > 0
         AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
     `;
@@ -196,7 +197,8 @@ app.get('/api/live', async (req: Request, res: Response) => {
         ORDER BY m.scrape_date DESC, m.id DESC 
         LIMIT 1
       ) comm ON true
-      WHERE l.live <> 'live'
+      WHERE c.active::text IN ('1', 'true')
+        AND l.live <> 'live'
         AND l.scrape_date >= '${OCT_2026_CUTOFF}'
         AND l.scrape_date >= NOW() - INTERVAL '24 hours'
     `;
@@ -274,7 +276,19 @@ app.get('/api/channels', async (_req: Request, res: Response) => {
 
   try {
     let query = `
-      WITH comm_stats AS (
+      WITH viewer_stats AS (
+        SELECT channel_id,
+               COALESCE(ROUND(AVG(max_viewers)), 0)::int AS avg_viewers
+        FROM (
+          SELECT video_id, channel_id,
+                 MAX(concurrent_viewers) AS max_viewers
+          FROM public.live
+          WHERE scrape_date >= '${OCT_2026_CUTOFF}' AND concurrent_viewers > 0
+          GROUP BY video_id, channel_id
+        ) sub
+        GROUP BY channel_id
+      ),
+      comm_stats AS (
         SELECT channel_id,
                COALESCE(ROUND(AVG(comments_rate)), 0)::int AS avg_comments
         FROM (
@@ -287,19 +301,32 @@ app.get('/api/channels', async (_req: Request, res: Response) => {
           HAVING MAX(scrape_date) > MIN(scrape_date)
         ) sub
         GROUP BY channel_id
+      ),
+      likes_stats AS (
+        SELECT channel_id,
+               COALESCE(ROUND(AVG(likes_rate)), 0)::int AS avg_likes
+        FROM (
+          SELECT video_id, channel_id,
+                 (MAX(likes) - MIN(likes))::numeric / 
+                 GREATEST(0.25, EXTRACT(EPOCH FROM (MAX(scrape_date) - MIN(scrape_date))) / 3600.0) AS likes_rate
+          FROM public.minute
+          WHERE scrape_date >= '${OCT_2026_CUTOFF}' AND likes > 0
+          GROUP BY video_id, channel_id
+          HAVING MAX(scrape_date) > MIN(scrape_date) AND MAX(likes) >= MIN(likes)
+        ) sub
+        GROUP BY channel_id
       )
       SELECT 
         c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active,
-        COALESCE(AVG(l.concurrent_viewers), 0)::int AS avg_viewers,
-        COALESCE(AVG(CASE WHEN l.current_likes > l.old_likes THEN (l.current_likes - l.old_likes) * 6 END), 0)::int AS avg_likes,
+        COALESCE(vs.avg_viewers, 0)::int AS avg_viewers,
+        COALESCE(ls.avg_likes, 0)::int AS avg_likes,
         COALESCE(cs.avg_comments, 0)::int AS avg_comments
       FROM public.channels c
-      LEFT JOIN public.live l ON l.channel_id = c.channel_id 
-        AND l.scrape_date >= '${OCT_2026_CUTOFF}'
-        AND l.concurrent_viewers > 0
+      LEFT JOIN viewer_stats vs ON vs.channel_id = c.channel_id
       LEFT JOIN comm_stats cs ON cs.channel_id = c.channel_id
+      LEFT JOIN likes_stats ls ON ls.channel_id = c.channel_id
       WHERE c.active::text IN ('1', 'true')
-      GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, cs.avg_comments
+      GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, vs.avg_viewers, cs.avg_comments, ls.avg_likes
       ORDER BY avg_viewers DESC;
     `;
     let result;
@@ -376,7 +403,8 @@ app.get('/api/streams', async (req: Request, res: Response) => {
         ORDER BY m.scrape_date DESC, m.id DESC 
         LIMIT 1
       ) comm ON true
-      WHERE (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+      WHERE c.active::text IN ('1', 'true')
+        AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
         AND l.concurrent_viewers > 0
     `;
 
@@ -547,8 +575,7 @@ const channelHandler = async (req: Request, res: Response) => {
     try {
       const statsRes = await p.query(
         `SELECT 
-           COALESCE(AVG(l.concurrent_viewers), 0)::int AS avg_viewers,
-           COALESCE(AVG(CASE WHEN l.current_likes > l.old_likes THEN (l.current_likes - l.old_likes) * 6 END), 0)::int AS avg_likes
+           COALESCE(AVG(l.concurrent_viewers), 0)::int AS avg_viewers
          FROM public.live l
          WHERE l.channel_id = $1 
            AND l.scrape_date >= '${OCT_2026_CUTOFF}' 
@@ -557,8 +584,22 @@ const channelHandler = async (req: Request, res: Response) => {
       );
       if (statsRes.rows && statsRes.rows.length > 0) {
         channel.avg_viewers = Number(statsRes.rows[0].avg_viewers || 0);
-        channel.avg_likes = Number(statsRes.rows[0].avg_likes || 0);
       }
+
+      const likesStatsRes = await p.query(
+        `SELECT COALESCE(ROUND(AVG(likes_rate)), 0)::int AS avg_likes
+         FROM (
+           SELECT video_id,
+                  (MAX(likes) - MIN(likes))::numeric / 
+                  GREATEST(0.25, EXTRACT(EPOCH FROM (MAX(scrape_date) - MIN(scrape_date))) / 3600.0) AS likes_rate
+           FROM public.minute
+           WHERE channel_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}' AND likes > 0
+           GROUP BY video_id
+           HAVING MAX(scrape_date) > MIN(scrape_date) AND MAX(likes) >= MIN(likes)
+         ) sub`,
+        [channelId]
+      );
+      channel.avg_likes = Number(likesStatsRes.rows?.[0]?.avg_likes || 0);
 
       const commStatsRes = await p.query(
         `SELECT COALESCE(ROUND(AVG(comments_rate)), 0)::int AS avg_comments
@@ -1197,7 +1238,7 @@ app.get('/api/comments', async (req: Request, res: Response) => {
     if (!resolvedVideoId && !resolvedChannelId) {
       res.status(400).json({
         success: false,
-        error: 'Parámetro requerido: debes especificar video_id o channel_id para consultar comentarios.',
+        error: 'Parámetro requerido: debes especificar video_id o channel_id para consultar chats.',
         comments: [],
         superchats: [],
         total_comments: 0,
@@ -1606,7 +1647,7 @@ app.post('/api/comments-query', async (req: Request, res: Response) => {
   if (!p) {
     res.status(200).json({
       success: false,
-      error: 'Base de datos no conectada para obtener los comentarios.',
+      error: 'Base de datos no conectada para obtener los chats.',
     });
     return;
   }
@@ -1700,7 +1741,7 @@ app.post('/api/comments-query', async (req: Request, res: Response) => {
     if (commentsRows.length === 0 && superchatsRows.length === 0) {
       res.json({
         success: true,
-        answer: 'No se encontraron comentarios ni superchats registrados en la base de datos para esta transmisión.',
+        answer: 'No se encontraron chats ni superchats registrados en la base de datos para esta transmisión.',
         comments_analyzed: 0,
         superchats_analyzed: 0,
       });
@@ -1718,7 +1759,7 @@ app.post('/api/comments-query', async (req: Request, res: Response) => {
     const siteName = process.env.SITE_NAME || process.env.VITE_SITE_NAME || 'StreamData';
     const prompt = `Actúas como analista especializado de chat y superchats de streaming para la plataforma ${siteName} (Argentina).
 
-El usuario tiene una consulta sobre el contenido de los comentarios y superchats de la transmisión.
+El usuario tiene una consulta sobre el contenido de los mensajes y superchats de la transmisión.
 
 A continuación tienes los datos reales registrados en la base de datos:
 
@@ -1733,8 +1774,8 @@ ${superchatsListText}
 
 Instrucciones:
 1. Responde de forma completa, precisa y directa a la solicitud del usuario.
-2. Si el usuario pide comentarios con posturas, ideas o temáticas particulares (ej: "dame comment donde se expresen ideas políticas", "comentarios en contra del conductor", "chistes"):
-   - Cita textualmente entre comillas los comentarios que mejor coinciden.
+2. Si el usuario pide chats con posturas, ideas o temáticas particulares (ej: "dame comment donde se expresen ideas políticas", "chats en contra del conductor", "chistes"):
+   - Cita textualmente entre comillas los chats que mejor coinciden.
    - Indica el autor (@usuario) de cada uno.
    - Da un breve contexto o síntesis de lo que expresan.
 3. Si el usuario pide un resumen, un análisis de sentimiento o estadísticas:

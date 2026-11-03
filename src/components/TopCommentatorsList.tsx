@@ -127,7 +127,7 @@ export const TopCommentatorsList: React.FC<TopCommentatorsListProps> = ({
                 </span>
               </div>
               <p className="text-xs text-gray-600">
-                Los usuarios que más comentarios enviaron en la transmisión.
+                Los usuarios que más chats enviaron en la transmisión.
               </p>
             </div>
           </div>
@@ -209,7 +209,7 @@ export const TopCommentatorsList: React.FC<TopCommentatorsListProps> = ({
                       {top2.author_id}
                     </p>
                     <p className="text-[11px] text-gray-500 font-medium">
-                      <strong className="text-slate-900 font-extrabold">{formatNumber(top2.comment_count)}</strong> comentarios
+                      <strong className="text-slate-900 font-extrabold">{formatNumber(top2.comment_count)}</strong> chats
                     </p>
                   </div>
                 </div>
@@ -246,7 +246,7 @@ export const TopCommentatorsList: React.FC<TopCommentatorsListProps> = ({
                       {top1.author_id}
                     </p>
                     <p className="text-xs text-amber-950 font-bold">
-                      <strong className="text-amber-700 font-extrabold text-sm">{formatNumber(top1.comment_count)}</strong> comentarios
+                      <strong className="text-amber-700 font-extrabold text-sm">{formatNumber(top1.comment_count)}</strong> chats
                     </p>
                   </div>
                 </div>
@@ -256,7 +256,7 @@ export const TopCommentatorsList: React.FC<TopCommentatorsListProps> = ({
                   </p>
                 )}
                 <div className="mt-2.5 flex items-center justify-end text-[11px] font-black text-amber-800 group-hover:text-amber-900">
-                  <span>Ver todos sus comentarios</span>
+                  <span>Ver todos sus chats</span>
                   <ArrowRight className="w-3.5 h-3.5 ml-1 group-hover:translate-x-1 transition-transform" />
                 </div>
               </div>
@@ -283,7 +283,7 @@ export const TopCommentatorsList: React.FC<TopCommentatorsListProps> = ({
                       {top3.author_id}
                     </p>
                     <p className="text-[11px] text-gray-500 font-medium">
-                      <strong className="text-amber-900 font-extrabold">{formatNumber(top3.comment_count)}</strong> comentarios
+                      <strong className="text-amber-900 font-extrabold">{formatNumber(top3.comment_count)}</strong> chats
                     </p>
                   </div>
                 </div>
@@ -310,7 +310,7 @@ export const TopCommentatorsList: React.FC<TopCommentatorsListProps> = ({
               </div>
               <div className="flex items-center gap-6">
                 <span>Frecuencia</span>
-                <span>Total Comentarios</span>
+                <span>Total Chats</span>
               </div>
             </div>
 
@@ -388,7 +388,7 @@ export const TopCommentatorsList: React.FC<TopCommentatorsListProps> = ({
                       <button
                         type="button"
                         className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg bg-white border border-gray-200 text-blue-600 hover:bg-blue-50 transition-all text-xs font-bold flex items-center"
-                        title="Ver comentarios de este autor"
+                        title="Ver chats de este autor"
                       >
                         <ArrowRight className="w-3.5 h-3.5" />
                       </button>

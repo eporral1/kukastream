@@ -64,13 +64,12 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
       <div className="text-center pt-2 pb-6">
         <div className="inline-flex items-center space-x-2 bg-red-600 text-white px-3.5 py-1 rounded-full text-xs font-semibold mb-3 shadow-xs">
           <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
-          <span className="uppercase tracking-wider">Top 10 Transmisiones</span>
+          <span className="uppercase tracking-wider">Top 10 streams</span>
         </div>
         <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">
           Streams
         </h2>
         <p className="text-gray-600 max-w-xl mx-auto text-sm sm:text-base">
-          Ranking por transmisión individual (video_id) ordenado por pico de espectadores
         </p>
 
         {/* Search bar */}
@@ -87,7 +86,7 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
       </div>
 
       {/* Filter Tabs & Superchat Filter Toggle */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pb-2">
+      {/*<div className="flex flex-col sm:flex-row items-center justify-between gap-3 pb-2">
         <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 sm:gap-2">
           {['all', 'stream', 'entretenimiento', 'política', 'radio', 'tv', 'deportes'].map((tag) => (
             <button
@@ -104,7 +103,7 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
           ))}
         </div>
 
-        {/* Superchat filter switch */}
+        {/* Superchat filter switch * / }
         <button
           onClick={() => setFilterSuperchatsOnly(!filterSuperchatsOnly)}
           className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer shrink-0 ${
@@ -116,7 +115,7 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
           <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
           <span>{filterSuperchatsOnly ? 'Filtrando: Con Superchats' : 'Filtrar por Superchats'}</span>
         </button>
-      </div>
+      </div>*/}
 
       {/* Streams Ranking List */}
       <div className="space-y-4">
@@ -124,7 +123,7 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
           <span>Top {filteredStreams.length} streams</span>
           <span className="flex items-center gap-1.5">
             {isLoading && <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />}
-            <span>Ordenado por espectadores</span>
+            <span>Ordenado por pico de espectadores</span>
           </span>
         </div>
 
@@ -204,14 +203,14 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                             <span className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse"></span>
                             EN VIVO
                           </span>
-                        ) : (
+                        ) : "" /*: /*(
                           <span className="text-[11px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-md font-medium">
                             Finalizado
                           </span>
-                        )}
+                        )*/}
                         {(stream as any).subs !== undefined && (
                           <span className="text-xs text-gray-500 font-medium">
-                            {formatSubs((stream as any).subs)} subs
+                            {formatArgentinaDateTime(stream.start_date)}
                           </span>
                         )}
                       </div>
@@ -223,11 +222,11 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
 
                       {/* Action buttons & date */}
                       <div className="flex items-center gap-2 mt-2 flex-wrap text-xs">
-                        {stream.start_date && (
+                        {/*stream.start_date && (
                           <span className="text-gray-400 text-[11px]">
                             {formatArgentinaDateTime(stream.start_date)}
                           </span>
-                        )}
+                        )*/}
 
                         <button
                           onClick={() => onNavigateChannel(stream.channel)}
@@ -242,7 +241,7 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                           className="inline-flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2.5 py-0.5 rounded-full font-semibold transition-colors cursor-pointer"
                         >
                           <span>💬</span>
-                          <span>Comments ({(stream.comments_count || 0).toLocaleString('es-AR')})</span>
+                          <span>Mensajes{/*({(stream.comments_count || 0).toLocaleString('es-AR')})*/}</span>
                         </button>
 
                         {superchatsTotal > 0 && (
@@ -251,11 +250,11 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                             className="inline-flex items-center gap-1 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 px-2.5 py-0.5 rounded-full font-bold transition-colors cursor-pointer"
                           >
                             <span>💰</span>
-                            <span>${formatNumber(superchatsTotal)} ARS ({stream.superchats_count})</span>
+                            <span>${formatNumber(superchatsTotal)} ARS{/*({stream.superchats_count})*/}</span>
                           </button>
                         )}
 
-                        {stream.video_id && (
+                        {/*stream.video_id && (
                           <a
                             href={`https://youtube.com/watch?v=${stream.video_id}`}
                             target="_blank"
@@ -264,7 +263,7 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                           >
                             ▶ Ver en YT
                           </a>
-                        )}
+                        )*/}
                       </div>
                     </div>
                   </div>
@@ -290,7 +289,7 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                     </div>
 
                     <div className="text-center min-w-[80px]">
-                      <div className="text-xs text-gray-400 font-semibold mb-0.5">COMENTARIOS</div>
+                      <div className="text-xs text-gray-400 font-semibold mb-0.5">MENSAJES</div>
                       <div className="font-extrabold text-2xl text-amber-500">
                         {formatNumber(stream.comments_count || 0)}
                       </div>
@@ -366,7 +365,7 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                           onClick={() => setSelectedCommentsStream(stream)}
                           className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-xs font-semibold border border-blue-200"
                         >
-                          💬 Comments
+                          💬 Mensajes
                         </button>
                       </div>
                     </div>

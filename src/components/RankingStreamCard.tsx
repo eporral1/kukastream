@@ -94,7 +94,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                     className="bg-blue-50 hover:bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer border border-blue-200/60"
                   >
                     <span>💬</span>
-                    <span>Comentarios{/*({commentsCount})*/}</span>
+                    <span>Mensajes{/*({commentsCount})*/}</span>
                   </button>
                 )}
 
@@ -104,7 +104,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                     className="bg-amber-100 hover:bg-amber-200 text-amber-900 px-2.5 py-0.5 rounded-full text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer border border-amber-300"
                   >
                     <span>💰</span>
-                    <span>${formatNumber(superchatsTotal)} ARS ({stream.superchats_count})</span>
+                    <span>${formatNumber(superchatsTotal)} ARS{/* ({stream.superchats_count})*/}</span>
                   </button>
                 )}
 
@@ -146,7 +146,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
 
             {/* Comments Count */}
             <div className="text-center min-w-[75px]">
-              <div className="text-xs text-gray-400 font-semibold mb-0.5">COMENTARIOS</div>
+              <div className="text-xs text-gray-400 font-semibold mb-0.5">MENSAJES</div>
               <div className="font-extrabold text-2xl text-amber-500">
                 {formatNumber(stream.comments_count || 0)}
               </div>
