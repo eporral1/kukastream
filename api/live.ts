@@ -146,48 +146,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         0::int as superchats_count,
         COALESCE(comm.comments_count, 0)::int as comments_count,
         0::int as unique_commentators,
-        CASE 
-          WHEN c.type = 'eternal' THEN (
-            SELECT COALESCE(m.likes, l.current_likes) - COALESCE((
-              SELECT sub.likes 
-              FROM public.minute sub 
-              WHERE sub.video_id = l.video_id AND sub.video_title = l.video_title 
-              ORDER BY sub.scrape_date ASC, sub.id ASC 
-              LIMIT 1
-            ), COALESCE(m.likes, l.current_likes))
-            FROM public.minute m 
-            WHERE m.video_id = l.video_id 
-            ORDER BY m.scrape_date DESC, m.id DESC 
-            LIMIT 1
-          )
-          ELSE l.current_likes
-        END::int as current_likes
+        l.current_likes
       FROM public.live l
       JOIN public.channels c ON l.channel_id = c.channel_id
       LEFT JOIN LATERAL (
-        SELECT 
-          CASE 
-            WHEN c.type = 'eternal' THEN (
-              SELECT m.comments_count - COALESCE((
-                SELECT sub.comments_count 
-                FROM public.minute sub 
-                WHERE sub.video_id = l.video_id AND sub.video_title = l.video_title 
-                ORDER BY sub.scrape_date ASC, sub.id ASC 
-                LIMIT 1
-              ), m.comments_count)
-              FROM public.minute m 
-              WHERE m.video_id = l.video_id 
-              ORDER BY m.scrape_date DESC, m.id DESC 
-              LIMIT 1
-            )
-            ELSE (
-              SELECT m.comments_count 
-              FROM public.minute m 
-              WHERE m.video_id = l.video_id 
-              ORDER BY m.scrape_date DESC, m.id DESC 
-              LIMIT 1
-            )
-          END as comments_count
+        SELECT COALESCE(m.comments_count, 0) as comments_count
+        FROM public.minute m 
+        WHERE m.video_id = l.video_id 
+        ORDER BY m.scrape_date DESC, m.id DESC 
+        LIMIT 1
       ) comm ON true
       WHERE l.live = 'live' 
         AND l.concurrent_viewers > 0
@@ -212,10 +179,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter,
         0::numeric as superchats_total,
         0::int as superchats_count,
-        0::int as comments_count,
+        COALESCE(comm.comments_count, 0)::int as comments_count,
         0::int as unique_commentators
       FROM public.live l
       JOIN public.channels c ON l.channel_id = c.channel_id
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(m.comments_count, 0) as comments_count
+        FROM public.minute m 
+        WHERE m.video_id = l.video_id 
+        ORDER BY m.scrape_date DESC, m.id DESC 
+        LIMIT 1
+      ) comm ON true
       WHERE l.live <> 'live'
         AND l.scrape_date >= '${OCT_2026_CUTOFF}'
         AND l.scrape_date >= NOW() - INTERVAL '24 hours'
@@ -229,6 +203,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     recentQuery += ` ORDER BY l.scrape_date DESC LIMIT 10;`;
     const recentResult: any = await executeQuery(recentQuery, recentParams);
+
+    // Batch load superchats in ARS for all streams in Home (fast single query)
+    const allVideoIds = [
+      ...liveResult.rows.map((r: any) => r.video_id),
+      ...recentResult.rows.map((r: any) => r.video_id),
+    ].filter(Boolean);
+
+    if (allVideoIds.length > 0) {
+      try {
+        const scRes = await executeQuery(
+          `SELECT video_id, 
+                  SUM(CASE WHEN currency = 'ARS' THEN amount ELSE 0 END)::numeric as superchats_total,
+                  COUNT(*)::int as superchats_count
+           FROM public.superchats
+           WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
+           GROUP BY video_id`,
+          [allVideoIds]
+        );
+        const scMap = new Map<string, { total: number; count: number }>();
+        for (const row of scRes.rows || []) {
+          scMap.set(row.video_id, {
+            total: Number(row.superchats_total || 0),
+            count: Number(row.superchats_count || 0),
+          });
+        }
+        for (const stream of liveResult.rows) {
+          const sc = scMap.get(stream.video_id);
+          if (sc) {
+            stream.superchats_total = sc.total;
+            stream.superchats_count = sc.count;
+          }
+        }
+        for (const stream of recentResult.rows) {
+          const sc = scMap.get(stream.video_id);
+          if (sc) {
+            stream.superchats_total = sc.total;
+            stream.superchats_count = sc.count;
+          }
+        }
+      } catch (e) {
+        console.error('Error fetching superchats for live streams:', e);
+      }
+    }
 
     return res.status(200).json({
       success: true,

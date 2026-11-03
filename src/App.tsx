@@ -181,6 +181,12 @@ export default function App() {
     return streams.reduce((acc, curr) => acc + (Number(curr?.current_likes) || 0), 0);
   }, [streams]);
 
+  const totalSuperchatsArs = useMemo(() => {
+    const liveTotal = streams.reduce((acc, curr) => acc + (Number(curr?.superchats_total) || 0), 0);
+    const recentTotal = recentStreams.reduce((acc, curr) => acc + (Number(curr?.superchats_total) || 0), 0);
+    return liveTotal + recentTotal;
+  }, [streams, recentStreams]);
+
   // Handle Channel Route parsing: `/channel/:id` or `/channel/@handle`
   const isChannelDetail = currentPath.startsWith('/channel/');
   const currentChannelIdentifier = isChannelDetail
@@ -322,6 +328,7 @@ export default function App() {
                 totalLiveViewers={totalLiveViewers}
                 activeStreamsCount={streams.length}
                 totalLikes={totalLikes}
+                totalSuperchatsArs={totalSuperchatsArs}
                 lastUpdate={lastUpdate}
                 isLoading={isLoadingStreams && streams.length === 0}
                 onExploreChannels={() => navigate('/channels')}

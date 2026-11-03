@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, BarChart3, TrendingUp, Users, Heart, MessageSquare, Zap } from 'lucide-react';
+import { ArrowRight, BarChart3, TrendingUp, Users, Heart, Coins, Zap } from 'lucide-react';
 import { formatNumber } from '../data/mockData';
 import { SITE_NAME } from '../config/site';
 
@@ -7,6 +7,7 @@ interface HeroSectionProps {
   totalLiveViewers: number;
   activeStreamsCount: number;
   totalLikes: number;
+  totalSuperchatsArs?: number;
   lastUpdate?: string;
   isLoading?: boolean;
   onExploreChannels: () => void;
@@ -17,6 +18,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   totalLiveViewers,
   activeStreamsCount,
   totalLikes,
+  totalSuperchatsArs = 0,
   lastUpdate,
   isLoading = false,
   onExploreChannels,
@@ -78,61 +80,75 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
       </div>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 max-w-4xl mx-auto">
-        <div className="bg-white rounded-xl p-5 shadow-xs border border-gray-100 text-center hover:border-blue-200 transition-colors">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 max-w-5xl mx-auto">
+        <div className="bg-white rounded-xl p-4 sm:p-5 shadow-xs border border-gray-100 text-center hover:border-blue-200 transition-colors">
           <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-2">
             <Users className="w-4 h-4" />
           </div>
           {isLoading ? (
             <div className="h-8 sm:h-9 w-20 sm:w-24 bg-gray-200 rounded-lg animate-pulse mx-auto mb-1"></div>
           ) : (
-            <div className="text-2xl sm:text-3xl font-bold text-blue-600 mb-1">
+            <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-blue-600 mb-1">
               {formatNumber(totalLiveViewers)}
             </div>
           )}
-          <div className="text-xs sm:text-sm text-gray-500">Conectados En Vivo</div>
+          <div className="text-xs text-gray-500">Conectados En Vivo</div>
         </div>
 
-        <div className="bg-white rounded-xl p-5 shadow-xs border border-gray-100 text-center hover:border-teal-200 transition-colors">
+        <div className="bg-white rounded-xl p-4 sm:p-5 shadow-xs border border-gray-100 text-center hover:border-teal-200 transition-colors">
           <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center mx-auto mb-2">
             <Zap className="w-4 h-4" />
           </div>
           {isLoading ? (
             <div className="h-8 sm:h-9 w-14 sm:w-16 bg-gray-200 rounded-lg animate-pulse mx-auto mb-1"></div>
           ) : (
-            <div className="text-2xl sm:text-3xl font-bold text-teal-600 mb-1">
+            <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-teal-600 mb-1">
               {activeStreamsCount}
             </div>
           )}
-          <div className="text-xs sm:text-sm text-gray-500">Canales Transmitiendo</div>
+          <div className="text-xs text-gray-500">Canales En Vivo</div>
         </div>
 
-        <div className="bg-white rounded-xl p-5 shadow-xs border border-gray-100 text-center hover:border-rose-200 transition-colors">
+        <div className="bg-white rounded-xl p-4 sm:p-5 shadow-xs border border-gray-100 text-center hover:border-rose-200 transition-colors">
           <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-2">
             <Heart className="w-4 h-4" />
           </div>
           {isLoading ? (
             <div className="h-8 sm:h-9 w-20 sm:w-24 bg-gray-200 rounded-lg animate-pulse mx-auto mb-1"></div>
           ) : (
-            <div className="text-2xl sm:text-3xl font-bold text-rose-500 mb-1">
+            <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-rose-500 mb-1">
               {formatNumber(totalLikes)}
             </div>
           )}
-          <div className="text-xs sm:text-sm text-gray-500">Total Likes Acumulados</div>
+          <div className="text-xs text-gray-500">Likes Acumulados</div>
         </div>
 
-        <div className="bg-white rounded-xl p-5 shadow-xs border border-gray-100 text-center hover:border-purple-200 transition-colors">
+        <div className="bg-white rounded-xl p-4 sm:p-5 shadow-xs border border-gray-100 text-center hover:border-amber-200 transition-colors">
+          <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-2">
+            <Coins className="w-4 h-4" />
+          </div>
+          {isLoading ? (
+            <div className="h-8 sm:h-9 w-20 sm:w-24 bg-gray-200 rounded-lg animate-pulse mx-auto mb-1"></div>
+          ) : (
+            <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-amber-600 mb-1">
+              ${formatNumber(totalSuperchatsArs)}
+            </div>
+          )}
+          <div className="text-xs text-gray-500">Superchats (ARS)</div>
+        </div>
+
+        <div className="bg-white rounded-xl p-4 sm:p-5 shadow-xs border border-gray-100 text-center hover:border-purple-200 transition-colors col-span-2 sm:col-span-1">
           <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-2">
             <TrendingUp className="w-4 h-4" />
           </div>
           {isLoading ? (
             <div className="h-8 sm:h-9 w-20 sm:w-24 bg-gray-200 rounded-lg animate-pulse mx-auto mb-1"></div>
           ) : (
-            <div className="text-2xl sm:text-3xl font-bold text-purple-600 mb-1">
+            <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-600 mb-1">
               {lastUpdate && lastUpdate !== '--:--' ? lastUpdate : 'En vivo'}
             </div>
           )}
-          <div className="text-xs sm:text-sm text-gray-500">Última Actualización</div>
+          <div className="text-xs text-gray-500">Última Actualización</div>
         </div>
       </div>
     </div>
