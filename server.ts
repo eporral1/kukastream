@@ -567,18 +567,14 @@ const channelHandler = async (req: Request, res: Response) => {
         live.superchats = [];
       }
 
-      // Unique commentators count for live stream
-      try {
-        const uqRes = await p.query(
-          `SELECT COUNT(DISTINCT author_id)::int as unique_commentators 
-           FROM public.comments 
-           WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'`,
-          [live.video_id]
-        );
-        live.unique_commentators = parseInt(uqRes.rows[0]?.unique_commentators || '0', 10);
-      } catch {
-        live.unique_commentators = 0;
+      // Set comments_count to the maximum from chart data
+      if (Array.isArray(live.data) && live.data.length > 0) {
+        const maxLiveComments = Math.max(...live.data.map((d: any) => Number(d.comments_count || 0)));
+        if (maxLiveComments > 0) {
+          live.comments_count = maxLiveComments;
+        }
       }
+      live.unique_commentators = live.comments_count || 0;
     }
 
     // Recent finished streams (October 2026 onwards only)
@@ -594,45 +590,6 @@ const channelHandler = async (req: Request, res: Response) => {
         [channelId]
       );
       finishedStreams = finishedRes.rows;
-
-      // Batch load unique commentators and total comments count for finished streams
-      if (finishedStreams.length > 0) {
-        const videoIds = finishedStreams.map((s) => s.video_id).filter(Boolean);
-        if (videoIds.length > 0) {
-          try {
-            const uqRes = await p.query(
-              `SELECT video_id, COUNT(DISTINCT author_id)::int as unique_commentators
-               FROM public.comments
-               WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
-               GROUP BY video_id`,
-              [videoIds]
-            );
-            const uqMap = new Map<string, number>();
-            for (const row of uqRes.rows) {
-              uqMap.set(row.video_id, parseInt(row.unique_commentators || '0', 10));
-            }
-
-            const totalCommRes = await p.query(
-              `SELECT video_id, COUNT(*)::int as total_comments
-               FROM public.comments
-               WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
-               GROUP BY video_id`,
-              [videoIds]
-            );
-            const totalCommMap = new Map<string, number>();
-            for (const row of totalCommRes.rows || []) {
-              totalCommMap.set(row.video_id, parseInt(row.total_comments || '0', 10));
-            }
-
-            for (const s of finishedStreams) {
-              s.unique_commentators = uqMap.get(s.video_id) || 0;
-              s.comments_count = totalCommMap.get(s.video_id) || 0;
-            }
-          } catch (e) {
-            console.error('Error fetching commentators/comments for finished streams:', e);
-          }
-        }
-      }
 
       for (const stream of finishedStreams) {
         try {
@@ -701,7 +658,9 @@ const channelHandler = async (req: Request, res: Response) => {
       finishedStreams = [];
     }
 
-    // Heatmap hour-day data (from Laravel query, October 2026 onwards)
+    // Heatmap hour-day data (desactivado temporalmente ya que no se muestra en la UI)
+    const hourDayData: any[] = [];
+    /*
     const heatmapRes = await p.query(`
       SELECT
         hour,
@@ -731,8 +690,11 @@ const channelHandler = async (req: Request, res: Response) => {
       GROUP BY hour
       ORDER BY hour;
     `, [channelId]);
+    */
 
-    // 24h Average data (October 2026 onwards)
+    // 24h Average data (desactivado temporalmente ya que no se muestra en la UI)
+    const avgData: any[] = [];
+    /*
     const avgRes = await p.query(`
       SELECT scrape_date1, AVG(avg_viewers)::int AS avg_viewers, AVG(avg_likes)::int AS avg_likes
       FROM (
@@ -753,14 +715,15 @@ const channelHandler = async (req: Request, res: Response) => {
       GROUP BY scrape_date1
       ORDER BY scrape_date1;
     `, [channelId]);
+    */
 
     res.json({
       success: true,
       channel,
       live,
       streams: finishedStreams,
-      hour_day_data: heatmapRes.rows,
-      avg_data: avgRes.rows,
+      hour_day_data: hourDayData,
+      avg_data: avgData,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message, fallback: true });

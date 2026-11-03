@@ -466,18 +466,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         live.superchats = [];
       }
 
-      // 4. Unique commentators count for live stream
-      try {
-        const uqRes = await executeQuery(
-          `SELECT COUNT(DISTINCT author_id)::int as unique_commentators 
-           FROM public.comments 
-           WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'`,
-          [live.video_id]
-        );
-        live.unique_commentators = parseInt(uqRes.rows[0]?.unique_commentators || '0', 10);
-      } catch {
-        live.unique_commentators = 0;
+      // Set comments_count to the maximum from chart data
+      if (Array.isArray(live.data) && live.data.length > 0) {
+        const maxLiveComments = Math.max(...live.data.map((d: any) => Number(d.comments_count || 0)));
+        if (maxLiveComments > 0) {
+          live.comments_count = maxLiveComments;
+        }
       }
+      live.unique_commentators = live.comments_count || 0;
     }
 
     // Finished streams (October 2026 onwards)
@@ -511,44 +507,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         finishedStreams = finishedRes.rows;
       }
 
-      // Batch load unique commentators and total comments count for finished streams
-      if (finishedStreams.length > 0) {
-        const videoIds = finishedStreams.map((s) => s.video_id).filter(Boolean);
-        if (videoIds.length > 0) {
-          try {
-            const uqRes = await executeQuery(
-              `SELECT video_id, COUNT(DISTINCT author_id)::int as unique_commentators
-               FROM public.comments
-               WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
-               GROUP BY video_id`,
-              [videoIds]
-            );
-            const uqMap = new Map<string, number>();
-            for (const row of uqRes.rows || []) {
-              uqMap.set(row.video_id, parseInt(row.unique_commentators || '0', 10));
-            }
-
-            const totalCommRes = await executeQuery(
-              `SELECT video_id, COUNT(*)::int as total_comments
-               FROM public.comments
-               WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
-               GROUP BY video_id`,
-              [videoIds]
-            );
-            const totalCommMap = new Map<string, number>();
-            for (const row of totalCommRes.rows || []) {
-              totalCommMap.set(row.video_id, parseInt(row.total_comments || '0', 10));
-            }
-
-            for (const s of finishedStreams) {
-              s.unique_commentators = uqMap.get(s.video_id) || 0;
-              s.comments_count = totalCommMap.get(s.video_id) || 0;
-            }
-          } catch (e) {
-            console.error('Error fetching commentators/comments for finished streams:', e);
-          }
-        }
-      }
+      // Comments count is extracted directly from the chart timeline data below
 
       for (const stream of finishedStreams) {
         try {
@@ -605,8 +564,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       finishedStreams = [];
     }
 
-    // Heatmap data
-    let hourDayData: any[] = [];
+    // Heatmap data (desactivado temporalmente ya que no se muestra en la UI)
+    const hourDayData: any[] = [];
+    /*
     try {
       const heatmapRes = await executeQuery(
         `SELECT
@@ -644,9 +604,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch {
       hourDayData = [];
     }
+    */
 
-    // 24h Average data
-    let avgData: any[] = [];
+    // 24h Average data (desactivado temporalmente ya que no se muestra en la UI)
+    const avgData: any[] = [];
+    /*
     try {
       const avgRes = await executeQuery(
         `SELECT scrape_date1, AVG(avg_viewers)::int AS avg_viewers, AVG(avg_likes)::int AS avg_likes
@@ -675,6 +637,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch {
       avgData = [];
     }
+    */
 
     return res.status(200).json({
       success: true,
