@@ -12,6 +12,8 @@ interface HeroSectionProps {
   isLoading?: boolean;
   onExploreChannels: () => void;
   onScrollToLive: () => void;
+  onShareTwitter?: () => void;
+  isCapturing?: boolean;
 }
 
 export const HeroSection: React.FC<HeroSectionProps> = ({
@@ -23,6 +25,8 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   isLoading = false,
   onExploreChannels,
   onScrollToLive,
+  onShareTwitter,
+  isCapturing = false,
 }) => {
   return (
     <div className="relative pt-6 pb-12 sm:pt-10 sm:pb-16 text-center">
@@ -77,6 +81,21 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           <BarChart3 className="w-4 h-4 text-blue-600" />
           <span>Métricas por canal</span>
         </button>
+        {/*<button
+          onClick={onShareTwitter}
+          disabled={isCapturing}
+          className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 bg-black hover:bg-gray-900 text-white px-6 py-3.5 rounded-xl font-semibold text-base shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer disabled:opacity-50"
+          title="Capturar Top 3 y publicar en X"
+        >
+          {isCapturing ? (
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+          ) : (
+            <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+            </svg>
+          )}
+          <span>{isCapturing ? 'Capturando...' : 'Publicar Top 3 en X'}</span>
+        </button>*/}
       </div>
 
       {/* Stats Overview */}

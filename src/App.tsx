@@ -143,6 +143,42 @@ export default function App() {
     fetchChannelsData();
   };
 
+  // Share Top 3 to Twitter with image capture
+  const [isCapturing, setIsCapturing] = useState(false);
+  const handleShareTwitter = async () => {
+    try {
+      setIsCapturing(true);
+      const top3 = streams.slice(0, 3);
+      const top3Text = top3.map((s, i) => `${i + 1}. ${s.channel_name}: ${Number(s.concurrent_viewers || 0).toLocaleString('es-AR')} espectadores`).join('\n');
+      const text = encodeURIComponent(`📊 TOP 3 STREAMINGS EN VIVO (${SITE_NAME})\n\n${top3Text}\n\nMirá todo el ranking acá: ${window.location.origin}`);
+      
+      // Try html2canvas if available
+      try {
+        const html2canvas = (await import('html2canvas')).default;
+        const liveEl = document.getElementById('live');
+        if (liveEl) {
+          const canvas = await html2canvas(liveEl, { scale: 1.5, useCORS: true, logging: false });
+          canvas.toBlob(async (blob) => {
+            if (blob && navigator.clipboard && (window as any).ClipboardItem) {
+              try {
+                await navigator.clipboard.write([new (window as any).ClipboardItem({ 'image/png': blob })]);
+                alert('¡Imagen del Top 3 copiada al portapapeles! Ya podés pegarla (Ctrl+V) en tu tuit.');
+              } catch (e) {
+                console.warn('Clipboard write failed', e);
+              }
+            }
+          }, 'image/png');
+        }
+      } catch (e) {
+        console.warn('html2canvas capture skipped', e);
+      }
+
+      window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
+    } finally {
+      setIsCapturing(false);
+    }
+  };
+
   // Sync URL history state
   const navigate = useCallback((path: string) => {
     setCurrentPath(path);
@@ -342,6 +378,8 @@ export default function App() {
                   const el = document.getElementById('live');
                   el?.scrollIntoView({ behavior: 'smooth' });
                 }}
+                onShareTwitter={handleShareTwitter}
+                isCapturing={isCapturing}
               />
 
               {/* Category Filter */}
