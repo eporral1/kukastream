@@ -157,6 +157,28 @@ function synthesizeTimeline(peak: number, likesPeak: number, startDateStr?: stri
   return points;
 }
 
+function formatEternalStreamTitle(dateVal?: string | Date | null): string {
+  if (!dateVal) return 'Transmisión completa';
+  let isoStr = '';
+  if (dateVal instanceof Date) {
+    isoStr = dateVal.toISOString();
+  } else {
+    isoStr = String(dateVal).trim();
+  }
+  const match = isoStr.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (match) {
+    const [, y, m, d] = match;
+    const dateObj = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
+    const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const dayName = !isNaN(dateObj.getTime()) ? dayNames[dateObj.getDay()] : '';
+    const dateFormatted = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+    return dayName
+      ? `Transmisión completa - ${dayName} ${dateFormatted}`
+      : `Transmisión completa - ${dateFormatted}`;
+  }
+  return 'Transmisión completa';
+}
+
 // Fallback 24h average data
 function fallbackAvgData(baseViewers: number) {
   const points: any[] = [];
@@ -457,33 +479,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Finished streams (October 2026 onwards)
     let finishedStreams: any[] = [];
     try {
-      if (channel.type === 'eternal') {
-        const titlesRes = await executeQuery(
-          `SELECT DISTINCT video_id, video_title, MAX(scrape_date) AS scrape_date, MIN(scrape_date) AS start_date, MAX(concurrent_viewers) AS concurrent_viewers, MAX(likes) AS current_likes
-           FROM public.minute
-           WHERE video_id IN (SELECT video_id FROM public.live WHERE channel_id = $1)
-             AND scrape_date >= '${OCT_2026_CUTOFF}'
-             AND video_title IS NOT NULL AND video_title <> ''
-           GROUP BY video_id, video_title
-           ORDER BY scrape_date DESC LIMIT 10`,
-          [channelId]
-        );
-        finishedStreams = titlesRes.rows.map((r: any) => ({
-          ...r,
-          live: 'finished'
-        }));
-      } else {
-        const finishedRes = await executeQuery(
-          `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter
-           FROM public.live l
-           JOIN public.channels c ON l.channel_id = c.channel_id
-           WHERE l.live <> 'live' AND c.channel_id = $1 
-             AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
-           ORDER BY l.scrape_date DESC, l.video_id LIMIT 5`,
-          [channelId]
-        );
-        finishedStreams = finishedRes.rows;
+      const finishedRes = await executeQuery(
+        `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter
+         FROM public.live l
+         JOIN public.channels c ON l.channel_id = c.channel_id
+         WHERE l.live <> 'live' AND c.channel_id = $1 
+           AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+         ORDER BY l.scrape_date DESC, l.video_id LIMIT 10`,
+        [channelId]
+      );
+
+      const seenVideoIds = new Set<string>();
+      const uniqueStreams: any[] = [];
+      for (const stream of finishedRes.rows) {
+        if (stream.video_id && !seenVideoIds.has(stream.video_id)) {
+          seenVideoIds.add(stream.video_id);
+          if (channel.type === 'eternal') {
+            stream.video_title = formatEternalStreamTitle(stream.start_date || stream.scrape_date);
+          }
+          uniqueStreams.push(stream);
+        }
       }
+      finishedStreams = uniqueStreams.slice(0, 5);
 
       // Batch load minute timeline and superchats in 2 single queries instead of serial N+1 loop
       const videoIds = [...new Set(finishedStreams.map((s) => s.video_id).filter(Boolean))];

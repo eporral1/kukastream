@@ -355,6 +355,28 @@ function synthesizeTimeline(peak: number, likesPeak: number, startDateStr?: stri
   return points;
 }
 
+function formatEternalStreamTitle(dateVal?: string | Date | null): string {
+  if (!dateVal) return 'Transmisión completa';
+  let isoStr = '';
+  if (dateVal instanceof Date) {
+    isoStr = dateVal.toISOString();
+  } else {
+    isoStr = String(dateVal).trim();
+  }
+  const match = isoStr.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (match) {
+    const [, y, m, d] = match;
+    const dateObj = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10));
+    const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const dayName = !isNaN(dateObj.getTime()) ? dayNames[dateObj.getDay()] : '';
+    const dateFormatted = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+    return dayName
+      ? `Transmisión completa - ${dayName} ${dateFormatted}`
+      : `Transmisión completa - ${dateFormatted}`;
+  }
+  return 'Transmisión completa';
+}
+
 // GET /api/channel/:id and /api/channel?id=:id - Reproduces Laravel route: /channel/{channel}
 const channelHandler = async (req: Request, res: Response) => {
   const p = getPool();
@@ -580,10 +602,22 @@ const channelHandler = async (req: Request, res: Response) => {
          JOIN public.channels c ON l.channel_id = c.channel_id
          WHERE l.live <> 'live' AND c.channel_id = $1 
            AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
-         ORDER BY l.scrape_date DESC, l.video_id LIMIT 5`,
+         ORDER BY l.scrape_date DESC, l.video_id LIMIT 10`,
         [channelId]
       );
-      finishedStreams = finishedRes.rows;
+
+      const seenVideoIds = new Set<string>();
+      const uniqueStreams: any[] = [];
+      for (const stream of finishedRes.rows) {
+        if (stream.video_id && !seenVideoIds.has(stream.video_id)) {
+          seenVideoIds.add(stream.video_id);
+          if (channel.type === 'eternal') {
+            stream.video_title = formatEternalStreamTitle(stream.start_date || stream.scrape_date);
+          }
+          uniqueStreams.push(stream);
+        }
+      }
+      finishedStreams = uniqueStreams.slice(0, 5);
 
       const videoIds = [...new Set(finishedStreams.map((s) => s.video_id).filter(Boolean))];
       if (videoIds.length > 0) {
