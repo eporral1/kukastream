@@ -8,7 +8,7 @@ import { HeatmapTable } from './HeatmapTable';
 import { StreamLineChart } from './StreamLineChart';
 import { StreamCommentsModal } from './StreamCommentsModal';
 import { isOctober2026OrLater, formatArgentinaDateTime } from '../utils/dateFilter';
-import { ArrowLeft, ExternalLink, Calendar, Heart, Eye, MessageSquare, Radio, RefreshCw } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Calendar, Heart, Eye, MessageSquare, Radio, RefreshCw, AlertCircle } from 'lucide-react';
 
 interface ChannelDetailPageProps {
   channel: Channel;
@@ -73,6 +73,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
   const [avgData, setAvgData] = useState<AvgDataPoint[]>([]);
   const [selectedStreamForComments, setSelectedStreamForComments] = useState<Stream | null>(null);
   const [isLoadingChannel, setIsLoadingChannel] = useState<boolean>(true);
+  const [channelError, setChannelError] = useState<string | null>(null);
   const lastFetchedId = useRef<string | null>(null);
 
   const tryFetchChannel = React.useCallback(async (channelIdentifier: string) => {
@@ -80,13 +81,13 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
     lastFetchedId.current = channelIdentifier;
 
     setIsLoadingChannel(true);
+    setChannelError(null);
     console.log(`[DEBUG] tryFetchChannel called for: ${channelIdentifier}`);
     try {
         const res = await fetch(`/api/channel?id=${encodeURIComponent(channelIdentifier)}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-        const data = await res.json();
+        const data = await res.json().catch(() => null);
         
-        if (data.success) {
+        if (res.ok && data?.success) {
           if (data.channel) setChannel(data.channel);
           const liveData = data.live;
           setLiveStream(liveData?.live === 'live' && (isOctober2026OrLater(liveData.scrape_date) || isOctober2026OrLater(liveData.start_date)) ? liveData : undefined);
@@ -94,9 +95,13 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
           setPastStreams(streamList.filter((s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)));
           setHeatmapData(data.hour_day_data || []);
           setAvgData(data.avg_data || []);
+        } else {
+          setChannelError(data?.error || data?.message || `Canal '${channelIdentifier}' no encontrado`);
+          setPastStreams([]); setHeatmapData([]); setAvgData([]);
         }
-    } catch (err) {
+    } catch (err: any) {
         console.warn('Could not fetch channel details from API:', err);
+        setChannelError(err?.message || 'Error de conexión al cargar datos del canal');
         setPastStreams([]); setHeatmapData([]); setAvgData([]);
     } finally {
         setIsLoadingChannel(false);
@@ -104,12 +109,12 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
   }, []);
 
   useEffect(() => {
-    const channelIdentifier = channel.channel || channel.channel_id;
-    // Check if channel is already populated (has description)
-    if (channelIdentifier && channel.description === 'Canal de streaming') {
-        tryFetchChannel(channelIdentifier);
+    setChannel(initialChannel);
+    const channelIdentifier = initialChannel.channel || initialChannel.channel_id;
+    if (channelIdentifier) {
+      tryFetchChannel(channelIdentifier);
     }
-  }, [channel.channel, channel.channel_id, tryFetchChannel]);
+  }, [initialChannel, tryFetchChannel]);
 
 
   // Minute points for active live stream chart (only real data)
@@ -156,6 +161,21 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
           </div>
         )}
       </div>
+
+      {channelError && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center justify-between shadow-2xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+            <span>{channelError}</span>
+          </div>
+          <button
+            onClick={onBack}
+            className="text-xs font-semibold bg-red-100 hover:bg-red-200 text-red-800 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+          >
+            Volver al Ranking
+          </button>
+        </div>
+      )}
 
       {/* Channel Header Card */}
       <div className="bg-white rounded-xl shadow-xs border border-gray-100 overflow-hidden">

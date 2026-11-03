@@ -114,14 +114,12 @@ export default function App() {
     document.title = `${SITE_NAME} - Ranking de Streaming en Vivo`;
   }, []);
 
-  // Initial fetch on mount & category change (skip if on channel detail page)
+  // Initial fetch on mount & category change
   useEffect(() => {
-    if (window.location.pathname.startsWith('/channel/')) return;
     fetchLiveData();
   }, [fetchLiveData]);
 
   useEffect(() => {
-    if (window.location.pathname.startsWith('/channel/')) return;
     fetchChannelsData();
   }, [fetchChannelsData]);
 
@@ -312,6 +310,7 @@ export default function App() {
           ) : isChannelDetail && currentChannel ? (
             /* Route: Channel Detail */
             <ChannelDetailPage
+              key={currentChannel.channel_id || currentChannel.channel}
               channel={currentChannel}
               liveStream={currentChannelLiveStream}
               onBack={() => navigate('/')}

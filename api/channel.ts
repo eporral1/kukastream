@@ -282,8 +282,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const channelId = channel.channel_id;
 
     // Check active live stream for this channel (strictly live = 'live' and October 2026 onwards)
+    // Consulta para stream en vivo unificada para todos los videos
     let liveRes = await executeQuery(
       `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter, c.type,
+              l.current_likes,
+              0::int as comments_count
+       FROM public.live l
+       JOIN public.channels c ON l.channel_id = c.channel_id
+       WHERE c.channel_id = $1 AND l.live = 'live' AND l.concurrent_viewers > 0 
+         AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+       ORDER BY l.concurrent_viewers DESC, l.scrape_date DESC LIMIT 1`,
+      [channelId]
+    );
+
+    if (liveRes.rows.length === 0) {
+      liveRes = await executeQuery(
+        `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter, c.type,
+                l.current_likes,
+                0::int as comments_count
+         FROM public.live l
+         JOIN public.channels c ON l.channel_id = c.channel_id
+         WHERE c.channel_id = $1 AND l.live = 'live' 
+           AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+         ORDER BY l.scrape_date DESC LIMIT 1`,
+        [channelId]
+      );
+    }
+
+    /*
+    // Consulta anterior que calculaba la diferencia de likes y comments en canales eternal al cambiar de title:
+    let previousLiveQuery = `
+      SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter, c.type,
         CASE 
           WHEN c.type = 'eternal' THEN (
             SELECT COALESCE(m.likes, l.current_likes) - COALESCE((
@@ -326,59 +355,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
        JOIN public.channels c ON l.channel_id = c.channel_id
        WHERE c.channel_id = $1 AND l.live = 'live' AND l.concurrent_viewers > 0 
          AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
-       ORDER BY l.concurrent_viewers DESC, l.scrape_date DESC LIMIT 1`,
-      [channelId]
-    );
-
-    if (liveRes.rows.length === 0) {
-      liveRes = await executeQuery(
-        `SELECT l.*, c.channel, c.channel_name, c.thumb, c.tags, c.subs, c.twitter, c.type,
-          CASE 
-            WHEN c.type = 'eternal' THEN (
-              SELECT COALESCE(m.likes, l.current_likes) - COALESCE((
-                SELECT sub.likes 
-                FROM public.minute sub 
-                WHERE sub.video_id = l.video_id AND sub.video_title = l.video_title 
-                ORDER BY sub.scrape_date ASC, id ASC 
-                LIMIT 1
-              ), COALESCE(m.likes, l.current_likes))
-              FROM public.minute m 
-              WHERE m.video_id = l.video_id 
-              ORDER BY m.scrape_date DESC, m.id DESC 
-              LIMIT 1
-            )
-            ELSE l.current_likes
-          END::int as current_likes,
-          CASE 
-            WHEN c.type = 'eternal' THEN (
-              SELECT m.comments_count - COALESCE((
-                SELECT sub.comments_count 
-                FROM public.minute sub 
-                WHERE sub.video_id = l.video_id AND sub.video_title = l.video_title 
-                ORDER BY sub.scrape_date ASC, id ASC 
-                LIMIT 1
-              ), m.comments_count)
-              FROM public.minute m 
-              WHERE m.video_id = l.video_id 
-              ORDER BY m.scrape_date DESC, m.id DESC 
-              LIMIT 1
-            )
-            ELSE COALESCE((
-              SELECT m.comments_count 
-              FROM public.minute m 
-              WHERE m.video_id = l.video_id 
-              ORDER BY m.scrape_date DESC, m.id DESC 
-              LIMIT 1
-            ), 0)
-          END::int as comments_count
-         FROM public.live l
-         JOIN public.channels c ON l.channel_id = c.channel_id
-         WHERE c.channel_id = $1 AND l.live = 'live' 
-           AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
-         ORDER BY l.scrape_date DESC LIMIT 1`,
-        [channelId]
-      );
-    }
+       ORDER BY l.concurrent_viewers DESC, l.scrape_date DESC LIMIT 1
+    `;
+    */
 
     let live = liveRes.rows[0] || null;
     if (live && live.live !== 'live') {
