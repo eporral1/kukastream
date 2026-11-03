@@ -473,7 +473,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           live.comments_count = maxLiveComments;
         }
       }
-      live.unique_commentators = live.comments_count || 0;
     }
 
     // Finished streams (October 2026 onwards)
@@ -507,23 +506,76 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         finishedStreams = finishedRes.rows;
       }
 
-      // Comments count is extracted directly from the chart timeline data below
+      // Batch load minute timeline and superchats in 2 single queries instead of serial N+1 loop
+      const videoIds = [...new Set(finishedStreams.map((s) => s.video_id).filter(Boolean))];
+      if (videoIds.length > 0) {
+        const minuteMap = new Map<string, any[]>();
+        const scMap = new Map<string, any[]>();
 
-      for (const stream of finishedStreams) {
-        try {
-          const minData = await executeQuery(
-            `SELECT to_char(m.scrape_date, 'HH24:MI') AS scrape_date, 
-                    m.scrape_date AS raw_date,
-                    m.concurrent_viewers, m.likes, 
-                    COALESCE(m.comments_count, 0) as comments_count
-             FROM public.minute m
-             WHERE m.video_id = $1 AND m.scrape_date >= '${OCT_2026_CUTOFF}'
-             ORDER BY m.scrape_date ASC
-             LIMIT 500`,
-            [stream.video_id]
-          );
-          if (minData.rows.length >= 2) {
-            stream.data = minData.rows;
+        // For eternal channels where all programs share the live video_id, reuse live data
+        if (channel.type === 'eternal' && live && live.data && videoIds.length === 1 && videoIds[0] === live.video_id) {
+          minuteMap.set(live.video_id, live.data);
+          scMap.set(live.video_id, live.superchats || []);
+        } else {
+          // 1. Batch query minute curve for all finished streams in 1 query
+          try {
+            const batchMinuteRes = await executeQuery(
+              `SELECT video_id, 
+                      to_char(scrape_date, 'HH24:MI') as scrape_date, 
+                      scrape_date as raw_date, 
+                      concurrent_viewers, 
+                      likes, 
+                      COALESCE(comments_count, 0) as comments_count
+               FROM (
+                 SELECT m.*, 
+                        ROW_NUMBER() OVER (PARTITION BY m.video_id ORDER BY m.scrape_date ASC) as rn
+                 FROM public.minute m
+                 WHERE m.video_id = ANY($1) AND m.scrape_date >= '${OCT_2026_CUTOFF}'
+               ) sub
+               WHERE sub.rn <= 500
+               ORDER BY sub.video_id, sub.scrape_date ASC`,
+              [videoIds]
+            );
+            for (const row of batchMinuteRes.rows || []) {
+              if (!minuteMap.has(row.video_id)) minuteMap.set(row.video_id, []);
+              minuteMap.get(row.video_id)!.push({
+                scrape_date: row.scrape_date,
+                raw_date: row.raw_date,
+                concurrent_viewers: Number(row.concurrent_viewers || 0),
+                likes: row.likes !== null && row.likes !== undefined ? Number(row.likes) : null,
+                comments_count: Number(row.comments_count || 0),
+              });
+            }
+          } catch (e) {
+            console.error('Batch minute error:', e);
+          }
+
+          // 2. Batch query superchats for all finished streams in 1 query
+          try {
+            const batchScRes = await executeQuery(
+              `SELECT video_id, currency, sum(amount) AS total_amount 
+               FROM public.superchats 
+               WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}' 
+               GROUP BY video_id, currency`,
+              [videoIds]
+            );
+            for (const row of batchScRes.rows || []) {
+              if (!scMap.has(row.video_id)) scMap.set(row.video_id, []);
+              scMap.get(row.video_id)!.push({
+                currency: row.currency,
+                total_amount: row.total_amount,
+              });
+            }
+          } catch (e) {
+            console.error('Batch superchats error:', e);
+          }
+        }
+
+        // 3. Assign data and calculate maximum comments in memory
+        for (const stream of finishedStreams) {
+          const points = minuteMap.get(stream.video_id) || [];
+          if (points.length >= 2) {
+            stream.data = points;
           } else {
             stream.data = synthesizeTimeline(
               stream.concurrent_viewers || stream.max_users || 500,
@@ -538,26 +590,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               stream.comments_count = maxComments;
             }
           }
-        } catch {
-          stream.data = synthesizeTimeline(
-            stream.concurrent_viewers || stream.max_users || 500,
-            stream.current_likes || stream.max_likes || 50,
-            stream.start_date,
-            stream.scrape_date
-          );
-        }
-
-        try {
-          const scRes = await executeQuery(
-            `SELECT currency, sum(amount) AS total_amount 
-             FROM public.superchats 
-             WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}' 
-             GROUP BY currency`,
-            [stream.video_id]
-          );
-          stream.superchats = scRes.rows;
-        } catch {
-          stream.superchats = [];
+          stream.superchats = scMap.get(stream.video_id) || [];
         }
       }
     } catch {

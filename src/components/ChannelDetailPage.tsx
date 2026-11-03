@@ -73,16 +73,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
   const [avgData, setAvgData] = useState<AvgDataPoint[]>([]);
   const [selectedStreamForComments, setSelectedStreamForComments] = useState<Stream | null>(null);
   const [isLoadingChannel, setIsLoadingChannel] = useState<boolean>(true);
-  const [uniqueCommentatorsMap, setUniqueCommentatorsMap] = useState<Record<string, number>>({});
   const lastFetchedId = useRef<string | null>(null);
-
-  // Helper to get unique commentator count
-  const getUniqueCount = (s?: Stream) => {
-    if (!s || !s.video_id) return 0;
-    if (typeof s.unique_commentators === 'number') return s.unique_commentators;
-    if (typeof uniqueCommentatorsMap[s.video_id] === 'number') return uniqueCommentatorsMap[s.video_id];
-    return 0;
-  };
 
   const tryFetchChannel = React.useCallback(async (channelIdentifier: string) => {
     if (lastFetchedId.current === channelIdentifier) return;
@@ -286,7 +277,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                     className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
                   >
                     <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Ver Comentarios & Superchats ({formatNumber(getUniqueCount(liveStream))} usuarios únicos)</span>
+                    <span>Ver Comentarios & Superchats</span>
                   </button>
                 </div>
               </div>
@@ -451,7 +442,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                         className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
                       >
                         <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Ver Comentarios & Superchats ({formatNumber(getUniqueCount(pastStream))} usuarios únicos)</span>
+                        <span>Ver Comentarios & Superchats</span>
                       </button>
                     </div>
                   </div>

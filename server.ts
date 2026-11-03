@@ -574,7 +574,6 @@ const channelHandler = async (req: Request, res: Response) => {
           live.comments_count = maxLiveComments;
         }
       }
-      live.unique_commentators = live.comments_count || 0;
     }
 
     // Recent finished streams (October 2026 onwards only)
@@ -591,67 +590,110 @@ const channelHandler = async (req: Request, res: Response) => {
       );
       finishedStreams = finishedRes.rows;
 
-      for (const stream of finishedStreams) {
+      const videoIds = [...new Set(finishedStreams.map((s) => s.video_id).filter(Boolean))];
+      if (videoIds.length > 0) {
+        const minuteMap = new Map<string, any[]>();
+        const scMap = new Map<string, any[]>();
+        const maxStatsMap = new Map<string, { max_users: number; max_likes: number }>();
+
+        // 1. Batch minute query
+        try {
+          const batchMinuteRes = await p.query(
+            `SELECT video_id, 
+                    to_char(scrape_date, 'HH24:MI') as scrape_date, 
+                    scrape_date as raw_date, 
+                    concurrent_viewers, 
+                    likes, 
+                    COALESCE(comments_count, 0) as comments_count
+             FROM (
+               SELECT m.*, 
+                      ROW_NUMBER() OVER (PARTITION BY m.video_id ORDER BY m.scrape_date ASC) as rn
+               FROM public.minute m
+               WHERE m.video_id = ANY($1) AND m.scrape_date >= '${OCT_2026_CUTOFF}'
+             ) sub
+             WHERE sub.rn <= 500
+             ORDER BY sub.video_id, sub.scrape_date ASC`,
+            [videoIds]
+          );
+          for (const row of batchMinuteRes.rows || []) {
+            if (!minuteMap.has(row.video_id)) minuteMap.set(row.video_id, []);
+            minuteMap.get(row.video_id)!.push({
+              scrape_date: row.scrape_date,
+              raw_date: row.raw_date,
+              concurrent_viewers: Number(row.concurrent_viewers || 0),
+              likes: row.likes !== null && row.likes !== undefined ? Number(row.likes) : null,
+              comments_count: Number(row.comments_count || 0),
+            });
+          }
+        } catch (e) {
+          console.error('Batch minute query error in server.ts:', e);
+        }
+
+        // 2. Batch max stats
         try {
           const maxStatsRes = await p.query(
-            `SELECT MAX(concurrent_viewers) as max_users, MAX(likes) as max_likes 
+            `SELECT video_id, MAX(concurrent_viewers) as max_users, MAX(likes) as max_likes 
              FROM public.minute 
-             WHERE video_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'`,
-            [stream.video_id]
+             WHERE video_id = ANY($1) AND scrape_date >= '${OCT_2026_CUTOFF}'
+             GROUP BY video_id`,
+            [videoIds]
           );
-          if (maxStatsRes.rows.length > 0) {
-            stream.max_users = maxStatsRes.rows[0].max_users;
-            stream.max_likes = maxStatsRes.rows[0].max_likes;
+          for (const row of maxStatsRes.rows || []) {
+            maxStatsMap.set(row.video_id, {
+              max_users: row.max_users,
+              max_likes: row.max_likes,
+            });
           }
-        } catch {
+        } catch (e) {
           // ignore
         }
 
-        let minDataRows: any[] = [];
+        // 3. Batch superchats
         try {
-          const minData = await p.query(
-            `SELECT to_char(m.scrape_date, 'HH24:MI') AS scrape_date, 
-                    m.scrape_date AS raw_date,
-                    m.concurrent_viewers, m.likes, 
-                    COALESCE(m.comments_count, 0) as comments_count
-             FROM public.minute m
-             WHERE m.video_id = $1 AND m.scrape_date >= '${OCT_2026_CUTOFF}'
-             ORDER BY m.scrape_date ASC
-             LIMIT 500`,
-            [stream.video_id]
-          );
-          minDataRows = minData.rows;
-        } catch {
-          minDataRows = [];
-        }
-
-        if (minDataRows.length < 2) {
-          minDataRows = synthesizeTimeline(
-            stream.concurrent_viewers || stream.max_users || 500,
-            stream.current_likes || stream.max_likes || 50,
-            stream.start_date,
-            stream.scrape_date
-          );
-        }
-        stream.data = minDataRows;
-        if (Array.isArray(stream.data) && stream.data.length > 0) {
-          const maxComments = Math.max(...stream.data.map((d: any) => Number(d.comments_count || 0)));
-          if (maxComments > 0) {
-            stream.comments_count = maxComments;
-          }
-        }
-
-        try {
-          const scRes = await p.query(
-            `SELECT currency, sum(amount) AS total_amount 
+          const batchScRes = await p.query(
+            `SELECT video_id, currency, sum(amount) AS total_amount 
              FROM public.superchats 
-             WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}' 
-             GROUP BY currency`,
-            [stream.video_id]
+             WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}' 
+             GROUP BY video_id, currency`,
+            [videoIds]
           );
-          stream.superchats = scRes.rows;
-        } catch {
-          stream.superchats = [];
+          for (const row of batchScRes.rows || []) {
+            if (!scMap.has(row.video_id)) scMap.set(row.video_id, []);
+            scMap.get(row.video_id)!.push({
+              currency: row.currency,
+              total_amount: row.total_amount,
+            });
+          }
+        } catch (e) {
+          console.error('Batch superchats error in server.ts:', e);
+        }
+
+        // 4. Map in memory
+        for (const stream of finishedStreams) {
+          const stats = maxStatsMap.get(stream.video_id);
+          if (stats) {
+            stream.max_users = stats.max_users;
+            stream.max_likes = stats.max_likes;
+          }
+
+          const points = minuteMap.get(stream.video_id) || [];
+          if (points.length >= 2) {
+            stream.data = points;
+          } else {
+            stream.data = synthesizeTimeline(
+              stream.concurrent_viewers || stream.max_users || 500,
+              stream.current_likes || stream.max_likes || 50,
+              stream.start_date,
+              stream.scrape_date
+            );
+          }
+          if (Array.isArray(stream.data) && stream.data.length > 0) {
+            const maxComments = Math.max(...stream.data.map((d: any) => Number(d.comments_count || 0)));
+            if (maxComments > 0) {
+              stream.comments_count = maxComments;
+            }
+          }
+          stream.superchats = scMap.get(stream.video_id) || [];
         }
       }
     } catch {
