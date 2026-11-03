@@ -227,24 +227,34 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
             </div>
 
             {/* Overall averages */}
-            {/*<div className="flex md:flex-col sm:flex-row gap-4 border-t md:border-t-0 md:border-l border-gray-100 pt-4 md:pt-0 md:pl-8 w-full md:w-auto">
-              <div className="text-left md:text-right">
-                <div className="text-xs text-gray-500 uppercase tracking-wider font-semibold">
-                  Promedio Conectados
+            {Boolean(channel.avg_viewers || channel.avg_likes || channel.avg_comments) && (
+              <div className="flex flex-wrap md:flex-col sm:flex-row gap-4 border-t md:border-t-0 md:border-l border-gray-100 pt-4 md:pt-0 md:pl-8 w-full md:w-auto">
+                <div className="text-left md:text-right">
+                  <div className="text-xs text-gray-500 uppercase tracking-wider font-semibold">
+                    Promedio Conectados
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black text-blue-600">
+                    {formatNumber(channel.avg_viewers || 0)}
+                  </div>
                 </div>
-                <div className="text-2xl font-black text-blue-600">
-                  {formatNumber(channel.avg_viewers)}
+                <div className="text-left md:text-right">
+                  <div className="text-xs text-gray-500 uppercase tracking-wider font-semibold">
+                    Likes / Hora
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black text-rose-500">
+                    {formatNumber(Math.max(0, channel.avg_likes || 0))}
+                  </div>
+                </div>
+                <div className="text-left md:text-right">
+                  <div className="text-xs text-gray-500 uppercase tracking-wider font-semibold">
+                    Comentarios / Hora
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black text-amber-500">
+                    {formatNumber(Math.max(0, channel.avg_comments || 0))}
+                  </div>
                 </div>
               </div>
-              <div className="text-left md:text-right">
-                <div className="text-xs text-gray-500 uppercase tracking-wider font-semibold">
-                  Likes Promedio / Hora
-                </div>
-                <div className="text-2xl font-black text-rose-500">
-                  {formatNumber(channel.avg_likes)}
-                </div>
-              </div>
-            </div>*/}
+            )}
           </div>
         </div>
       </div>

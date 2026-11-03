@@ -72,6 +72,16 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 Home
               </button>
+              {/*<button
+                onClick={() => handleNav('/streams')}
+                className={`font-medium transition-colors px-3 py-1.5 rounded-lg text-sm ${
+                  currentPath === '/streams'
+                    ? 'text-blue-600 bg-blue-50 font-semibold'
+                    : 'text-gray-700 hover:text-blue-600 hover:bg-gray-50'
+                }`}
+              >
+                Streams
+              </button>*/}
               <button
                 onClick={() => handleNav('/channels')}
                 className={`font-medium transition-colors px-3 py-1.5 rounded-lg text-sm ${
@@ -157,6 +167,14 @@ export const Header: React.FC<HeaderProps> = ({
               }`}
             >
               Home (Ranking En Vivo)
+            </button>
+            <button
+              onClick={() => handleNav('/streams')}
+              className={`w-full text-left block px-3 py-2 rounded-md font-medium text-sm ${
+                currentPath === '/streams' ? 'text-blue-600 bg-blue-50 font-semibold' : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              Streams (Top 10 por Transmisión)
             </button>
             <button
               onClick={() => handleNav('/channels')}

@@ -132,16 +132,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     let query = `
+      WITH comm_stats AS (
+        SELECT channel_id,
+               COALESCE(ROUND(AVG(comments_rate)), 0)::int AS avg_comments
+        FROM (
+          SELECT video_id, channel_id,
+                 (MAX(comments_count) - MIN(comments_count))::numeric / 
+                 GREATEST(0.25, EXTRACT(EPOCH FROM (MAX(scrape_date) - MIN(scrape_date))) / 3600.0) AS comments_rate
+          FROM public.minute
+          WHERE scrape_date >= '${OCT_2026_CUTOFF}' AND comments_count > 0
+          GROUP BY video_id, channel_id
+          HAVING MAX(scrape_date) > MIN(scrape_date)
+        ) sub
+        GROUP BY channel_id
+      )
       SELECT 
         c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active,
         COALESCE(AVG(l.concurrent_viewers), 0)::int AS avg_viewers,
-        COALESCE(AVG((l.current_likes - l.old_likes) * 6), 0)::int AS avg_likes
+        COALESCE(AVG(CASE WHEN l.current_likes > l.old_likes THEN (l.current_likes - l.old_likes) * 6 END), 0)::int AS avg_likes,
+        COALESCE(cs.avg_comments, 0)::int AS avg_comments
       FROM public.channels c
       LEFT JOIN public.live l ON l.channel_id = c.channel_id 
         AND l.scrape_date >= '${OCT_2026_CUTOFF}' 
         AND l.concurrent_viewers > 0
+      LEFT JOIN comm_stats cs ON cs.channel_id = c.channel_id
       WHERE c.active::text IN ('1', 'true')
-      GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active
+      GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, cs.avg_comments
       ORDER BY avg_viewers DESC;
     `;
     let result: any;
@@ -149,16 +165,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       result = await executeQuery(query);
     } catch {
       query = `
+        WITH comm_stats AS (
+          SELECT channel_id,
+                 COALESCE(ROUND(AVG(comments_rate)), 0)::int AS avg_comments
+          FROM (
+            SELECT video_id, channel_id,
+                   (MAX(comments_count) - MIN(comments_count))::numeric / 
+                   GREATEST(0.25, EXTRACT(EPOCH FROM (MAX(scrape_date) - MIN(scrape_date))) / 3600.0) AS comments_rate
+            FROM public.minute
+            WHERE scrape_date >= '${OCT_2026_CUTOFF}' AND comments_count > 0
+            GROUP BY video_id, channel_id
+            HAVING MAX(scrape_date) > MIN(scrape_date)
+          ) sub
+          GROUP BY channel_id
+        )
         SELECT 
           c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active,
           COALESCE(AVG(l.concurrent_viewers), 0)::int AS avg_viewers,
-          COALESCE(AVG((l.current_likes - l.old_likes) * 6), 0)::int AS avg_likes
+          COALESCE(AVG(CASE WHEN l.current_likes > l.old_likes THEN (l.current_likes - l.old_likes) * 6 END), 0)::int AS avg_likes,
+          COALESCE(cs.avg_comments, 0)::int AS avg_comments
         FROM public.channels c
         LEFT JOIN public.live l ON l.channel_id = c.channel_id 
           AND l.scrape_date >= '${OCT_2026_CUTOFF}' 
           AND l.concurrent_viewers > 0
+        LEFT JOIN comm_stats cs ON cs.channel_id = c.channel_id
         WHERE c.active = 1
-        GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active
+        GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, cs.avg_comments
         ORDER BY avg_viewers DESC;
       `;
       result = await executeQuery(query);

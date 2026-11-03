@@ -84,7 +84,8 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                   onClick={() => onNavigateChannel(stream.channel)}
                   className="bg-purple-100 hover:bg-purple-200 text-purple-800 px-2.5 py-0.5 rounded-full text-xs font-semibold transition-colors cursor-pointer"
                 >
-                  Métricas Canal 
+                     <span>📊</span>
+                            <span>Métricas</span>
                 </button>
 
                 {onOpenComments && (
@@ -93,7 +94,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                     className="bg-blue-50 hover:bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer border border-blue-200/60"
                   >
                     <span>💬</span>
-                    <span>Comentarios ({commentsCount})</span>
+                    <span>Comentarios{/*({commentsCount})*/}</span>
                   </button>
                 )}
 
@@ -114,7 +115,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                     rel="noopener noreferrer"
                     className="text-[11px] text-gray-400 hover:text-red-600 transition-colors flex items-center gap-0.5"
                   >
-                    ▶ YT
+                
                   </a>
                 )}
               </div>

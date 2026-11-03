@@ -129,6 +129,7 @@ export interface Channel {
   twitter?: string;
   avg_viewers: number;
   avg_likes: number;
+  avg_comments?: number;
   type?: string;
   banner?: string;
   superchats_count?: number;

@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { Pool } from 'pg';
 
 let pool: Pool | null = null;
-const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
+const OCT_2026_CUTOFF = '2026-10-31 23:59:59';
 
 function getPool(): Pool | null {
   if (pool) return pool;

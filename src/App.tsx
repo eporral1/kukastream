@@ -4,6 +4,7 @@ import { HeroSection } from './components/HeroSection';
 import { CategoryFilter } from './components/CategoryFilter';
 import { RankingStreamCard } from './components/RankingStreamCard';
 import { ChannelsPage } from './components/ChannelsPage';
+import { StreamsPage } from './components/StreamsPage';
 import { ChannelDetailPage } from './components/ChannelDetailPage';
 import { SuperchatsRankingPage } from './components/SuperchatsRankingPage';
 import { DevSocialModal } from './components/DevSocialModal';
@@ -301,8 +302,13 @@ export default function App() {
             </div>
           )}
 
-          {/* Route: Canales Directory */}
-          {currentPath === '/channels' ? (
+          {/* Route: Streams Ranking (Top 10 por video_id) */}
+          {currentPath === '/streams' ? (
+            <StreamsPage
+              onNavigateChannel={(handle) => navigate(`/channel/${handle}`)}
+            />
+          ) : currentPath === '/channels' ? (
+            /* Route: Canales Directory */
             <ChannelsPage
               channels={channelsList}
               onNavigateChannel={(handle) => navigate(`/channel/${handle}`)}

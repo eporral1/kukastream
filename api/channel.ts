@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { Pool } from 'pg';
 
 let pool: Pool | null = null;
-const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
+const OCT_2026_CUTOFF = '2026-10-31 23:59:59';
 
 function getPool(): Pool | null {
   if (pool) return pool;
@@ -302,6 +302,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const channelId = channel.channel_id;
+
+    // Overall channel averages (non-costly query with zero negative values)
+    try {
+      const statsRes = await executeQuery(
+        `SELECT 
+           COALESCE(AVG(l.concurrent_viewers), 0)::int AS avg_viewers,
+           COALESCE(AVG(CASE WHEN l.current_likes > l.old_likes THEN (l.current_likes - l.old_likes) * 6 END), 0)::int AS avg_likes
+         FROM public.live l
+         WHERE l.channel_id = $1 
+           AND l.scrape_date >= '${OCT_2026_CUTOFF}' 
+           AND l.concurrent_viewers > 0`,
+        [channelId]
+      );
+      if (statsRes.rows && statsRes.rows.length > 0) {
+        channel.avg_viewers = Number(statsRes.rows[0].avg_viewers || 0);
+        channel.avg_likes = Number(statsRes.rows[0].avg_likes || 0);
+      }
+
+      const commStatsRes = await executeQuery(
+        `SELECT COALESCE(ROUND(AVG(comments_rate)), 0)::int AS avg_comments
+         FROM (
+           SELECT video_id,
+                  (MAX(comments_count) - MIN(comments_count))::numeric / 
+                  GREATEST(0.25, EXTRACT(EPOCH FROM (MAX(scrape_date) - MIN(scrape_date))) / 3600.0) AS comments_rate
+           FROM public.minute
+           WHERE channel_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}' AND comments_count > 0
+           GROUP BY video_id
+           HAVING MAX(scrape_date) > MIN(scrape_date)
+         ) sub`,
+        [channelId]
+      );
+      channel.avg_comments = Number(commStatsRes.rows?.[0]?.avg_comments || 0);
+    } catch {
+      channel.avg_viewers = channel.avg_viewers || 0;
+      channel.avg_likes = channel.avg_likes || 0;
+      channel.avg_comments = channel.avg_comments || 0;
+    }
 
     // Check active live stream for this channel (strictly live = 'live' and October 2026 onwards)
     // Consulta para stream en vivo unificada para todos los videos
