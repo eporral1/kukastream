@@ -1037,7 +1037,9 @@ app.get('/api/superchats-ranking', async (_req: Request, res: Response) => {
       FROM public.superchats s
       JOIN public.live l ON s.video_id = l.video_id
       JOIN public.channels c ON l.channel_id = c.channel_id
-      WHERE (s.currency = 'ARS' OR s.currency ILIKE '%ARS%')
+      WHERE c.active::text IN ('1', 'true') 
+        AND COALESCE(c.enable_comments, 1) <> 0 
+        AND (s.currency = 'ARS' OR s.currency ILIKE '%ARS%')
         AND s.created_at >= '${OCT_2026_CUTOFF}'
       GROUP BY c.channel_id, c.channel, c.channel_name, c.thumb
       ORDER BY total_ars DESC
@@ -1059,7 +1061,9 @@ app.get('/api/superchats-ranking', async (_req: Request, res: Response) => {
       FROM public.superchats s
       LEFT JOIN public.live l ON s.video_id = l.video_id
       LEFT JOIN public.channels c ON l.channel_id = c.channel_id
-      WHERE (s.currency = 'ARS' OR s.currency ILIKE '%ARS%')
+      WHERE c.active::text IN ('1', 'true') 
+        AND COALESCE(c.enable_comments, 1) <> 0 
+        AND (s.currency = 'ARS' OR s.currency ILIKE '%ARS%')
         AND s.created_at >= '${OCT_2026_CUTOFF}'
       GROUP BY s.video_id
       ORDER BY total_ars DESC
