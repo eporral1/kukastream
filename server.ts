@@ -168,11 +168,6 @@ function areTitlesSameShow(t1: string, t2: string): boolean {
   if (containment >= 0.70 && common >= 2) return true;
   if (jaccard >= 0.55 && common >= 2) return true;
 
-  // Common prefix check before ':' or '|' or '-'
-  const prefix1 = t1.split(/[:|\-]/)[0].trim().toLowerCase();
-  const prefix2 = t2.split(/[:|\-]/)[0].trim().toLowerCase();
-  if (prefix1.length > 8 && prefix1 === prefix2) return true;
-
   return false;
 }
 
