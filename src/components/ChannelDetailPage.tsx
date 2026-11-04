@@ -84,7 +84,11 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
     setChannelError(null);
     console.log(`[DEBUG] tryFetchChannel called for: ${channelIdentifier}`);
     try {
-        const res = await fetch(`/api/channel?id=${encodeURIComponent(channelIdentifier)}`);
+        const res = await fetch(`/api/channel?id=${encodeURIComponent(channelIdentifier)}`, {
+          headers: {
+            'X-App-Client': 'kukastream-web',
+          },
+        });
         const data = await res.json().catch(() => null);
         
         if (res.ok && data?.success) {

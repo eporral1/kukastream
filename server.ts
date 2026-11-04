@@ -528,6 +528,21 @@ function formatEternalStreamTitle(dateVal?: string | Date | null): string {
 
 // GET /api/channel/:id and /api/channel?id=:id - Reproduces Laravel route: /channel/{channel}
 const channelHandler = async (req: Request, res: Response) => {
+  // Security check: Only allow requests originating from our frontend application
+  const secFetchSite = req.headers['sec-fetch-site'];
+  const secFetchMode = req.headers['sec-fetch-mode'];
+  const appClientHeader = req.headers['x-app-client'];
+  const isDirectBrowserNav = secFetchMode === 'navigate' || (secFetchSite === 'none' && !appClientHeader);
+  const isCrossSite = secFetchSite === 'cross-site';
+
+  if (isDirectBrowserNav || isCrossSite || appClientHeader !== 'kukastream-web') {
+    res.status(403).json({
+      success: false,
+      error: 'Acceso denegado. Este endpoint solo puede ser invocado desde la aplicación oficial.',
+    });
+    return;
+  }
+
   const p = getPool();
   let channelParam =
     req.params.channelId ||

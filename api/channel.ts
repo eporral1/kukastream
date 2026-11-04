@@ -222,10 +222,24 @@ function fallbackHeatmapData(basePeak: number) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-App-Client');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
+  }
+
+  // Security check: Only allow requests originating from our frontend application
+  const secFetchSite = req.headers['sec-fetch-site'];
+  const secFetchMode = req.headers['sec-fetch-mode'];
+  const appClientHeader = req.headers['x-app-client'];
+  const isDirectBrowserNav = secFetchMode === 'navigate' || (secFetchSite === 'none' && !appClientHeader);
+  const isCrossSite = secFetchSite === 'cross-site';
+
+  if (isDirectBrowserNav || isCrossSite || appClientHeader !== 'kukastream-web') {
+    return res.status(403).json({
+      success: false,
+      error: 'Acceso denegado. Este endpoint solo puede ser invocado desde la aplicación oficial.',
+    });
   }
 
   let channelParam =
