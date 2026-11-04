@@ -108,6 +108,218 @@ async function executeQuery<T = any>(text: string, params: any[] = []): Promise<
   }
 }
 
+function cleanEternalTitle(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function areTitlesSameShow(t1: string, t2: string): boolean {
+  if (t1 === t2) return true;
+  const c1 = cleanEternalTitle(t1);
+  const c2 = cleanEternalTitle(t2);
+  if (c1 === c2) return true;
+
+  const stopWords = new Set([
+    'en', 'vivo', 'radio', 'play', 'fm', 'con', 'del', 'los', 'las', 'por', 'para',
+    'la', 'el', 'de', 'y', 'al', 'un', 'una', 'directo', 'online', 'hd'
+  ]);
+
+  const words1 = c1.split(' ').filter(w => w.length > 2 && !stopWords.has(w));
+  const words2 = c2.split(' ').filter(w => w.length > 2 && !stopWords.has(w));
+
+  if (words1.length === 0 || words2.length === 0) return false;
+
+  const set1 = new Set(words1);
+  const set2 = new Set(words2);
+
+  let common = 0;
+  for (const w of set1) {
+    if (set2.has(w)) common++;
+  }
+
+  const minWords = Math.min(set1.size, set2.size);
+  const containment = common / minWords;
+  const union = new Set([...set1, ...set2]).size;
+  const jaccard = common / union;
+
+  // High word containment (e.g. 70% of words of shorter title match, like adding a host or subtitle)
+  if (containment >= 0.70 && common >= 2) return true;
+  if (jaccard >= 0.55 && common >= 2) return true;
+
+  // Common prefix check before ':' or '|' or '-'
+  const prefix1 = t1.split(/[:|\-]/)[0].trim().toLowerCase();
+  const prefix2 = t2.split(/[:|\-]/)[0].trim().toLowerCase();
+  if (prefix1.length > 8 && prefix1 === prefix2) return true;
+
+  return false;
+}
+
+function clusterEternalTitleGroups(rawGroups: any[]): any[] {
+  // Sort descending by end_time so the most recent broadcast session is first
+  const sorted = [...rawGroups].sort(
+    (a, b) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime()
+  );
+
+  const clusters: any[] = [];
+
+  for (const group of sorted) {
+    let merged = false;
+    for (const cluster of clusters) {
+      // Must be same stream video_id and match the same show
+      if (
+        cluster.video_id === group.video_id &&
+        areTitlesSameShow(cluster.video_title, group.video_title)
+      ) {
+        const tClusterStart = new Date(cluster.start_time).getTime();
+        const tGroupEnd = new Date(group.end_time).getTime();
+        const gapHours = Math.abs(tClusterStart - tGroupEnd) / (1000 * 3600);
+
+        // Contiguous or within 3 hours in the same continuous stream
+        if (gapHours <= 3) {
+          cluster.start_time = new Date(
+            Math.min(new Date(cluster.start_time).getTime(), new Date(group.start_time).getTime())
+          ).toISOString();
+          cluster.end_time = new Date(
+            Math.max(new Date(cluster.end_time).getTime(), new Date(group.end_time).getTime())
+          ).toISOString();
+          cluster.max_viewers = Math.max(cluster.max_viewers, group.max_viewers);
+          cluster.min_likes = Math.min(cluster.min_likes, group.min_likes);
+          cluster.max_likes = Math.max(cluster.max_likes, group.max_likes);
+          cluster.likes_delta = Math.max(0, cluster.max_likes - cluster.min_likes);
+          cluster.min_comments = Math.min(cluster.min_comments, group.min_comments);
+          cluster.max_comments = Math.max(cluster.max_comments, group.max_comments);
+          cluster.comm_delta = Math.max(0, cluster.max_comments - cluster.min_comments);
+          cluster.point_count += group.point_count;
+
+          // Pick the longer / more complete title as the display video_title
+          if (group.video_title.length > cluster.video_title.length) {
+            cluster.video_title = group.video_title;
+          }
+          if (!cluster.titles.includes(group.video_title)) {
+            cluster.titles.push(group.video_title);
+          }
+          merged = true;
+          break;
+        }
+      }
+    }
+
+    if (!merged) {
+      clusters.push({
+        ...group,
+        titles: [group.video_title],
+      });
+    }
+  }
+
+  return clusters;
+}
+
+// Universal enrichment function for eternal channels in Home and Streams ranking
+async function enrichEternalStreams(streams: any[]) {
+  if (!streams || streams.length === 0) return;
+  const eternalStreams = streams.filter((s: any) => s.type === 'eternal');
+  if (eternalStreams.length === 0) return;
+
+  const channelIds = [...new Set(eternalStreams.map((s: any) => s.channel_id).filter(Boolean))];
+  if (channelIds.length === 0) return;
+
+  try {
+    const titleGroupsRes: any = await executeQuery(
+      `SELECT video_title,
+              video_id,
+              channel_id,
+              MIN(scrape_date) AS start_time,
+              MAX(scrape_date) AS end_time,
+              MAX(concurrent_viewers) AS max_viewers,
+              AVG(concurrent_viewers)::int AS avg_viewers,
+              MIN(likes) AS min_likes,
+              MAX(likes) AS max_likes,
+              MIN(comments_count) AS min_comments,
+              MAX(comments_count) AS max_comments,
+              COUNT(*) AS point_count
+       FROM public.minute
+       WHERE channel_id = ANY($1) 
+         AND scrape_date >= '${OCT_2026_CUTOFF}'
+         AND video_title IS NOT NULL AND video_title <> ''
+       GROUP BY video_title, video_id, channel_id
+       ORDER BY MAX(scrape_date) DESC`,
+      [channelIds]
+    );
+
+    const channelRawMap = new Map<string, any[]>();
+    for (const row of titleGroupsRes.rows || []) {
+      if (!channelRawMap.has(row.channel_id)) {
+        channelRawMap.set(row.channel_id, []);
+      }
+      const maxLikes = Number(row.max_likes || 0);
+      const minLikes = Number(row.min_likes || 0);
+      const maxComm = Number(row.max_comments || 0);
+      const minComm = Number(row.min_comments || 0);
+
+      channelRawMap.get(row.channel_id)!.push({
+        video_title: row.video_title,
+        video_id: row.video_id,
+        channel_id: row.channel_id,
+        start_time: row.start_time,
+        end_time: row.end_time,
+        max_viewers: Number(row.max_viewers || 0),
+        avg_viewers: Number(row.avg_viewers || 0),
+        min_likes: minLikes,
+        max_likes: maxLikes,
+        likes_delta: Math.max(0, maxLikes - minLikes),
+        min_comments: minComm,
+        max_comments: maxComm,
+        comm_delta: Math.max(0, maxComm - minComm),
+        point_count: Number(row.point_count || 0),
+      });
+    }
+
+    const channelSessionsMap = new Map<string, any[]>();
+    for (const [chId, rawGroups] of channelRawMap.entries()) {
+      channelSessionsMap.set(chId, clusterEternalTitleGroups(rawGroups));
+    }
+
+    for (const stream of eternalStreams) {
+      const sessions = channelSessionsMap.get(stream.channel_id);
+      if (sessions && sessions.length > 0) {
+        if (stream.live === 'live') {
+          const currentSession = sessions[0];
+          stream.current_likes = currentSession.likes_delta;
+          stream.comments_count = currentSession.comm_delta;
+          if (currentSession.video_title) {
+            stream.video_title = currentSession.video_title;
+          }
+          if (currentSession.start_time) {
+            stream.start_date = currentSession.start_time;
+          }
+        } else {
+          const matched = sessions.find((s: any) =>
+            areTitlesSameShow(s.video_title, stream.video_title)
+          );
+          if (matched) {
+            stream.current_likes = matched.likes_delta;
+            stream.comments_count = matched.comm_delta;
+            if (matched.video_title) {
+              stream.video_title = matched.video_title;
+            }
+            if (matched.start_time) {
+              stream.start_date = matched.start_time;
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Error enriching eternal streams in Home ranking:', err);
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Set CORS and JSON headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -183,6 +395,74 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     liveQuery += ` ORDER BY l.concurrent_viewers DESC LIMIT 25;`;
     const liveResult: any = await executeQuery(liveQuery, liveParams);
+
+    // For eternal channels in Home (live): group by video_title and keep the latest group
+    const eternalChannelIds = liveResult.rows
+      .filter((s: any) => s.type === 'eternal' && s.channel_id)
+      .map((s: any) => s.channel_id);
+
+    if (eternalChannelIds.length > 0) {
+      try {
+        const eternalTitlesRes: any = await executeQuery(
+          `SELECT DISTINCT ON (sub.channel_id)
+                  sub.channel_id,
+                  sub.video_id,
+                  sub.video_title,
+                  sub.start_time,
+                  sub.end_time,
+                  sub.max_viewers,
+                  sub.min_likes,
+                  sub.max_likes,
+                  sub.min_comments,
+                  sub.max_comments
+           FROM (
+             SELECT channel_id,
+                    video_id,
+                    video_title,
+                    MIN(scrape_date) AS start_time,
+                    MAX(scrape_date) AS end_time,
+                    MAX(concurrent_viewers) AS max_viewers,
+                    MIN(likes) AS min_likes,
+                    MAX(likes) AS max_likes,
+                    MIN(comments_count) AS min_comments,
+                    MAX(comments_count) AS max_comments
+             FROM public.minute
+             WHERE channel_id = ANY($1)
+               AND scrape_date >= '${OCT_2026_CUTOFF}'
+               AND video_title IS NOT NULL AND video_title <> ''
+             GROUP BY channel_id, video_id, video_title
+           ) sub
+           ORDER BY sub.channel_id, sub.end_time DESC`,
+          [eternalChannelIds]
+        );
+
+        const eternalMap = new Map<string, any>();
+        for (const row of eternalTitlesRes.rows || []) {
+          eternalMap.set(row.channel_id, row);
+        }
+
+        for (const stream of liveResult.rows) {
+          if (stream.type === 'eternal' && eternalMap.has(stream.channel_id)) {
+            const grp = eternalMap.get(stream.channel_id);
+            if (grp.video_title) {
+              stream.video_title = grp.video_title;
+            }
+            if (grp.start_time) {
+              stream.start_date = grp.start_time;
+            }
+            const maxLikes = Number(grp.max_likes || 0);
+            const minLikes = Number(grp.min_likes || 0);
+            const maxComm = Number(grp.max_comments || 0);
+            const minComm = Number(grp.min_comments || 0);
+
+            stream.current_likes = Math.max(0, maxLikes - minLikes);
+            stream.comments_count = Math.max(0, maxComm - minComm);
+          }
+        }
+      } catch (err: any) {
+        console.warn('Error fetching latest video_title groups for eternal channels in Home:', err.message);
+      }
+    }
 
     // Also get recent finished streams from the last 24h (strictly October 2026 onwards)
     let recentQuery = `
@@ -260,6 +540,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.error('Error fetching superchats for live streams:', e);
       }
     }
+
+    // Enrich eternal streams with session metrics so likes and comments reflect the current show delta
+    await enrichEternalStreams(liveResult.rows);
+    await enrichEternalStreams(recentResult.rows);
 
     return res.status(200).json({
       success: true,

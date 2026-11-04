@@ -385,13 +385,15 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
   };
 
   const filteredChannelsA = channelsList.filter((c) =>
+    c.channel !== '@Radio10am' && (
     (c.channel_name || '').toLowerCase().includes(searchA.toLowerCase()) ||
-    (c.channel || '').toLowerCase().includes(searchA.toLowerCase())
+    (c.channel || '').toLowerCase().includes(searchA.toLowerCase()))
   );
 
   const filteredChannelsB = channelsList.filter((c) =>
+    c.channel !== '@Radio10am' && (
     (c.channel_name || '').toLowerCase().includes(searchB.toLowerCase()) ||
-    (c.channel || '').toLowerCase().includes(searchB.toLowerCase())
+    (c.channel || '').toLowerCase().includes(searchB.toLowerCase()))
   );
 
   return (

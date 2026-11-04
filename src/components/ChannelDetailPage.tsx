@@ -438,7 +438,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
         </div>
 
         <div className="space-y-6">
-          {pastStreams.map((pastStream) => {
+          {pastStreams.map((pastStream, index) => {
             const chartData = pastStream.data && pastStream.data.length > 0
               ? sortTimelineChronologically(pastStream.data)
               : [];
@@ -449,7 +449,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
 
             return (
               <div
-                key={pastStream.video_id}
+                key={`${pastStream.video_id}_${pastStream.start_date || pastStream.scrape_date || index}`}
                 className="bg-white rounded-xl shadow-xs border border-gray-100 p-6 space-y-5"
               >
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">

@@ -22,6 +22,7 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
     if (!Array.isArray(channels)) return [];
     return channels.filter((ch) => {
       if (!ch) return false;
+      if (ch.channel === '@Radio10am') return false;
 
       // Solo mostrar los canales activos (active = 1)
       if (ch.active !== undefined && ch.active !== null) {

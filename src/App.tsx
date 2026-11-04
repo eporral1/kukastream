@@ -56,12 +56,12 @@ export default function App() {
       }
 
       if (res.ok && data?.success) {
-        const liveList = (Array.isArray(data.streams) ? data.streams : []).filter(
-          (s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)
-        );
-        const recentList = (Array.isArray(data.recent_streams) ? data.recent_streams : []).filter(
-          (s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)
-        );
+        const liveList = (Array.isArray(data.streams) ? data.streams : [])
+          .filter((s: Stream) => s.channel !== '@Radio10am')
+          .filter((s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date));
+        const recentList = (Array.isArray(data.recent_streams) ? data.recent_streams : [])
+          .filter((s: Stream) => s.channel !== '@Radio10am')
+          .filter((s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date));
         setStreams(liveList);
         setRecentStreams(recentList);
 

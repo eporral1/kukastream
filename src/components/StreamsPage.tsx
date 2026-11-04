@@ -45,6 +45,7 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
     if (!Array.isArray(streams)) return [];
     return streams.filter((s) => {
       if (!s) return false;
+      if (s.channel === '@Radio10am') return false;
       const title = (s.video_title || '').toLowerCase();
       const channelName = (s.channel_name || '').toLowerCase();
       const channelHandle = (s.channel || '').toLowerCase();
