@@ -7,6 +7,7 @@ import { ChannelsPage } from './components/ChannelsPage';
 import { StreamsPage } from './components/StreamsPage';
 import { ChannelDetailPage } from './components/ChannelDetailPage';
 import { SuperchatsRankingPage } from './components/SuperchatsRankingPage';
+import { FaceOffPage } from './components/FaceOffPage';
 import { DevSocialModal } from './components/DevSocialModal';
 import { StreamCommentsModal } from './components/StreamCommentsModal';
 import { Footer } from './components/Footer';
@@ -42,7 +43,11 @@ export default function App() {
     setDbError(null);
 
     try {
-      const res = await fetch(`/api/live?tag=${encodeURIComponent(activeCategory)}`);
+      const res = await fetch(`/api/live?tag=${encodeURIComponent(activeCategory)}`, {
+        headers: {
+          'X-App-Client': 'kukastream-web',
+        },
+      });
       let data: any = null;
       try {
         data = await res.json();
@@ -93,7 +98,11 @@ export default function App() {
   // Fetch channels list from real DB
   const fetchChannelsData = useCallback(async () => {
     try {
-      const res = await fetch('/api/channels');
+      const res = await fetch('/api/channels', {
+        headers: {
+          'X-App-Client': 'kukastream-web',
+        },
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.channels)) {
@@ -354,6 +363,12 @@ export default function App() {
             <SuperchatsRankingPage
               onNavigateChannel={(handle) => navigate(`/channel/${handle}`)}
               onOpenStreamComments={(streamStub) => setSelectedCommentsStream(streamStub as any)}
+            />
+          ) : currentPath.startsWith('/face-off') ? (
+            /* Route: Face-Off (Head-to-head comparison) */
+            <FaceOffPage
+              channelsList={channelsList}
+              onNavigateChannel={(handle) => navigate(`/channel/${handle}`)}
             />
           ) : isChannelDetail && currentChannel ? (
             /* Route: Channel Detail */

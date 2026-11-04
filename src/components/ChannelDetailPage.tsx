@@ -8,7 +8,7 @@ import { HeatmapTable } from './HeatmapTable';
 import { StreamLineChart } from './StreamLineChart';
 import { StreamCommentsModal } from './StreamCommentsModal';
 import { isOctober2026OrLater, formatArgentinaDateTime } from '../utils/dateFilter';
-import { ArrowLeft, ExternalLink, Calendar, Heart, Eye, MessageSquare, Radio, RefreshCw, AlertCircle } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Calendar, Heart, Eye, MessageSquare, Radio, RefreshCw, AlertCircle, Swords } from 'lucide-react';
 
 interface ChannelDetailPageProps {
   channel: Channel;
@@ -226,6 +226,19 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                       <span>{channel.twitter}</span>
                     </a>
                   )}
+                  <a
+                    href={`/face-off?ch1=${encodeURIComponent(channel.channel || channel.channel_id)}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      window.history.pushState({}, '', `/face-off?ch1=${encodeURIComponent(channel.channel || channel.channel_id)}`);
+                      window.dispatchEvent(new PopStateEvent('popstate'));
+                    }}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full transition-colors cursor-pointer border border-indigo-200 shadow-2xs"
+                    title="Comparar este canal en Face-Off"
+                  >
+                    <Swords className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Duelo Face-Off</span>
+                  </a>
                 </div>
               </div>
             </div>

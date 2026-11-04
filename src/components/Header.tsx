@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RefreshCw, Radio, Menu, X, Share2, DollarSign } from 'lucide-react';
+import { RefreshCw, Radio, Menu, X, Share2, DollarSign, Swords } from 'lucide-react';
 import { SITE_NAME } from '../config/site';
 
 interface HeaderProps {
@@ -104,6 +104,17 @@ export const Header: React.FC<HeaderProps> = ({
                 <DollarSign className="w-4 h-4 text-amber-500" />
                 <span>Superchats</span>
               </button>
+              <button
+                onClick={() => handleNav('/face-off')}
+                className={`font-medium transition-colors px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${
+                  currentPath.startsWith('/face-off')
+                    ? 'text-indigo-700 bg-indigo-50 font-bold border border-indigo-200 shadow-2xs'
+                    : 'text-gray-700 hover:text-indigo-600 hover:bg-gray-50'
+                }`}
+              >
+                <Swords className="w-4 h-4 text-indigo-500" />
+                <span>Face-Off</span>
+              </button>
             </nav>
 
             {/* Live Indicator */}
@@ -193,6 +204,15 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <DollarSign className="w-4 h-4 text-amber-500" />
               <span>Superchats (Ganancias ARS)</span>
+            </button>
+            <button
+              onClick={() => handleNav('/face-off')}
+              className={`w-full text-left block px-3 py-2 rounded-md font-medium text-sm flex items-center gap-2 ${
+                currentPath.startsWith('/face-off') ? 'text-indigo-700 bg-indigo-50 font-bold' : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <Swords className="w-4 h-4 text-indigo-500" />
+              <span>Face-Off (Duelo Cara a Cara)</span>
             </button>
             <button
               onClick={() => {

@@ -128,6 +128,21 @@ const OCT_2026_CUTOFF = '2026-10-31 23:59:59';
 // GET /api/live - Reproduces Laravel route: /
 // DB::select("select * from public.live l, channels c where l.live='live' and l.concurrent_viewers > 0 and l.channel_id = c.channel_id and c.tags like '%tag%' order by l.concurrent_viewers desc limit 10")
 app.get('/api/live', async (req: Request, res: Response) => {
+  // Security check: Only allow requests originating from our frontend application
+  const secFetchSite = req.headers['sec-fetch-site'];
+  const secFetchMode = req.headers['sec-fetch-mode'];
+  const appClientHeader = req.headers['x-app-client'];
+  const isDirectBrowserNav = secFetchMode === 'navigate' || (secFetchSite === 'none' && !appClientHeader);
+  const isCrossSite = secFetchSite === 'cross-site';
+
+  if (isDirectBrowserNav || isCrossSite || appClientHeader !== 'kukastream-web') {
+    res.status(403).json({
+      success: false,
+      error: 'Acceso denegado. Este endpoint solo puede ser invocado desde la aplicación oficial.',
+    });
+    return;
+  }
+
   const p = getPool();
   if (!p) {
     res.json({ success: false, fallback: true, message: 'DB not connected.' });
@@ -267,7 +282,22 @@ app.get('/api/live', async (req: Request, res: Response) => {
 
 // GET /api/channels - Reproduces Laravel route: /channels
 // Filtered strictly for October 2026 onwards to optimize aggregations
-app.get('/api/channels', async (_req: Request, res: Response) => {
+app.get('/api/channels', async (req: Request, res: Response) => {
+  // Security check: Only allow requests originating from our frontend application
+  const secFetchSite = req.headers['sec-fetch-site'];
+  const secFetchMode = req.headers['sec-fetch-mode'];
+  const appClientHeader = req.headers['x-app-client'];
+  const isDirectBrowserNav = secFetchMode === 'navigate' || (secFetchSite === 'none' && !appClientHeader);
+  const isCrossSite = secFetchSite === 'cross-site';
+
+  if (isDirectBrowserNav || isCrossSite || appClientHeader !== 'kukastream-web') {
+    res.status(403).json({
+      success: false,
+      error: 'Acceso denegado. Este endpoint solo puede ser invocado desde la aplicación oficial.',
+    });
+    return;
+  }
+
   const p = getPool();
   if (!p) {
     res.json({ success: false, fallback: true, message: 'DB not connected.' });
@@ -590,15 +620,29 @@ const channelHandler = async (req: Request, res: Response) => {
     try {
       const statsRes = await p.query(
         `SELECT 
-           COALESCE(AVG(l.concurrent_viewers), 0)::int AS avg_viewers
-         FROM public.live l
-         WHERE l.channel_id = $1 
-           AND l.scrape_date >= '${OCT_2026_CUTOFF}' 
-           AND l.concurrent_viewers > 0`,
+           COALESCE(ROUND(AVG(max_viewers)), 0)::int AS avg_viewers,
+           COALESCE(MAX(max_viewers), 0)::int AS peak_viewers,
+           COALESCE(SUM(current_likes), 0)::int AS total_likes,
+           COALESCE(MAX(current_likes), 0)::int AS peak_likes,
+           COUNT(DISTINCT video_id)::int AS total_streams
+         FROM (
+           SELECT video_id, 
+                  MAX(concurrent_viewers) AS max_viewers,
+                  MAX(COALESCE(current_likes, 0)) AS current_likes
+           FROM public.live
+           WHERE channel_id = $1 
+             AND scrape_date >= '${OCT_2026_CUTOFF}' 
+             AND concurrent_viewers > 0
+           GROUP BY video_id
+         ) sub`,
         [channelId]
       );
       if (statsRes.rows && statsRes.rows.length > 0) {
         channel.avg_viewers = Number(statsRes.rows[0].avg_viewers || 0);
+        channel.peak_viewers = Number(statsRes.rows[0].peak_viewers || 0);
+        channel.total_likes = Number(statsRes.rows[0].total_likes || 0);
+        channel.peak_likes = Number(statsRes.rows[0].peak_likes || 0);
+        channel.total_streams = Number(statsRes.rows[0].total_streams || 0);
       }
 
       const likesStatsRes = await p.query(
@@ -617,9 +661,13 @@ const channelHandler = async (req: Request, res: Response) => {
       channel.avg_likes = Number(likesStatsRes.rows?.[0]?.avg_likes || 0);
 
       const commStatsRes = await p.query(
-        `SELECT COALESCE(ROUND(AVG(comments_rate)), 0)::int AS avg_comments
+        `SELECT 
+           COALESCE(ROUND(AVG(comments_rate)), 0)::int AS avg_comments,
+           COALESCE(MAX(max_comm), 0)::int AS peak_comments,
+           COALESCE(SUM(max_comm), 0)::int AS total_comments
          FROM (
            SELECT video_id,
+                  MAX(comments_count) as max_comm,
                   (MAX(comments_count) - MIN(comments_count))::numeric / 
                   GREATEST(0.25, EXTRACT(EPOCH FROM (MAX(scrape_date) - MIN(scrape_date))) / 3600.0) AS comments_rate
            FROM public.minute
@@ -630,6 +678,25 @@ const channelHandler = async (req: Request, res: Response) => {
         [channelId]
       );
       channel.avg_comments = Number(commStatsRes.rows?.[0]?.avg_comments || 0);
+      channel.peak_comments = Number(commStatsRes.rows?.[0]?.peak_comments || 0);
+      channel.total_comments = Number(commStatsRes.rows?.[0]?.total_comments || 0);
+
+      // Superchats totals in ARS (matching /api/superchats-ranking exactly)
+      const scStatsRes = await p.query(
+        `SELECT 
+           COALESCE(SUM(s.amount), 0)::numeric as superchats_total_ars,
+           COUNT(s.id)::int as superchats_count
+         FROM public.superchats s
+         JOIN public.live l ON s.video_id = l.video_id
+         WHERE l.channel_id = $1
+           AND (s.currency = 'ARS' OR s.currency ILIKE '%ARS%')
+           AND s.created_at >= '${OCT_2026_CUTOFF}'`,
+        [channelId]
+      );
+      if (scStatsRes.rows && scStatsRes.rows.length > 0) {
+        channel.superchats_total_ars = Number(scStatsRes.rows[0].superchats_total_ars || 0);
+        channel.superchats_count = Number(scStatsRes.rows[0].superchats_count || 0);
+      }
     } catch {
       channel.avg_viewers = channel.avg_viewers || 0;
       channel.avg_likes = channel.avg_likes || 0;
@@ -787,15 +854,20 @@ const channelHandler = async (req: Request, res: Response) => {
       // Superchats summary (October 2026 onwards)
       try {
         const scRes = await p.query(
-          `SELECT currency, sum(amount) AS total_amount 
+          `SELECT currency, sum(amount) AS total_amount, count(id)::int as sc_count 
            FROM public.superchats 
            WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}' 
            GROUP BY currency`,
           [live.video_id]
         );
         live.superchats = scRes.rows;
+        const arsSc = scRes.rows.find((item: any) => item.currency === 'ARS' || String(item.currency).toUpperCase().includes('ARS'));
+        live.superchats_total = arsSc ? Number(arsSc.total_amount || 0) : 0;
+        live.superchats_count = arsSc ? Number(arsSc.sc_count || 0) : 0;
       } catch {
         live.superchats = [];
+        live.superchats_total = 0;
+        live.superchats_count = 0;
       }
 
       // Set comments_count to the maximum from chart data
@@ -894,7 +966,7 @@ const channelHandler = async (req: Request, res: Response) => {
         // 3. Batch superchats
         try {
           const batchScRes = await p.query(
-            `SELECT video_id, currency, sum(amount) AS total_amount 
+            `SELECT video_id, currency, sum(amount) AS total_amount, count(id)::int as sc_count 
              FROM public.superchats 
              WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}' 
              GROUP BY video_id, currency`,
@@ -905,6 +977,7 @@ const channelHandler = async (req: Request, res: Response) => {
             scMap.get(row.video_id)!.push({
               currency: row.currency,
               total_amount: row.total_amount,
+              sc_count: row.sc_count,
             });
           }
         } catch (e) {
@@ -936,7 +1009,11 @@ const channelHandler = async (req: Request, res: Response) => {
               stream.comments_count = maxComments;
             }
           }
-          stream.superchats = scMap.get(stream.video_id) || [];
+          const scList = scMap.get(stream.video_id) || [];
+          stream.superchats = scList;
+          const arsSc = scList.find((item: any) => item.currency === 'ARS' || String(item.currency).toUpperCase().includes('ARS'));
+          stream.superchats_total = arsSc ? Number(arsSc.total_amount || 0) : 0;
+          stream.superchats_count = arsSc ? Number(arsSc.sc_count || 0) : 0;
         }
       }
     } catch {

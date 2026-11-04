@@ -317,27 +317,58 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const channelId = channel.channel_id;
 
-    // Overall channel averages (non-costly query with zero negative values)
+    // Overall channel averages and totals
     try {
       const statsRes = await executeQuery(
         `SELECT 
-           COALESCE(AVG(l.concurrent_viewers), 0)::int AS avg_viewers,
-           COALESCE(AVG(CASE WHEN l.current_likes > l.old_likes THEN (l.current_likes - l.old_likes) * 6 END), 0)::int AS avg_likes
-         FROM public.live l
-         WHERE l.channel_id = $1 
-           AND l.scrape_date >= '${OCT_2026_CUTOFF}' 
-           AND l.concurrent_viewers > 0`,
+           COALESCE(ROUND(AVG(max_viewers)), 0)::int AS avg_viewers,
+           COALESCE(MAX(max_viewers), 0)::int AS peak_viewers,
+           COALESCE(SUM(current_likes), 0)::int AS total_likes,
+           COALESCE(MAX(current_likes), 0)::int AS peak_likes,
+           COUNT(DISTINCT video_id)::int AS total_streams
+         FROM (
+           SELECT video_id, 
+                  MAX(concurrent_viewers) AS max_viewers,
+                  MAX(COALESCE(current_likes, 0)) AS current_likes
+           FROM public.live
+           WHERE channel_id = $1 
+             AND scrape_date >= '${OCT_2026_CUTOFF}' 
+             AND concurrent_viewers > 0
+           GROUP BY video_id
+         ) sub`,
         [channelId]
       );
       if (statsRes.rows && statsRes.rows.length > 0) {
         channel.avg_viewers = Number(statsRes.rows[0].avg_viewers || 0);
-        channel.avg_likes = Number(statsRes.rows[0].avg_likes || 0);
+        channel.peak_viewers = Number(statsRes.rows[0].peak_viewers || 0);
+        channel.total_likes = Number(statsRes.rows[0].total_likes || 0);
+        channel.peak_likes = Number(statsRes.rows[0].peak_likes || 0);
+        channel.total_streams = Number(statsRes.rows[0].total_streams || 0);
       }
 
-      const commStatsRes = await executeQuery(
-        `SELECT COALESCE(ROUND(AVG(comments_rate)), 0)::int AS avg_comments
+      const likesStatsRes = await executeQuery(
+        `SELECT COALESCE(ROUND(AVG(likes_rate)), 0)::int AS avg_likes
          FROM (
            SELECT video_id,
+                  (MAX(likes) - MIN(likes))::numeric / 
+                  GREATEST(0.25, EXTRACT(EPOCH FROM (MAX(scrape_date) - MIN(scrape_date))) / 3600.0) AS likes_rate
+           FROM public.minute
+           WHERE channel_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}' AND likes > 0
+           GROUP BY video_id
+           HAVING MAX(scrape_date) > MIN(scrape_date) AND MAX(likes) >= MIN(likes)
+         ) sub`,
+        [channelId]
+      );
+      channel.avg_likes = Number(likesStatsRes.rows?.[0]?.avg_likes || 0);
+
+      const commStatsRes = await executeQuery(
+        `SELECT 
+           COALESCE(ROUND(AVG(comments_rate)), 0)::int AS avg_comments,
+           COALESCE(MAX(max_comm), 0)::int AS peak_comments,
+           COALESCE(SUM(max_comm), 0)::int AS total_comments
+         FROM (
+           SELECT video_id,
+                  MAX(comments_count) as max_comm,
                   (MAX(comments_count) - MIN(comments_count))::numeric / 
                   GREATEST(0.25, EXTRACT(EPOCH FROM (MAX(scrape_date) - MIN(scrape_date))) / 3600.0) AS comments_rate
            FROM public.minute
@@ -348,6 +379,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         [channelId]
       );
       channel.avg_comments = Number(commStatsRes.rows?.[0]?.avg_comments || 0);
+      channel.peak_comments = Number(commStatsRes.rows?.[0]?.peak_comments || 0);
+      channel.total_comments = Number(commStatsRes.rows?.[0]?.total_comments || 0);
+
+      // Superchats totals in ARS (matching /api/superchats-ranking exactly)
+      const scStatsRes = await executeQuery(
+        `SELECT 
+           COALESCE(SUM(s.amount), 0)::numeric as superchats_total_ars,
+           COUNT(s.id)::int as superchats_count
+         FROM public.superchats s
+         JOIN public.live l ON s.video_id = l.video_id
+         WHERE l.channel_id = $1
+           AND (s.currency = 'ARS' OR s.currency ILIKE '%ARS%')
+           AND s.created_at >= '${OCT_2026_CUTOFF}'`,
+        [channelId]
+      );
+      if (scStatsRes.rows && scStatsRes.rows.length > 0) {
+        channel.superchats_total_ars = Number(scStatsRes.rows[0].superchats_total_ars || 0);
+        channel.superchats_count = Number(scStatsRes.rows[0].superchats_count || 0);
+      }
     } catch {
       channel.avg_viewers = channel.avg_viewers || 0;
       channel.avg_likes = channel.avg_likes || 0;
@@ -507,15 +557,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // 3. Superchats summary for live stream
       try {
         const scRes = await executeQuery(
-          `SELECT currency, sum(amount) AS total_amount 
+          `SELECT currency, sum(amount) AS total_amount, count(id)::int as sc_count 
            FROM public.superchats 
            WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}' 
            GROUP BY currency`,
           [live.video_id]
         );
         live.superchats = scRes.rows;
+        const arsSc = scRes.rows.find((item: any) => item.currency === 'ARS' || String(item.currency).toUpperCase().includes('ARS'));
+        live.superchats_total = arsSc ? Number(arsSc.total_amount || 0) : 0;
+        live.superchats_count = arsSc ? Number(arsSc.sc_count || 0) : 0;
       } catch {
         live.superchats = [];
+        live.superchats_total = 0;
+        live.superchats_count = 0;
       }
 
       // Set comments_count to the maximum from chart data
@@ -600,7 +655,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // 2. Batch query superchats for all finished streams in 1 query
           try {
             const batchScRes = await executeQuery(
-              `SELECT video_id, currency, sum(amount) AS total_amount 
+              `SELECT video_id, currency, sum(amount) AS total_amount, count(id)::int as sc_count 
                FROM public.superchats 
                WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}' 
                GROUP BY video_id, currency`,
@@ -611,6 +666,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               scMap.get(row.video_id)!.push({
                 currency: row.currency,
                 total_amount: row.total_amount,
+                sc_count: row.sc_count,
               });
             }
           } catch (e) {
@@ -637,7 +693,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               stream.comments_count = maxComments;
             }
           }
-          stream.superchats = scMap.get(stream.video_id) || [];
+          const scList = scMap.get(stream.video_id) || [];
+          stream.superchats = scList;
+          const arsSc = scList.find((item: any) => item.currency === 'ARS' || String(item.currency).toUpperCase().includes('ARS'));
+          stream.superchats_total = arsSc ? Number(arsSc.total_amount || 0) : 0;
+          stream.superchats_count = arsSc ? Number(arsSc.sc_count || 0) : 0;
         }
       }
     } catch {

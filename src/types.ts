@@ -136,6 +136,12 @@ export interface Channel {
   superchats_total_ars?: number;
   comments_sample?: CommentItem[];
   active?: number | string | boolean;
+  peak_viewers?: number;
+  peak_likes?: number;
+  peak_comments?: number;
+  total_likes?: number;
+  total_comments?: number;
+  total_streams?: number;
 }
 
 export type CategoryTag = 'all' | 'stream' | 'tv' | 'entretenimiento' | 'radio' | 'política' | 'deportes';
