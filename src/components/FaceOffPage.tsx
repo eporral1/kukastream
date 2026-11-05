@@ -172,9 +172,9 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
 
     // Subs, averages from official channel stats
     const subs = Number(channel?.subs || fallbackChannel?.subs || 0);
-    const avgViewers = Number(fallbackChannel?.avg_viewers || channel?.avg_viewers || 0);
-    const avgLikes = Number(fallbackChannel?.avg_likes || channel?.avg_likes || 0);
-    const avgComments = Number(fallbackChannel?.avg_comments || channel?.avg_comments || 0);
+    const avgViewers = Number(channel?.avg_viewers || fallbackChannel?.avg_viewers || 0);
+    const avgLikes = Number(channel?.avg_likes || fallbackChannel?.avg_likes || 0);
+    const avgComments = Number(channel?.avg_comments || fallbackChannel?.avg_comments || 0);
 
     // Peak Viewers: database peak or highest across streams / current live
     const streamViewers = streams.map((s) => Number(s.concurrent_viewers || s.max_users || 0));
@@ -430,16 +430,16 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
       </div>
 
       {/* Selectors & Fighter Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-11 gap-4 items-stretch max-w-5xl mx-auto">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-stretch max-w-5xl mx-auto">
         {/* Corner Left: Channel A */}
-        <div className="md:col-span-5 bg-white border-2 border-blue-200/80 rounded-2xl p-5 shadow-sm relative flex flex-col justify-between">
-          <div className="space-y-4">
+        <div className="md:col-span-4 bg-white border-2 border-blue-200/80 rounded-2xl p-4 shadow-sm relative flex flex-col justify-between">
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md uppercase tracking-wider">
+              <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-md uppercase tracking-wider">
                 Esquina Azul
               </span>
               {metricsA.isLive && (
-                <span className="bg-red-500 text-white text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
                   <Radio className="w-3 h-3" />
                   EN VIVO ({formatNumber(metricsA.liveViewers)})
                 </span>
@@ -451,13 +451,13 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
               <button
                 type="button"
                 onClick={() => setOpenDropdownA(!openDropdownA)}
-                className="w-full bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl px-3 py-2.5 text-left flex items-center justify-between transition-colors cursor-pointer"
+                className="w-full bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl px-2.5 py-2 text-left flex items-center justify-between transition-colors cursor-pointer"
               >
-                <div className="flex items-center gap-2.5 min-w-0">
+                <div className="flex items-center gap-2 min-w-0">
                   <img
                     src={metricsA.channel?.thumb || 'https://yt3.ggpht.com/'}
                     alt={metricsA.channel?.channel_name || 'Canal'}
-                    className="w-7 h-7 rounded-full object-cover shrink-0 border border-gray-200"
+                    className="w-6 h-6 rounded-full object-cover shrink-0 border border-gray-200"
                     onError={(e) => {
                       (e.target as HTMLImageElement).src = 'https://yt3.ggpht.com/';
                     }}
@@ -471,7 +471,7 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
                     </div>
                   </div>
                 </div>
-                <ChevronDown className="w-4 h-4 text-gray-400 shrink-0 ml-2" />
+                <ChevronDown className="w-3.5 h-3.5 text-gray-400 shrink-0 ml-1.5" />
               </button>
 
               {openDropdownA && (
@@ -495,7 +495,7 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
                           setOpenDropdownA(false);
                           setSearchA('');
                         }}
-                        className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
                           selectedIdA === ch.channel || selectedIdA === ch.channel_id
                             ? 'bg-blue-50 text-blue-700 font-semibold'
                             : 'hover:bg-gray-50 text-gray-700'
@@ -504,13 +504,13 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
                         <img
                           src={ch.thumb}
                           alt={ch.channel_name}
-                          className="w-6 h-6 rounded-full object-cover border border-gray-200"
+                          className="w-5 h-5 rounded-full object-cover border border-gray-200"
                         />
                         <div className="truncate flex-1">
                           <span className="font-semibold block truncate">{ch.channel_name}</span>
                           <span className="text-[10px] text-gray-400 font-mono">{ch.channel}</span>
                         </div>
-                        <span className="text-[11px] text-gray-400 shrink-0">{formatSubs(ch.subs)}</span>
+                        <span className="text-[10px] text-gray-400 shrink-0">{formatSubs(ch.subs)}</span>
                       </button>
                     ))}
                   </div>
@@ -518,17 +518,17 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
               )}
             </div>
 
-            {/* Channel A Profile summary */}
-            <div className="text-center pt-2">
+            {/* Channel A Profile summary (sin descripción) */}
+            <div className="text-center pt-1 pb-1">
               <img
                 src={metricsA.channel?.thumb || 'https://yt3.ggpht.com/'}
                 alt={metricsA.channel?.channel_name || 'Canal'}
-                className="w-20 h-20 rounded-full mx-auto object-cover border-4 border-blue-100 shadow-md mb-2.5"
+                className="w-16 h-16 rounded-full mx-auto object-cover border-3 border-blue-100 shadow-sm mb-2"
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = 'https://yt3.ggpht.com/';
                 }}
               />
-              <h2 className="text-lg font-black text-gray-900 truncate">
+              <h2 className="text-base font-black text-gray-900 truncate">
                 {metricsA.channel?.channel_name || 'Cargando...'}
               </h2>
               <button
@@ -538,46 +538,118 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
                 <span>{metricsA.channel?.channel}</span>
                 <ExternalLink className="w-3 h-3" />
               </button>
-              <div className="mt-2 text-xs text-gray-500 line-clamp-2 px-2">
-                {metricsA.channel?.description || 'Canal de streaming argentino.'}
+            </div>
+          </div>
+
+          <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500">
+            <span>Subs: <strong className="text-gray-900">{formatSubs(metricsA.subs)}</strong></span>
+            <span>Streams: <strong className="text-gray-900">{metricsA.totalStreams}</strong></span>
+          </div>
+        </div>
+
+        {/* Middle: VS, Score & Badges of who wins each item */}
+        <div className="md:col-span-4 bg-white border border-gray-200/90 rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+          <div>
+            {/* Top row: Scoreboard centered and bigger, Swap button on the right */}
+            <div className="relative flex items-center justify-center pb-2.5 border-b border-gray-100">
+              <div className="inline-flex items-center gap-3 px-4 py-1 rounded-xl bg-gray-100/90 text-gray-900 shadow-2xs">
+                <span className="text-2xl sm:text-3xl font-black text-blue-600 tabular-nums">
+                  {score.scoreA}
+                </span>
+                <span className="text-base font-extrabold text-gray-400">
+                  -
+                </span>
+                <span className="text-2xl sm:text-3xl font-black text-rose-600 tabular-nums">
+                  {score.scoreB}
+                </span>
+              </div>
+              <button
+                onClick={handleSwap}
+                title="Invertir canales"
+                className="absolute right-0 p-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-indigo-600 transition-colors cursor-pointer border border-gray-200 shadow-2xs"
+              >
+                <ArrowLeftRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Badges: Who wins each item */}
+            <div className="pt-2.5 space-y-1.5">
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1">
+                Ganador por Métrica
+              </div>
+              <div className="space-y-1">
+                {comparisonList.map((item) => {
+                  const isWinnerA = item.valA > item.valB;
+                  const isWinnerB = item.valB > item.valA;
+                  const isTie = item.valA === item.valB;
+                  const shortTitles: Record<string, string> = {
+                    avg_viewers: 'Espectadores',
+                    peak_viewers: 'Pico máx',
+                    subs: 'Suscriptores',
+                    avg_likes: 'Likes / hora',
+                    avg_comments: 'Msgs / hora',
+                    total_likes: 'Total likes',
+                    total_comments: 'Total msgs',
+                    peak_likes: 'Pico likes',
+                    superchats_total: 'Superchats',
+                  };
+                  const label = shortTitles[item.id] || item.title;
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between text-[11px] py-1 px-2 rounded-lg bg-gray-50/80 hover:bg-gray-100/70 transition-colors border border-gray-100"
+                    >
+                      <span className="text-gray-600 font-medium truncate flex items-center gap-1.5 max-w-[110px]">
+                        <item.icon className="w-3 h-3 text-gray-400 shrink-0" />
+                        <span className="truncate">{label}</span>
+                      </span>
+                      {isWinnerA ? (
+                        <span className="inline-flex items-center gap-1 font-bold text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200 shadow-2xs">
+                          <span>👑</span>
+                          <span className="truncate max-w-[95px]">{metricsA.channel?.channel_name || 'Azul'}</span>
+                        </span>
+                      ) : isWinnerB ? (
+                        <span className="inline-flex items-center gap-1 font-bold text-[10px] px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200 shadow-2xs">
+                          <span>👑</span>
+                          <span className="truncate max-w-[95px]">{metricsB.channel?.channel_name || 'Rojo'}</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200">
+                          Empate
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
-            <span>Suscriptores: <strong className="text-gray-900">{formatSubs(metricsA.subs)}</strong></span>
-            <span>Transmisiones: <strong className="text-gray-900">{metricsA.totalStreams}</strong></span>
-          </div>
-        </div>
-
-        {/* Middle: VS / Swap Button / Scoreboard */}
-        <div className="md:col-span-1 flex flex-col items-center justify-center py-2 md:py-0">
-          <div className="bg-white border border-gray-200 rounded-2xl p-3 shadow-sm text-center flex flex-col items-center gap-2">
-            <span className="text-xl font-black text-gray-900 tracking-tight">VS</span>
-            <div className="text-xs font-extrabold flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-gray-100 text-gray-800">
-              <span className="text-blue-600">{score.scoreA}</span>
-              <span>-</span>
-              <span className="text-rose-600">{score.scoreB}</span>
-            </div>
-            <button
-              onClick={handleSwap}
-              title="Invertir canales"
-              className="p-2 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-indigo-600 transition-colors cursor-pointer border border-gray-200"
-            >
-              <ArrowLeftRight className="w-4 h-4" />
-            </button>
+          <div className="mt-3 pt-2 border-t border-gray-100 text-center text-[11px] text-gray-500">
+            {score.scoreA > score.scoreB ? (
+              <span className="font-semibold text-blue-600">
+                👑 Lidera {metricsA.channel?.channel_name || 'Esquina Azul'} ({score.scoreA} a {score.scoreB})
+              </span>
+            ) : score.scoreB > score.scoreA ? (
+              <span className="font-semibold text-rose-600">
+                👑 Lidera {metricsB.channel?.channel_name || 'Esquina Roja'} ({score.scoreB} a {score.scoreA})
+              </span>
+            ) : (
+              <span className="font-medium text-gray-600">🤝 Empate general en métricas</span>
+            )}
           </div>
         </div>
 
         {/* Corner Right: Channel B */}
-        <div className="md:col-span-5 bg-white border-2 border-rose-200/80 rounded-2xl p-5 shadow-sm relative flex flex-col justify-between">
-          <div className="space-y-4">
+        <div className="md:col-span-4 bg-white border-2 border-rose-200/80 rounded-2xl p-4 shadow-sm relative flex flex-col justify-between">
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-md uppercase tracking-wider">
+              <span className="text-[11px] font-bold text-rose-600 bg-rose-50 px-2.5 py-0.5 rounded-md uppercase tracking-wider">
                 Esquina Roja
               </span>
               {metricsB.isLive && (
-                <span className="bg-red-500 text-white text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
                   <Radio className="w-3 h-3" />
                   EN VIVO ({formatNumber(metricsB.liveViewers)})
                 </span>
@@ -589,13 +661,13 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
               <button
                 type="button"
                 onClick={() => setOpenDropdownB(!openDropdownB)}
-                className="w-full bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl px-3 py-2.5 text-left flex items-center justify-between transition-colors cursor-pointer"
+                className="w-full bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl px-2.5 py-2 text-left flex items-center justify-between transition-colors cursor-pointer"
               >
-                <div className="flex items-center gap-2.5 min-w-0">
+                <div className="flex items-center gap-2 min-w-0">
                   <img
                     src={metricsB.channel?.thumb || 'https://yt3.ggpht.com/'}
                     alt={metricsB.channel?.channel_name || 'Canal'}
-                    className="w-7 h-7 rounded-full object-cover shrink-0 border border-gray-200"
+                    className="w-6 h-6 rounded-full object-cover shrink-0 border border-gray-200"
                     onError={(e) => {
                       (e.target as HTMLImageElement).src = 'https://yt3.ggpht.com/';
                     }}
@@ -609,7 +681,7 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
                     </div>
                   </div>
                 </div>
-                <ChevronDown className="w-4 h-4 text-gray-400 shrink-0 ml-2" />
+                <ChevronDown className="w-3.5 h-3.5 text-gray-400 shrink-0 ml-1.5" />
               </button>
 
               {openDropdownB && (
@@ -621,7 +693,7 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
                       placeholder="Buscar canal..."
                       value={searchB}
                       onChange={(e) => setSearchB(e.target.value)}
-                      className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-rose-500"
+                      className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
                   <div className="space-y-1">
@@ -633,7 +705,7 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
                           setOpenDropdownB(false);
                           setSearchB('');
                         }}
-                        className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
                           selectedIdB === ch.channel || selectedIdB === ch.channel_id
                             ? 'bg-rose-50 text-rose-700 font-semibold'
                             : 'hover:bg-gray-50 text-gray-700'
@@ -642,13 +714,13 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
                         <img
                           src={ch.thumb}
                           alt={ch.channel_name}
-                          className="w-6 h-6 rounded-full object-cover border border-gray-200"
+                          className="w-5 h-5 rounded-full object-cover border border-gray-200"
                         />
                         <div className="truncate flex-1">
                           <span className="font-semibold block truncate">{ch.channel_name}</span>
                           <span className="text-[10px] text-gray-400 font-mono">{ch.channel}</span>
                         </div>
-                        <span className="text-[11px] text-gray-400 shrink-0">{formatSubs(ch.subs)}</span>
+                        <span className="text-[10px] text-gray-400 shrink-0">{formatSubs(ch.subs)}</span>
                       </button>
                     ))}
                   </div>
@@ -656,17 +728,17 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
               )}
             </div>
 
-            {/* Channel B Profile summary */}
-            <div className="text-center pt-2">
+            {/* Channel B Profile summary (sin descripción) */}
+            <div className="text-center pt-1 pb-1">
               <img
                 src={metricsB.channel?.thumb || 'https://yt3.ggpht.com/'}
                 alt={metricsB.channel?.channel_name || 'Canal'}
-                className="w-20 h-20 rounded-full mx-auto object-cover border-4 border-rose-100 shadow-md mb-2.5"
+                className="w-16 h-16 rounded-full mx-auto object-cover border-3 border-rose-100 shadow-sm mb-2"
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = 'https://yt3.ggpht.com/';
                 }}
               />
-              <h2 className="text-lg font-black text-gray-900 truncate">
+              <h2 className="text-base font-black text-gray-900 truncate">
                 {metricsB.channel?.channel_name || 'Cargando...'}
               </h2>
               <button
@@ -676,15 +748,12 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
                 <span>{metricsB.channel?.channel}</span>
                 <ExternalLink className="w-3 h-3" />
               </button>
-              <div className="mt-2 text-xs text-gray-500 line-clamp-2 px-2">
-                {metricsB.channel?.description || 'Canal de streaming argentino.'}
-              </div>
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
-            <span>Suscriptores: <strong className="text-gray-900">{formatSubs(metricsB.subs)}</strong></span>
-            <span>Transmisiones: <strong className="text-gray-900">{metricsB.totalStreams}</strong></span>
+          <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500">
+            <span>Subs: <strong className="text-gray-900">{formatSubs(metricsB.subs)}</strong></span>
+            <span>Streams: <strong className="text-gray-900">{metricsB.totalStreams}</strong></span>
           </div>
         </div>
       </div>
@@ -753,26 +822,44 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
                 </div>
 
                 {/* Values comparison row */}
-                <div className="flex items-baseline justify-between py-1">
-                  <div className="text-left">
+                <div className="flex items-center justify-between py-1 gap-2">
+                  <div className="text-left shrink-0">
                     <div className={`text-lg sm:text-2xl font-black ${isWinnerA ? 'text-blue-600' : 'text-gray-600'}`}>
                       {item.format(item.valA)}
                     </div>
-                    <div className="text-[11px] text-gray-400 font-medium truncate max-w-[140px] sm:max-w-none">
+                    <div className="text-[11px] text-gray-400 font-medium truncate max-w-[110px] sm:max-w-none">
                       {metricsA.channel?.channel_name || 'Canal A'}
                       {isWinnerA && <span className="ml-1 text-blue-600 font-bold">✓</span>}
                     </div>
                   </div>
 
-                  <div className="text-xs text-gray-400 font-semibold px-2">
-                    {isTie ? 'Empate' : isWinnerA ? `+${pctA - pctB}%` : `+${pctB - pctA}%`}
+                  {/* Middle Winner Badge */}
+                  <div className="flex items-center justify-center text-center px-1 flex-1">
+                    {isWinnerA ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
+                        <span>👑</span>
+                        <span className="truncate max-w-[110px] sm:max-w-[170px]">{metricsA.channel?.channel_name || 'Canal A'}</span>
+                        <span className="text-[10px] opacity-75 font-mono hidden sm:inline">+{pctA - pctB}%</span>
+                      </span>
+                    ) : isWinnerB ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs">
+                        <span>👑</span>
+                        <span className="truncate max-w-[110px] sm:max-w-[170px]">{metricsB.channel?.channel_name || 'Canal B'}</span>
+                        <span className="text-[10px] opacity-75 font-mono hidden sm:inline">+{pctB - pctA}%</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-200 shadow-2xs">
+                        <span>🤝</span>
+                        <span>Empate</span>
+                      </span>
+                    )}
                   </div>
 
-                  <div className="text-right">
+                  <div className="text-right shrink-0">
                     <div className={`text-lg sm:text-2xl font-black ${isWinnerB ? 'text-rose-600' : 'text-gray-600'}`}>
                       {item.format(item.valB)}
                     </div>
-                    <div className="text-[11px] text-gray-400 font-medium truncate max-w-[140px] sm:max-w-none">
+                    <div className="text-[11px] text-gray-400 font-medium truncate max-w-[110px] sm:max-w-none">
                       {isWinnerB && <span className="mr-1 text-rose-600 font-bold">✓</span>}
                       {metricsB.channel?.channel_name || 'Canal B'}
                     </div>

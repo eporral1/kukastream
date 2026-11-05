@@ -521,6 +521,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         channel.total_comments = titleGroups.reduce((acc, g) => acc + g.comm_delta, 0);
         channel.peak_comments = Math.max(...titleGroups.map(g => g.comm_delta));
         channel.avg_comments = Math.round(channel.total_comments / titleGroups.length);
+      } else {
+        channel.total_streams = 0;
+        channel.peak_viewers = 0;
+        channel.avg_viewers = 0;
+        channel.total_likes = 0;
+        channel.peak_likes = 0;
+        channel.avg_likes = 0;
+        channel.total_comments = 0;
+        channel.peak_comments = 0;
+        channel.avg_comments = 0;
       }
 
       // Superchats totals in ARS for the channel

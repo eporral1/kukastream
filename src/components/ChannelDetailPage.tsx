@@ -244,7 +244,16 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
             </div>
 
             {/* Overall averages */}
-            {Boolean(channel.avg_viewers || channel.avg_likes || channel.avg_comments) && (
+            {isLoadingChannel ? (
+              <div className="flex flex-wrap md:flex-col sm:flex-row gap-4 border-t md:border-t-0 md:border-l border-gray-100 pt-4 md:pt-0 md:pl-8 w-full md:w-auto animate-pulse">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="text-left md:text-right space-y-1">
+                    <div className="h-3 w-20 bg-gray-200 rounded"></div>
+                    <div className="h-6 w-16 bg-gray-200 rounded"></div>
+                  </div>
+                ))}
+              </div>
+            ) : Boolean(channel.avg_viewers || channel.avg_likes || channel.avg_comments) && (
               <div className="flex flex-wrap md:flex-col sm:flex-row gap-4 border-t md:border-t-0 md:border-l border-gray-100 pt-4 md:pt-0 md:pl-8 w-full md:w-auto">
                 <div className="text-left md:text-right">
                   <div className="text-xs text-gray-500 uppercase tracking-wider font-semibold">
@@ -264,7 +273,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                 </div>
                 <div className="text-left md:text-right">
                   <div className="text-xs text-gray-500 uppercase tracking-wider font-semibold">
-                    mensajes / Hora
+                    Mensajes / Hora
                   </div>
                   <div className="text-xl sm:text-2xl font-black text-amber-500">
                     {formatNumber(Math.max(0, channel.avg_comments || 0))}

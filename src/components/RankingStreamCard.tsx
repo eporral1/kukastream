@@ -31,6 +31,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
   const thumbUrl = stream.thumb || `https://i.ytimg.com/vi/${stream.video_id}/hqdefault.jpg`;
   const superchatsTotal = Number(stream.superchats_total || 0);
   const commentsCount = stream.comments_count;
+  const isLive = stream.live === 'live';
 
   return (
     <div
@@ -128,9 +129,11 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
             <div className="text-center min-w-[90px]">
               <div className="text-xs text-gray-400 font-semibold mb-0.5">ESPECTADORES</div>
               <div className="font-extrabold text-2xl text-gray-900">
-                {formatNumber(stream.concurrent_viewers)}
+                {formatNumber(isLive ? stream.concurrent_viewers : (stream.avg_viewers || stream.concurrent_viewers))}
               </div>
-              <div className="text-[10px] text-gray-500">ACTUALES</div>
+              <div className="text-[10px] text-gray-500">
+                {isLive ? 'ACTUALES' : 'PROMEDIO'}
+              </div>
             </div>
 
             {/* Likes Count */}
@@ -199,7 +202,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                 <div className="flex items-center space-x-1.5 bg-red-50 text-red-600 px-2 py-0.5 rounded-md">
                   <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div>
                   <span className="text-xs font-bold">
-                    {formatNumber(stream.concurrent_viewers)}
+                    {formatNumber(isLive ? stream.concurrent_viewers : (stream.avg_viewers || stream.concurrent_viewers))}
                   </span>
                 </div>
 

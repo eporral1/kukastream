@@ -116,6 +116,7 @@ export interface Stream {
   comments?: CommentItem[];
   data?: MinuteDataPoint[];
   type?: string;
+  avg_viewers?: number;
 }
 
 export interface Channel {

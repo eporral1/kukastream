@@ -332,6 +332,86 @@ async function enrichEternalStreams(streams: any[], p: any) {
   }
 }
 
+// Universal enrichment function for eternal channels in /api/channels
+async function enrichEternalChannels(channels: any[], p: any) {
+  if (!channels || channels.length === 0) return;
+  const eternalChannels = channels.filter((c: any) => c.type === 'eternal');
+  if (eternalChannels.length === 0) return;
+
+  await Promise.all(
+    eternalChannels.map(async (channel: any) => {
+      try {
+        const titleGroupsRes = await p.query(
+          `SELECT video_title,
+                  video_id,
+                  MIN(scrape_date) AS start_time,
+                  MAX(scrape_date) AS end_time,
+                  MAX(concurrent_viewers) AS max_viewers,
+                  AVG(concurrent_viewers)::int AS avg_viewers,
+                  MIN(likes) AS min_likes,
+                  MAX(likes) AS max_likes,
+                  MIN(comments_count) AS min_comments,
+                  MAX(comments_count) AS max_comments,
+                  COUNT(*) AS point_count
+           FROM public.minute
+           WHERE channel_id = $1 
+             AND scrape_date >= '${OCT_2026_CUTOFF}'
+             AND video_title IS NOT NULL AND video_title <> ''
+           GROUP BY video_title, video_id
+           ORDER BY MAX(scrape_date) DESC
+           LIMIT 25`,
+          [channel.channel_id]
+        );
+
+        let titleGroups = (titleGroupsRes.rows || []).map((row: any) => {
+          const maxLikes = Number(row.max_likes || 0);
+          const minLikes = Number(row.min_likes || 0);
+          const maxComm = Number(row.max_comments || 0);
+          const minComm = Number(row.min_comments || 0);
+
+          return {
+            video_title: row.video_title,
+            video_id: row.video_id,
+            start_time: row.start_time,
+            end_time: row.end_time,
+            max_viewers: Number(row.max_viewers || 0),
+            avg_viewers: Number(row.avg_viewers || 0),
+            min_likes: minLikes,
+            max_likes: maxLikes,
+            likes_delta: Math.max(0, maxLikes - minLikes),
+            min_comments: minComm,
+            max_comments: maxComm,
+            comm_delta: Math.max(0, maxComm - minComm),
+            point_count: Number(row.point_count || 0),
+          };
+        });
+
+        titleGroups = clusterEternalTitleGroups(titleGroups);
+
+        if (titleGroups.length > 0) {
+          channel.avg_viewers = Math.round(
+            titleGroups.reduce((acc: number, g: any) => acc + (g.max_viewers || 0), 0) / titleGroups.length
+          );
+          const totalLikes = titleGroups.reduce((acc: number, g: any) => acc + g.likes_delta, 0);
+          channel.avg_likes = Math.round(totalLikes / titleGroups.length);
+
+          const totalComments = titleGroups.reduce((acc: number, g: any) => acc + g.comm_delta, 0);
+          channel.avg_comments = Math.round(totalComments / titleGroups.length);
+        } else {
+          channel.avg_viewers = 0;
+          channel.avg_likes = 0;
+          channel.avg_comments = 0;
+        }
+      } catch (err) {
+        console.error(`Error enriching eternal channel ${channel.channel}:`, err);
+      }
+    })
+  );
+
+  // Re-sort channels by avg_viewers DESC
+  channels.sort((a: any, b: any) => (b.avg_viewers || 0) - (a.avg_viewers || 0));
+}
+
 // GET /api/live - Reproduces Laravel route: /
 // DB::select("select * from public.live l, channels c where l.live='live' and l.concurrent_viewers > 0 and l.channel_id = c.channel_id and c.tags like '%tag%' order by l.concurrent_viewers desc limit 10")
 app.get('/api/live', async (req: Request, res: Response) => {
@@ -558,7 +638,7 @@ app.get('/api/channels', async (req: Request, res: Response) => {
         GROUP BY channel_id
       )
       SELECT 
-        c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active,
+        c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, c.type,
         COALESCE(vs.avg_viewers, 0)::int AS avg_viewers,
         COALESCE(ls.avg_likes, 0)::int AS avg_likes,
         COALESCE(cs.avg_comments, 0)::int AS avg_comments
@@ -567,7 +647,7 @@ app.get('/api/channels', async (req: Request, res: Response) => {
       LEFT JOIN comm_stats cs ON cs.channel_id = c.channel_id
       LEFT JOIN likes_stats ls ON ls.channel_id = c.channel_id
       WHERE c.active::text IN ('1', 'true')
-      GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, vs.avg_viewers, cs.avg_comments, ls.avg_likes
+      GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, c.type, vs.avg_viewers, cs.avg_comments, ls.avg_likes
       ORDER BY avg_viewers DESC;
     `;
     let result;
@@ -590,7 +670,7 @@ app.get('/api/channels', async (req: Request, res: Response) => {
           GROUP BY channel_id
         )
         SELECT 
-          c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active,
+          c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, c.type,
           COALESCE(AVG(l.concurrent_viewers), 0)::int AS avg_viewers,
           COALESCE(AVG(CASE WHEN l.current_likes > l.old_likes THEN (l.current_likes - l.old_likes) * 6 END), 0)::int AS avg_likes,
           COALESCE(cs.avg_comments, 0)::int AS avg_comments
@@ -600,10 +680,13 @@ app.get('/api/channels', async (req: Request, res: Response) => {
           AND l.concurrent_viewers > 0
         LEFT JOIN comm_stats cs ON cs.channel_id = c.channel_id
         WHERE c.active = 1
-        GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, cs.avg_comments
+        GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, c.type, cs.avg_comments
         ORDER BY avg_viewers DESC;
       `;
       result = await p.query(query);
+    }
+    if (result && result.rows) {
+      await enrichEternalChannels(result.rows, p);
     }
     res.json({ success: true, channels: result.rows });
   } catch (err: any) {

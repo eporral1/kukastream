@@ -303,12 +303,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         COALESCE(l.video_title, '') AS video_title,
         c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter, c.type, c.active,
         COALESCE(comm.comments_count, 0)::int as comments_count,
+        comm.avg_viewers::int as avg_viewers,
         0::numeric as superchats_total,
         0::int as superchats_count
       FROM public.live l
       JOIN public.channels c ON l.channel_id = c.channel_id
       LEFT JOIN LATERAL (
-        SELECT COALESCE(m.comments_count, 0) as comments_count
+        SELECT 
+            COALESCE(m.comments_count, 0) as comments_count,
+            (SELECT AVG(sub.concurrent_viewers)::int 
+             FROM public.minute sub 
+             WHERE sub.video_id = l.video_id) as avg_viewers
         FROM public.minute m 
         WHERE m.video_id = l.video_id 
         ORDER BY m.scrape_date DESC, m.id DESC 
@@ -324,7 +329,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       streamsQuery += ` AND (c.tags ILIKE $1 OR REPLACE(c.tags, 'í', 'i') ILIKE $1)`;
     }
 
-    streamsQuery += ` ORDER BY l.concurrent_viewers DESC LIMIT 10;`;
+    streamsQuery += ` ORDER BY comm.avg_viewers DESC LIMIT 10;`;
     const streamsRes: any = await executeQuery(streamsQuery, params);
 
     const videoIds = streamsRes.rows.map((r: any) => r.video_id).filter(Boolean);
