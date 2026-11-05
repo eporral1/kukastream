@@ -149,6 +149,67 @@ function clusterEternalTitleGroups(rawGroups: any[]): any[] {
   return clusters;
 }
 
+/**
+ * Chains cumulative metrics (likes and comments) across sequential shows within each video_id.
+ * For the first show of a video_id: baseline is the first measurement of that video_id.
+ * For any subsequent show i >= 1: baseline is the LAST measurement of the previous show (L_end,i-1).
+ * Telescoping sum property:
+ * Sum(Likes_delta_i) = Sum(L_end,i - L_end,i-1) = Max likes for that video_id.
+ */
+function chainEternalTitleDeltas(groups: any[]): any[] {
+  if (!groups || groups.length === 0) return groups;
+
+  const byVideoId = new Map<string, any[]>();
+  for (const g of groups) {
+    const vid = g.video_id || 'unknown';
+    if (!byVideoId.has(vid)) {
+      byVideoId.set(vid, []);
+    }
+    byVideoId.get(vid)!.push(g);
+  }
+
+  for (const [, videoGroups] of byVideoId.entries()) {
+    videoGroups.sort(
+      (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+    );
+
+    let prevLastLikes: number | null = null;
+    let prevLastComments: number | null = null;
+
+    for (let i = 0; i < videoGroups.length; i++) {
+      const g = videoGroups[i];
+      const curMaxLikes = Number(g.max_likes || 0);
+      const curMinLikes = Number(g.min_likes || 0);
+      const curMaxComm = Number(g.max_comments || 0);
+      const curMinComm = Number(g.min_comments || 0);
+
+      let baselineLikes: number;
+      if (i === 0 || prevLastLikes === null) {
+        baselineLikes = curMinLikes;
+      } else {
+        baselineLikes = curMaxLikes >= prevLastLikes ? prevLastLikes : curMinLikes;
+      }
+
+      let baselineComments: number;
+      if (i === 0 || prevLastComments === null) {
+        baselineComments = curMinComm;
+      } else {
+        baselineComments = curMaxComm >= prevLastComments ? prevLastComments : curMinComm;
+      }
+
+      g.baseline_likes = baselineLikes;
+      g.baseline_comments = baselineComments;
+      g.likes_delta = Math.max(0, curMaxLikes - baselineLikes);
+      g.comm_delta = Math.max(0, curMaxComm - baselineComments);
+
+      prevLastLikes = curMaxLikes;
+      prevLastComments = curMaxComm;
+    }
+  }
+
+  return groups;
+}
+
 async function enrichEternalStreams(streams: any[]) {
   if (!streams || streams.length === 0) return;
   const eternalStreams = streams.filter((s: any) => s.type === 'eternal');
@@ -210,7 +271,12 @@ async function enrichEternalStreams(streams: any[]) {
 
     const channelSessionsMap = new Map<string, any[]>();
     for (const [chId, rawGroups] of channelRawMap.entries()) {
-      channelSessionsMap.set(chId, clusterEternalTitleGroups(rawGroups));
+      const clustered = clusterEternalTitleGroups(rawGroups);
+      const chained = chainEternalTitleDeltas(clustered);
+      chained.sort(
+        (a, b) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime()
+      );
+      channelSessionsMap.set(chId, chained);
     }
 
     for (const stream of eternalStreams) {
@@ -296,82 +362,214 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    let streamsQuery = `
+    // 1. Standard channels: Query individual streams from public.live (distinct by video_id with max viewers)
+    let standardQuery = `
       SELECT 
-        l.video_id, l.channel_id, l.concurrent_viewers, l.old_viewers,
-        l.current_likes, l.old_likes, l.scrape_date, l.start_date, l.live,
-        COALESCE(l.video_title, '') AS video_title,
-        c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter, c.type, c.active,
+        sub.video_id, sub.channel_id, sub.concurrent_viewers, sub.old_viewers,
+        sub.current_likes, sub.old_likes, sub.scrape_date, sub.start_date, sub.live,
+        sub.video_title,
+        c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter, c.type,
         COALESCE(comm.comments_count, 0)::int as comments_count,
-        comm.avg_viewers::int as avg_viewers,
         0::numeric as superchats_total,
         0::int as superchats_count
-      FROM public.live l
-      JOIN public.channels c ON l.channel_id = c.channel_id
+      FROM (
+        SELECT DISTINCT ON (video_id)
+          video_id, channel_id, concurrent_viewers, old_viewers,
+          current_likes, old_likes, scrape_date, start_date, live,
+          COALESCE(video_title, '') AS video_title
+        FROM public.live
+        WHERE concurrent_viewers > 0
+          AND (scrape_date >= '${OCT_2026_CUTOFF}' OR start_date >= '${OCT_2026_CUTOFF}')
+        ORDER BY video_id, concurrent_viewers DESC
+      ) sub
+      JOIN public.channels c ON sub.channel_id = c.channel_id
       LEFT JOIN LATERAL (
-        SELECT 
-            COALESCE(m.comments_count, 0) as comments_count,
-            (SELECT AVG(sub.concurrent_viewers)::int 
-             FROM public.minute sub 
-             WHERE sub.video_id = l.video_id) as avg_viewers
+        SELECT COALESCE(m.comments_count, 0) as comments_count
         FROM public.minute m 
-        WHERE m.video_id = l.video_id 
+        WHERE m.video_id = sub.video_id 
         ORDER BY m.scrape_date DESC, m.id DESC 
         LIMIT 1
       ) comm ON true
-      WHERE c.active::text IN ('1', 'true') and (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
-        AND l.concurrent_viewers > 0
+      WHERE c.active::text IN ('1', 'true')
+        AND (c.type IS NULL OR c.type <> 'eternal')
     `;
 
-    const params: any[] = [];
+    const standardParams: any[] = [];
     if (tag) {
-      params.push(`%${tag}%`);
-      streamsQuery += ` AND (c.tags ILIKE $1 OR REPLACE(c.tags, 'í', 'i') ILIKE $1)`;
+      standardParams.push(`%${tag}%`);
+      standardQuery += ` AND (c.tags ILIKE $1 OR REPLACE(c.tags, 'í', 'i') ILIKE $1)`;
     }
 
-    streamsQuery += ` ORDER BY comm.avg_viewers DESC LIMIT 10;`;
-    const streamsRes: any = await executeQuery(streamsQuery, params);
+    standardQuery += ` ORDER BY sub.concurrent_viewers DESC LIMIT 30;`;
+    const standardRes: any = await executeQuery(standardQuery, standardParams);
+    const standardStreams: any[] = standardRes.rows || [];
 
-    const videoIds = streamsRes.rows.map((r: any) => r.video_id).filter(Boolean);
-    if (videoIds.length > 0) {
-      try {
-        const scRes: any = await executeQuery(
-          `SELECT video_id, 
-                  SUM(CASE WHEN currency = 'ARS' THEN amount ELSE 0 END)::numeric as superchats_total,
-                  COUNT(*)::int as superchats_count
-           FROM public.superchats
-           WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
-           GROUP BY video_id`,
-          [videoIds]
+    // 2. Eternal channels: Group by video_title from public.minute exactly as in /channel/:id
+    let eternalStreams: any[] = [];
+    try {
+      let eternalChQuery = `
+        SELECT channel_id, channel, channel_name, description, subs, thumb, tags, twitter, type
+        FROM public.channels
+        WHERE active::text IN ('1', 'true') AND type = 'eternal'
+      `;
+      const eternalChParams: any[] = [];
+      if (tag) {
+        eternalChParams.push(`%${tag}%`);
+        eternalChQuery += ` AND (tags ILIKE $1 OR REPLACE(tags, 'í', 'i') ILIKE $1)`;
+      }
+
+      const eternalChRes: any = await executeQuery(eternalChQuery, eternalChParams);
+      const eternalChannels = eternalChRes.rows || [];
+      const eternalChannelIds = eternalChannels.map((c: any) => c.channel_id).filter(Boolean);
+
+      if (eternalChannelIds.length > 0) {
+        const liveRes: any = await executeQuery(
+          `SELECT l.channel_id, l.concurrent_viewers, l.video_id, l.video_title, l.scrape_date, l.start_date
+           FROM public.live l
+           WHERE l.channel_id = ANY($1)
+             AND l.live = 'live'
+             AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+             AND l.concurrent_viewers > 0`,
+          [eternalChannelIds]
         );
-        const scMap = new Map<string, { total: number; count: number }>();
-        for (const row of scRes.rows || []) {
-          scMap.set(row.video_id, {
-            total: Number(row.superchats_total || 0),
-            count: Number(row.superchats_count || 0),
+        const liveMap = new Map<string, any>();
+        for (const r of liveRes.rows || []) {
+          liveMap.set(r.channel_id, r);
+        }
+
+        const titleGroupsRes: any = await executeQuery(
+          `SELECT video_title,
+                  video_id,
+                  channel_id,
+                  MIN(scrape_date) AS start_time,
+                  MAX(scrape_date) AS end_time,
+                  MAX(concurrent_viewers) AS max_viewers,
+                  AVG(concurrent_viewers)::int AS avg_viewers,
+                  MIN(likes) AS min_likes,
+                  MAX(likes) AS max_likes,
+                  MIN(comments_count) AS min_comments,
+                  MAX(comments_count) AS max_comments,
+                  COUNT(*) AS point_count
+           FROM public.minute
+           WHERE channel_id = ANY($1) 
+             AND scrape_date >= '${OCT_2026_CUTOFF}'
+             AND video_title IS NOT NULL AND video_title <> ''
+           GROUP BY video_title, video_id, channel_id
+           ORDER BY MAX(scrape_date) DESC`,
+          [eternalChannelIds]
+        );
+
+        const chGroupsMap = new Map<string, any[]>();
+        for (const row of titleGroupsRes.rows || []) {
+          if (!chGroupsMap.has(row.channel_id)) {
+            chGroupsMap.set(row.channel_id, []);
+          }
+          const maxLikes = Number(row.max_likes || 0);
+          const minLikes = Number(row.min_likes || 0);
+          const maxComm = Number(row.max_comments || 0);
+          const minComm = Number(row.min_comments || 0);
+
+          chGroupsMap.get(row.channel_id)!.push({
+            video_title: row.video_title,
+            video_id: row.video_id,
+            channel_id: row.channel_id,
+            start_time: row.start_time,
+            end_time: row.end_time,
+            max_viewers: Number(row.max_viewers || 0),
+            avg_viewers: Number(row.avg_viewers || 0),
+            min_likes: minLikes,
+            max_likes: maxLikes,
+            likes_delta: Math.max(0, maxLikes - minLikes),
+            min_comments: minComm,
+            max_comments: maxComm,
+            comm_delta: Math.max(0, maxComm - minComm),
+            point_count: Number(row.point_count || 0),
           });
         }
-        for (const stream of streamsRes.rows) {
-          const sc = scMap.get(stream.video_id);
-          if (sc) {
-            stream.superchats_total = sc.total;
-            stream.superchats_count = sc.count;
-          }
-          if (stream.type === 'eternal' && stream.live !== 'live') {
-            stream.video_title = formatEternalStreamTitle(stream.start_date || stream.scrape_date);
+
+        for (const ch of eternalChannels) {
+          const rawGroups = chGroupsMap.get(ch.channel_id) || [];
+          const clustered = clusterEternalTitleGroups(rawGroups);
+          const chained = chainEternalTitleDeltas(clustered);
+          chained.sort(
+            (a, b) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime()
+          );
+          const liveRow = liveMap.get(ch.channel_id);
+          const isChannelLive = Boolean(liveRow);
+
+          chained.forEach((group: any, idx: number) => {
+            const isLiveShow = isChannelLive && idx === 0;
+            eternalStreams.push({
+              video_id: group.video_id,
+              channel_id: ch.channel_id,
+              channel_name: ch.channel_name,
+              channel: ch.channel,
+              thumb: ch.thumb,
+              tags: ch.tags,
+              subs: ch.subs,
+              twitter: ch.twitter,
+              type: 'eternal',
+              video_title: group.video_title,
+              live: isLiveShow ? 'live' : 'none',
+              concurrent_viewers: isLiveShow ? (liveRow.concurrent_viewers || group.max_viewers) : group.max_viewers,
+              old_viewers: group.avg_viewers,
+              current_likes: group.likes_delta,
+              old_likes: group.min_likes,
+              comments_count: group.comm_delta,
+              start_date: group.start_time,
+              scrape_date: group.end_time,
+              superchats_total: 0,
+              superchats_count: 0,
+            });
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Error fetching eternal channel programs for /api/streams:', e);
+    }
+
+    const allStreams = [...standardStreams, ...eternalStreams];
+    const filtered = allStreams.filter((s: any) => s.channel !== '@Radio10am');
+    filtered.sort((a: any, b: any) => (Number(b.concurrent_viewers) || 0) - (Number(a.concurrent_viewers) || 0));
+
+    const topStreams = filtered.slice(0, 10);
+
+    for (const stream of topStreams) {
+      try {
+        if (stream.type === 'eternal') {
+          const scRes: any = await executeQuery(
+            `SELECT currency, SUM(amount)::numeric AS total_amount, COUNT(id)::int AS sc_count
+             FROM public.superchats
+             WHERE video_id = $1 AND created_at >= $2 AND created_at <= $3
+             GROUP BY currency`,
+            [stream.video_id, stream.start_date, stream.scrape_date]
+          );
+          const arsSc = (scRes.rows || []).find((item: any) =>
+            item.currency === 'ARS' || String(item.currency).toUpperCase().includes('ARS')
+          );
+          stream.superchats_total = arsSc ? Number(arsSc.total_amount || 0) : 0;
+          stream.superchats_count = arsSc ? Number(arsSc.sc_count || 0) : 0;
+        } else {
+          const scRes: any = await executeQuery(
+            `SELECT SUM(CASE WHEN currency = 'ARS' THEN amount ELSE 0 END)::numeric as superchats_total,
+                    COUNT(*)::int as superchats_count
+             FROM public.superchats
+             WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'`,
+            [stream.video_id]
+          );
+          if (scRes.rows && scRes.rows.length > 0) {
+            stream.superchats_total = Number(scRes.rows[0].superchats_total || 0);
+            stream.superchats_count = Number(scRes.rows[0].superchats_count || 0);
           }
         }
-      } catch (e) {
-        console.error('Error fetching superchats for streams ranking:', e);
+      } catch {
+        // ignore
       }
     }
 
-    // Enrich eternal streams with session metrics so likes and comments reflect show deltas
-    await enrichEternalStreams(streamsRes.rows);
-
     return res.status(200).json({
       success: true,
-      streams: streamsRes.rows,
+      streams: topStreams,
     });
   } catch (err: any) {
     console.error('Error in /api/streams:', err);

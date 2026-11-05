@@ -213,6 +213,67 @@ function clusterEternalTitleGroups(rawGroups: any[]): any[] {
   return clusters;
 }
 
+/**
+ * Chains cumulative metrics (likes and comments) across sequential shows within each video_id.
+ * For the first show of a video_id: baseline is the first measurement of that video_id.
+ * For any subsequent show i >= 1: baseline is the LAST measurement of the previous show (L_end,i-1).
+ * Telescoping sum property:
+ * Sum(Likes_delta_i) = Sum(L_end,i - L_end,i-1) = Max likes for that video_id.
+ */
+function chainEternalTitleDeltas(groups: any[]): any[] {
+  if (!groups || groups.length === 0) return groups;
+
+  const byVideoId = new Map<string, any[]>();
+  for (const g of groups) {
+    const vid = g.video_id || 'unknown';
+    if (!byVideoId.has(vid)) {
+      byVideoId.set(vid, []);
+    }
+    byVideoId.get(vid)!.push(g);
+  }
+
+  for (const [, videoGroups] of byVideoId.entries()) {
+    videoGroups.sort(
+      (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+    );
+
+    let prevLastLikes: number | null = null;
+    let prevLastComments: number | null = null;
+
+    for (let i = 0; i < videoGroups.length; i++) {
+      const g = videoGroups[i];
+      const curMaxLikes = Number(g.max_likes || 0);
+      const curMinLikes = Number(g.min_likes || 0);
+      const curMaxComm = Number(g.max_comments || 0);
+      const curMinComm = Number(g.min_comments || 0);
+
+      let baselineLikes: number;
+      if (i === 0 || prevLastLikes === null) {
+        baselineLikes = curMinLikes;
+      } else {
+        baselineLikes = curMaxLikes >= prevLastLikes ? prevLastLikes : curMinLikes;
+      }
+
+      let baselineComments: number;
+      if (i === 0 || prevLastComments === null) {
+        baselineComments = curMinComm;
+      } else {
+        baselineComments = curMaxComm >= prevLastComments ? prevLastComments : curMinComm;
+      }
+
+      g.baseline_likes = baselineLikes;
+      g.baseline_comments = baselineComments;
+      g.likes_delta = Math.max(0, curMaxLikes - baselineLikes);
+      g.comm_delta = Math.max(0, curMaxComm - baselineComments);
+
+      prevLastLikes = curMaxLikes;
+      prevLastComments = curMaxComm;
+    }
+  }
+
+  return groups;
+}
+
 async function enrichEternalChannels(channels: any[]) {
   if (!channels || channels.length === 0) return;
   const eternalChannels = channels.filter((c: any) => c.type === 'eternal');
@@ -267,6 +328,7 @@ async function enrichEternalChannels(channels: any[]) {
         });
 
         titleGroups = clusterEternalTitleGroups(titleGroups);
+        titleGroups = chainEternalTitleDeltas(titleGroups);
 
         if (titleGroups.length > 0) {
           channel.avg_viewers = Math.round(
