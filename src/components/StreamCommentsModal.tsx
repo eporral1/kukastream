@@ -32,7 +32,7 @@ interface StreamCommentsModalProps {
   onClose: () => void;
 }
 
-type ModalNavTab = 'comments' | 'top_commentators' | 'ai';
+type ModalNavTab = 'comments' | 'top_commentators' | 'ai' | 'captions';
 type FilterTab = 'all' | 'superchats' | 'comments';
 
 export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
@@ -52,6 +52,34 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Captions state
+  const [captions, setCaptions] = useState<string | null>(stream.captions || null);
+  const [captionsLoading, setCaptionsLoading] = useState(false);
+  const [captionsError, setCaptionsError] = useState<string | null>(null);
+
+  const handleGenerateCaptions = async (force = false) => {
+    if (!stream.video_id || captionsLoading) return;
+    setCaptionsLoading(true);
+    setCaptionsError(null);
+    try {
+      const res = await fetch('/api/generate-captions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_id: stream.video_id, force }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCaptions(data.captions);
+      } else {
+        setCaptionsError(data.error || 'Error al obtener la transcripción.');
+      }
+    } catch (err: any) {
+      setCaptionsError(err.message || 'Error de conexión.');
+    } finally {
+      setCaptionsLoading(false);
+    }
+  };
 
   // AI Query state
   const [aiQuestion, setAiQuestion] = useState('');
@@ -335,6 +363,18 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
             <span className="text-[10px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded-full font-bold ml-0.5">
               Ranking
             </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('captions')}
+            className={`py-3 px-3.5 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'captions'
+                ? 'border-purple-600 text-purple-700 bg-white shadow-2xs rounded-t-lg -mb-px'
+                : 'border-transparent text-gray-600 hover:text-purple-700 hover:bg-purple-50/40'
+            }`}
+          >
+            <Youtube className="w-4 h-4 text-purple-600" />
+            <span>Transcripción & Anuncios</span>
           </button>
 
           {/* Consulta con IA comentada temporalmente por pedido del usuario */}
@@ -736,6 +776,116 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
                   {aiAnswer}
                 </div>
               </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 4: Transcripción & Anuncios */}
+        {activeTab === 'captions' && (
+          <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-purple-50/70 p-4 rounded-xl border border-purple-200 shadow-2xs">
+              <div className="space-y-1">
+                <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                  <Youtube className="w-4 h-4 text-purple-600" />
+                  Transcripción y Detección Exhaustiva de Publicidad
+                </h4>
+                <p className="text-xs text-gray-600">
+                  Detecta todos los PNTs hablados, banners, cupones, códigos de descuento y tandas comerciales de la transmisión, sincronizando el reloj en pantalla con las mediciones oficiales.
+                </p>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-100/80 text-purple-900 rounded-md text-[11px] font-semibold border border-purple-200 mt-1">
+                  <Clock className="w-3.5 h-3.5 text-purple-700" />
+                  <span>Sincronización dual: <strong>[HH:MM:SS de video | HH:MM hs en pantalla]</strong></span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => handleGenerateCaptions(Boolean(captions))}
+                  disabled={captionsLoading}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {captionsLoading ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Sincronizando y procesando...</span>
+                    </>
+                  ) : captions ? (
+                    <>
+                      <RefreshCw className="w-4 h-4" />
+                      <span>Reanalizar y Sincronizar Reloj</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      <span>Obtener transcripción y analizar anuncios</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {captionsError && (
+              <div className="p-3 bg-red-50 text-red-700 rounded-xl text-xs border border-red-200">
+                {captionsError}
+              </div>
+            )}
+
+            {captionsLoading && (
+              <div className="p-6 bg-white rounded-xl border border-purple-100 shadow-xs flex items-center space-x-3.5 animate-pulse">
+                <RefreshCw className="w-6 h-6 text-purple-600 animate-spin shrink-0" />
+                <div className="space-y-1 text-xs">
+                  <p className="font-bold text-gray-900 text-sm">Analizando transmisión y sincronizando hora en pantalla con Gemini...</p>
+                  <p className="text-gray-500">
+                    Procesando diálogo de los conductores, transiciones discursivas, PNTs, banners en pantalla, cupones de descuento y tandas comerciales.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {captions && !captionsLoading ? (
+              <div className="bg-white p-4 sm:p-5 rounded-xl border border-gray-200 shadow-xs space-y-3">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-3 flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Transcripción y Anuncios (Guardado en Tabla Live)
+                    </span>
+                    <span className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">
+                      Sincronizado con mediciones
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleGenerateCaptions(true)}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-purple-700 hover:text-purple-800 bg-purple-50 hover:bg-purple-100 px-2.5 py-1 rounded-lg border border-purple-200 transition-colors cursor-pointer"
+                      title="Volver a analizar y sobrescribir con reloj sincronizado"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Reanalizar</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(captions);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600 hover:text-purple-600 transition-colors cursor-pointer bg-gray-50 hover:bg-purple-50 px-2.5 py-1 rounded-lg border border-gray-200"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>{copied ? '¡Copiado!' : 'Copiar texto'}</span>
+                    </button>
+                  </div>
+                </div>
+                <div className="text-xs sm:text-sm text-gray-800 leading-relaxed font-normal whitespace-pre-wrap select-text bg-gray-50 p-4 rounded-xl border border-gray-100 max-h-[480px] overflow-y-auto font-sans">
+                  {captions}
+                </div>
+              </div>
+            ) : (
+              !captionsLoading && (
+                <div className="text-center py-12 text-gray-400 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+                  <Youtube className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+                  <p className="text-xs font-medium">Aún no se ha generado la transcripción para este video.</p>
+                  <p className="text-[11px] text-gray-400 mt-1">Haz clic en el botón superior para sincronizar las marcas de tiempo con el reloj en pantalla y detectar todos los anuncios.</p>
+                </div>
+              )
             )}
           </div>
         )}

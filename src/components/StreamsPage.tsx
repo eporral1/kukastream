@@ -3,11 +3,50 @@ import { Stream } from '../types';
 import { formatNumber, formatSubs } from '../data/mockData';
 import { StreamCommentsModal } from './StreamCommentsModal';
 import { formatArgentinaDateTime } from '../utils/dateFilter';
-import { Search, Radio, Heart, MessageSquare, DollarSign, Sparkles, RefreshCw, BarChart2 } from 'lucide-react';
+import { Search, Radio, Heart, MessageSquare, DollarSign, Sparkles, RefreshCw, BarChart2, ExternalLink } from 'lucide-react';
 
 interface StreamsPageProps {
   onNavigateChannel: (channelId: string) => void;
 }
+
+const cleanQueryString = (raw: string): string => {
+  return (raw || '').replace(/^["'«»“”„]+|["'«»“”„]+$/g, '').trim();
+};
+
+const highlightMatch = (text: string, query: string): React.ReactNode => {
+  if (!text) return '';
+  const clean = cleanQueryString(query);
+  if (!clean) return text;
+
+  try {
+    const escaped = clean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const words = clean
+      .split(/\s+/)
+      .map((w) => w.trim())
+      .filter((w) => w.length > 1)
+      .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+
+    const pattern = words.length > 1 ? `(${escaped}|${words.join('|')})` : `(${escaped})`;
+    const regex = new RegExp(pattern, 'gi');
+    const parts = text.split(regex);
+
+    return (
+      <>
+        {parts.map((part, i) =>
+          regex.test(part) ? (
+            <mark key={i} className="bg-amber-200 text-amber-950 font-bold px-1 rounded-sm">
+              {part}
+            </mark>
+          ) : (
+            part
+          )
+        )}
+      </>
+    );
+  } catch {
+    return text;
+  }
+};
 
 export const StreamsPage: React.FC<StreamsPageProps> = ({
   onNavigateChannel,
@@ -19,12 +58,21 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
   const [selectedCommentsStream, setSelectedCommentsStream] = useState<Stream | null>(null);
   const [filterSuperchatsOnly, setFilterSuperchatsOnly] = useState<boolean>(false);
 
-  const fetchStreams = useCallback(async (tag?: string) => {
+  const cleanSearchTerm = useMemo(() => cleanQueryString(searchQuery), [searchQuery]);
+
+  const fetchStreams = useCallback(async (tag?: string, query?: string) => {
     setIsLoading(true);
     try {
-      const url = tag && tag !== 'all'
-        ? `/api/streams?tag=${encodeURIComponent(tag)}`
-        : '/api/streams';
+      const params = new URLSearchParams();
+      if (tag && tag !== 'all') {
+        params.append('tag', tag);
+      }
+      const cleanQ = cleanQueryString(query || '');
+      if (cleanQ) {
+        params.append('q', cleanQ);
+      }
+      const qs = params.toString();
+      const url = qs ? `/api/streams?${qs}` : '/api/streams';
       const res = await fetch(url);
       const data = await res.json();
       if (data.success && Array.isArray(data.streams)) {
@@ -38,26 +86,53 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
   }, []);
 
   useEffect(() => {
-    fetchStreams(selectedTag);
-  }, [selectedTag, fetchStreams]);
+    const handler = setTimeout(() => {
+      fetchStreams(selectedTag, searchQuery);
+    }, 250);
+    return () => clearTimeout(handler);
+  }, [searchQuery, selectedTag, fetchStreams]);
 
   const filteredStreams = useMemo(() => {
     if (!Array.isArray(streams)) return [];
+    const q = cleanSearchTerm.toLowerCase();
+
     return streams.filter((s) => {
       if (!s) return false;
       if (s.channel === '@Radio10am') return false;
-      const title = (s.video_title || '').toLowerCase();
-      const channelName = (s.channel_name || '').toLowerCase();
-      const channelHandle = (s.channel || '').toLowerCase();
-      const q = (searchQuery || '').toLowerCase();
-
-      const matchesSearch = title.includes(q) || channelName.includes(q) || channelHandle.includes(q);
       const hasSuperchats = Number(s.superchats_total) > 0 || Number(s.superchats_count) > 0;
       const matchesSuperchat = !filterSuperchatsOnly || hasSuperchats;
 
-      return matchesSearch && matchesSuperchat;
+      if (!q) return matchesSuperchat;
+
+      const title = (s.video_title || '').toLowerCase();
+      const channelName = (s.channel_name || '').toLowerCase();
+      const channelHandle = (s.channel || '').toLowerCase();
+      const videoId = (s.video_id || '').toLowerCase();
+
+      // Check full phrase match
+      const exactMatch =
+        title.includes(q) || channelName.includes(q) || channelHandle.includes(q) || videoId.includes(q);
+
+      if (exactMatch) return matchesSuperchat;
+
+      // Check multi-word match (all words present in title or channel)
+      const words = q.split(/\s+/).filter(Boolean);
+      if (words.length > 1) {
+        const allWordsInTitle = words.every((w) => title.includes(w));
+        const allWordsInChannel = words.every((w) => channelName.includes(w));
+        if (allWordsInTitle || allWordsInChannel) {
+          return matchesSuperchat;
+        }
+      }
+
+      return false;
+    })
+    .sort((a, b) => {
+      const aAvg = Number(a.avg_viewers ?? a.old_viewers ?? a.concurrent_viewers) || 0;
+      const bAvg = Number(b.avg_viewers ?? b.old_viewers ?? b.concurrent_viewers) || 0;
+      return bAvg - aAvg;
     });
-  }, [streams, searchQuery, filterSuperchatsOnly]);
+  }, [streams, cleanSearchTerm, filterSuperchatsOnly]);
 
   return (
     <div className="space-y-6">
@@ -65,66 +140,54 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
       <div className="text-center pt-2 pb-6">
         <div className="inline-flex items-center space-x-2 bg-red-600 text-white px-3.5 py-1 rounded-full text-xs font-semibold mb-3 shadow-xs">
           <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
-          <span className="uppercase tracking-wider">Top 10 streams</span>
+          <span className="uppercase tracking-wider">
+            {cleanSearchTerm ? 'Buscador de streams' : 'Top streams'}
+          </span>
         </div>
-        <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">
+        <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-2 tracking-tight">
           Streams
         </h2>
-        <p className="text-gray-600 max-w-xl mx-auto text-sm sm:text-base">
+        <p className="text-gray-500 max-w-xl mx-auto text-xs sm:text-sm">
+          {cleanSearchTerm
+            ? `Buscando "${cleanSearchTerm}" (${filteredStreams.length} encontrados)`
+            : 'Explora y busca entre todas las emisiones y programas disponibles.'}
         </p>
 
         {/* Search bar */}
-        <div className="mt-6 max-w-md mx-auto relative">
+        <div className="mt-5 max-w-xl mx-auto relative">
           <Search className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar por programa o canal..."
-            className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white shadow-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm text-gray-900 transition-all placeholder:text-gray-400"
+            placeholder="Buscar por programa, título, canal, tema..."
+            className="w-full pl-11 pr-10 py-3 rounded-xl border border-gray-200 bg-white shadow-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm text-gray-900 transition-all placeholder:text-gray-400 font-medium"
           />
+          {searchQuery ? (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 bg-gray-100 hover:bg-gray-200 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold cursor-pointer transition-colors"
+              title="Borrar búsqueda"
+            >
+              ✕
+            </button>
+          ) : isLoading ? (
+            <RefreshCw className="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 text-blue-500 animate-spin" />
+          ) : null}
         </div>
       </div>
-
-      {/* Filter Tabs & Superchat Filter Toggle */}
-      {/*<div className="flex flex-col sm:flex-row items-center justify-between gap-3 pb-2">
-        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 sm:gap-2">
-          {['all', 'stream', 'entretenimiento', 'política', 'radio', 'tv', 'deportes'].map((tag) => (
-            <button
-              key={tag}
-              onClick={() => setSelectedTag(tag)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all border cursor-pointer ${
-                selectedTag === tag
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                  : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-              }`}
-            >
-              {tag === 'all' ? 'Todos los Streams' : tag}
-            </button>
-          ))}
-        </div>
-
-        {/* Superchat filter switch * / }
-        <button
-          onClick={() => setFilterSuperchatsOnly(!filterSuperchatsOnly)}
-          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer shrink-0 ${
-            filterSuperchatsOnly
-              ? 'bg-amber-500 text-white border-amber-600 shadow-sm ring-2 ring-amber-300'
-              : 'bg-white text-amber-900 border-amber-200 hover:bg-amber-50 shadow-2xs'
-          }`}
-        >
-          <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-          <span>{filterSuperchatsOnly ? 'Filtrando: Con Superchats' : 'Filtrar por Superchats'}</span>
-        </button>
-      </div>*/}
 
       {/* Streams Ranking List */}
       <div className="space-y-4">
         <div className="flex items-center justify-between text-sm text-gray-500 px-1">
-          <span>Top {filteredStreams.length} streams</span>
+          <span>
+            {cleanSearchTerm
+              ? `Resultados de búsqueda: ${filteredStreams.length} videos`
+              : `Top ${filteredStreams.length} streams`}
+          </span>
           <span className="flex items-center gap-1.5">
             {isLoading && <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />}
-            <span>Ordenado por pico de espectadores</span>
+            <span>Ordenado por promedio de espectadores</span>
           </span>
         </div>
 
@@ -141,8 +204,18 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
             ))}
           </div>
         ) : filteredStreams.length === 0 ? (
-          <div className="bg-white rounded-xl p-12 text-center border border-gray-200 text-gray-500">
-            No se encontraron streams para los filtros seleccionados.
+          <div className="bg-white rounded-xl p-12 text-center border border-gray-200 text-gray-500 space-y-2">
+            <Search className="w-8 h-8 mx-auto text-gray-300 mb-1" />
+            <p className="font-semibold text-gray-800 text-sm">
+              {searchQuery.trim()
+                ? `No se encontraron videos disponibles para "${searchQuery}".`
+                : 'No se encontraron streams para los filtros seleccionados.'}
+            </p>
+            {searchQuery.trim() && (
+              <p className="text-xs text-gray-400">
+                Prueba buscando por palabras clave del título, nombre del canal o ID de video de YouTube.
+              </p>
+            )}
           </div>
         ) : (
           filteredStreams.map((stream, index) => {
@@ -156,7 +229,7 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
 
             return (
               <div
-                key={stream.video_id || `${stream.channel}-${index}`}
+                key={`${stream.video_id || stream.channel}-${stream.video_title || 'stream'}-${index}`}
                 className="bg-white rounded-xl p-4 sm:p-5 border border-gray-100 shadow-xs hover:border-gray-200 hover:shadow-md transition-all"
               >
                 {/* Desktop Layout */}
@@ -189,26 +262,22 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
 
                     {/* Stream & Channel Details */}
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
                         <button
                           onClick={() => onNavigateChannel(stream.channel)}
                           className="font-bold text-gray-900 text-base hover:text-blue-600 transition-colors text-left"
                         >
-                          {stream.channel_name}
+                          {highlightMatch(stream.channel_name, cleanSearchTerm)}
                         </button>
                         <span className="text-xs text-gray-400 font-mono">
                           {stream.channel}
                         </span>
-                        {isLive ? (
+                        {isLive && (
                           <span className="text-[11px] bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
                             <span className="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse"></span>
                             EN VIVO
                           </span>
-                        ) : "" /*: /*(
-                          <span className="text-[11px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-md font-medium">
-                            Finalizado
-                          </span>
-                        )*/}
+                        )}
                         {(stream as any).subs !== undefined && (
                           <span className="text-xs text-gray-500 font-medium">
                             {formatArgentinaDateTime(stream.start_date)}
@@ -217,18 +286,20 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                       </div>
 
                       {/* Video Title */}
-                      <p className="text-sm font-semibold text-gray-800 mt-1 line-clamp-1" title={stream.video_title}>
-                        {stream.video_title || 'Emisión'}
+                      <p
+                        className={`text-sm text-gray-800 leading-snug mt-1 ${cleanSearchTerm ? 'line-clamp-3 font-medium bg-amber-50/60 p-2 rounded-lg border border-amber-200/70' : 'line-clamp-2 font-medium'}`}
+                        title={stream.video_title}
+                      >
+                        {cleanSearchTerm && (
+                          <span className="text-[10px] uppercase font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded mr-1.5 inline-block">
+                            Video
+                          </span>
+                        )}
+                        {highlightMatch(stream.video_title || 'Emisión', cleanSearchTerm)}
                       </p>
 
                       {/* Action buttons & date */}
                       <div className="flex items-center gap-2 mt-2 flex-wrap text-xs">
-                        {/*stream.start_date && (
-                          <span className="text-gray-400 text-[11px]">
-                            {formatArgentinaDateTime(stream.start_date)}
-                          </span>
-                        )*/}
-
                         <button
                           onClick={() => onNavigateChannel(stream.channel)}
                           className="inline-flex items-center gap-1 bg-purple-100 hover:bg-purple-200 text-purple-800 px-2.5 py-0.5 rounded-full font-semibold transition-colors cursor-pointer"
@@ -242,7 +313,7 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                           className="inline-flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2.5 py-0.5 rounded-full font-semibold transition-colors cursor-pointer"
                         >
                           <span>💬</span>
-                          <span>Mensajes{/*({(stream.comments_count || 0).toLocaleString('es-AR')})*/}</span>
+                          <span>Mensajes</span>
                         </button>
 
                         {superchatsTotal > 0 && (
@@ -251,26 +322,29 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                             className="inline-flex items-center gap-1 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 px-2.5 py-0.5 rounded-full font-bold transition-colors cursor-pointer"
                           >
                             <span>💰</span>
-                            <span>${formatNumber(superchatsTotal)} ARS{/*({stream.superchats_count})*/}</span>
+                            <span>${formatNumber(superchatsTotal)} ARS</span>
                           </button>
                         )}
 
-                        {/*stream.video_id && (
+                        {stream.video_id && (
                           <a
                             href={`https://youtube.com/watch?v=${stream.video_id}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-gray-400 hover:text-red-600 transition-colors flex items-center gap-0.5 text-[11px]"
+                            className="inline-flex items-center gap-1 text-gray-500 hover:text-red-600 bg-gray-50 hover:bg-red-50 border border-gray-200 hover:border-red-200 px-2.5 py-0.5 rounded-full font-medium transition-colors"
+                            title="Ver emisión original en YouTube"
                           >
-                            ▶ Ver en YT
+                            <ExternalLink className="w-3 h-3 text-red-600" />
+                            <span>YouTube</span>
                           </a>
-                        )*/}
+                        )}
                       </div>
                     </div>
                   </div>
 
                   {/* Desktop Stats */}
                   <div className="flex items-center space-x-6 shrink-0 pl-2">
+                    {/* Comentado temporalmente pico de espectadores:
                     <div className="text-center min-w-[90px]">
                       <div className="text-xs text-gray-400 font-semibold mb-0.5">ESPECTADORES</div>
                       <div className="font-extrabold text-2xl text-gray-900">
@@ -278,6 +352,18 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                       </div>
                       <div className="text-[10px] text-gray-500 uppercase">
                         {isLive ? 'ACTUALES' : 'PICO'}
+                      </div>
+                    </div>
+                    */}
+
+                    {/* PROMEDIO DE ESPECTADORES */}
+                    <div className="text-center min-w-[95px]">
+                      <div className="text-xs text-blue-600 font-bold mb-0.5">PROMEDIO</div>
+                      <div className="font-extrabold text-2xl text-gray-900">
+                        {formatNumber(stream.avg_viewers ?? stream.old_viewers ?? stream.concurrent_viewers)}
+                      </div>
+                      <div className="text-[10px] text-gray-500 uppercase font-medium">
+                        ESPECTADORES
                       </div>
                     </div>
 
@@ -323,21 +409,32 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                           onClick={() => onNavigateChannel(stream.channel)}
                           className="font-bold text-gray-900 text-sm leading-tight text-left truncate"
                         >
-                          {stream.channel_name}
+                          {highlightMatch(stream.channel_name, cleanSearchTerm)}
                         </button>
                         {isLive && (
                           <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0"></span>
                         )}
                       </div>
 
-                      <p className="text-xs text-gray-700 font-medium mt-0.5 line-clamp-2">
-                        {stream.video_title || 'Emisión'}
+                      <p
+                        className={`text-xs text-gray-800 mt-1 leading-snug ${cleanSearchTerm ? 'line-clamp-3 bg-amber-50/60 p-1.5 rounded border border-amber-200/70' : 'line-clamp-2 font-medium'}`}
+                        title={stream.video_title}
+                      >
+                        {highlightMatch(stream.video_title || 'Emisión', cleanSearchTerm)}
                       </p>
 
                       <div className="flex items-center space-x-3 mt-2.5 flex-wrap gap-y-1">
+                        {/* Comentado temporalmente pico de espectadores:
                         <div className="flex items-center space-x-1 bg-red-50 text-red-600 px-2 py-0.5 rounded-md text-xs font-bold">
                           <Radio className="w-3 h-3" />
                           <span>{formatNumber(stream.concurrent_viewers)}</span>
+                        </div>
+                        */}
+
+                        {/* PROMEDIO DE ESPECTADORES */}
+                        <div className="flex items-center space-x-1 bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-md text-xs font-bold" title="Promedio de espectadores">
+                          <Radio className="w-3 h-3 text-blue-600" />
+                          <span>Prom: {formatNumber(stream.avg_viewers ?? stream.old_viewers ?? stream.concurrent_viewers)}</span>
                         </div>
 
                         <div className="text-xs text-gray-500">
@@ -355,7 +452,7 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-50 flex-wrap">
+                      <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-50 flex-wrap text-xs">
                         <button
                           onClick={() => onNavigateChannel(stream.channel)}
                           className="bg-purple-100 hover:bg-purple-200 text-purple-800 px-2.5 py-0.5 rounded-full text-xs font-semibold"
@@ -368,6 +465,17 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                         >
                           💬 Mensajes
                         </button>
+                        {stream.video_id && (
+                          <a
+                            href={`https://youtube.com/watch?v=${stream.video_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-gray-500 hover:text-red-600 bg-gray-50 px-2 py-0.5 rounded-full text-xs font-medium"
+                          >
+                            <ExternalLink className="w-3 h-3 text-red-600" />
+                            <span>YT</span>
+                          </a>
+                        )}
                       </div>
                     </div>
                   </div>

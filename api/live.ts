@@ -353,6 +353,13 @@ async function enrichEternalStreams(streams: any[]) {
           const currentSession = sessions[0];
           stream.current_likes = currentSession.likes_delta;
           stream.comments_count = currentSession.comm_delta;
+          if (currentSession.avg_viewers) {
+            stream.avg_viewers = currentSession.avg_viewers;
+          }
+          if (currentSession.max_viewers) {
+            stream.max_viewers = currentSession.max_viewers;
+            stream.max_users = currentSession.max_viewers;
+          }
           if (currentSession.video_title) {
             stream.video_title = currentSession.video_title;
           }
@@ -366,6 +373,13 @@ async function enrichEternalStreams(streams: any[]) {
           if (matched) {
             stream.current_likes = matched.likes_delta;
             stream.comments_count = matched.comm_delta;
+            if (matched.avg_viewers) {
+              stream.avg_viewers = matched.avg_viewers;
+            }
+            if (matched.max_viewers) {
+              stream.max_viewers = matched.max_viewers;
+              stream.max_users = matched.max_viewers;
+            }
             if (matched.video_title) {
               stream.video_title = matched.video_title;
             }
@@ -599,6 +613,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       } catch (e) {
         console.error('Error fetching superchats for live streams:', e);
+      }
+
+      try {
+        const peakRes: any = await executeQuery(
+          `SELECT video_id, MAX(concurrent_viewers)::int as peak_viewers
+           FROM public.minute
+           WHERE video_id = ANY($1) AND scrape_date >= '${OCT_2026_CUTOFF}'
+           GROUP BY video_id`,
+          [allVideoIds]
+        );
+        const peakMap = new Map<string, number>();
+        for (const row of peakRes.rows || []) {
+          peakMap.set(row.video_id, Number(row.peak_viewers || 0));
+        }
+        for (const stream of liveResult.rows) {
+          const pv = peakMap.get(stream.video_id) || 0;
+          stream.max_viewers = Math.max(pv, Number(stream.concurrent_viewers || 0));
+          stream.max_users = stream.max_viewers;
+        }
+        for (const stream of recentResult.rows) {
+          const pv = peakMap.get(stream.video_id) || 0;
+          stream.max_viewers = Math.max(pv, Number(stream.concurrent_viewers || 0));
+          stream.max_users = stream.max_viewers;
+        }
+      } catch (e) {
+        console.error('Error fetching peak viewers for streams:', e);
       }
     }
 

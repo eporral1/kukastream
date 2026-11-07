@@ -107,6 +107,7 @@ export interface Stream {
   start_date?: string;
   start_fixed?: number;
   max_users?: number;
+  max_viewers?: number;
   max_likes?: number;
   superchats?: Superchat[];
   superchats_total?: number | string;
@@ -117,6 +118,7 @@ export interface Stream {
   data?: MinuteDataPoint[];
   type?: string;
   avg_viewers?: number;
+  captions?: string;
 }
 
 export interface Channel {
@@ -131,6 +133,8 @@ export interface Channel {
   avg_viewers: number;
   avg_likes: number;
   avg_comments?: number;
+  likes_per_viewer?: number;
+  comments_per_viewer?: number;
   type?: string;
   banner?: string;
   superchats_count?: number;

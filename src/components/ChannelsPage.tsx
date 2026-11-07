@@ -9,6 +9,8 @@ interface ChannelsPageProps {
   onNavigateChannel: (channelId: string) => void;
 }
 
+type ChannelSortOption = 'viewers' | 'likes' | 'comments';
+
 export const ChannelsPage: React.FC<ChannelsPageProps> = ({
   channels,
   onNavigateChannel,
@@ -17,10 +19,11 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
   const [selectedTag, setSelectedTag] = useState<string>('all');
   const [selectedCommentsChannel, setSelectedCommentsChannel] = useState<Channel | null>(null);
   const [filterSuperchatsOnly, setFilterSuperchatsOnly] = useState<boolean>(false);
+  const [sortBy, setSortBy] = useState<ChannelSortOption>('viewers');
 
   const filteredChannels = useMemo(() => {
     if (!Array.isArray(channels)) return [];
-    return channels.filter((ch) => {
+    const list = channels.filter((ch) => {
       if (!ch) return false;
       if (ch.channel === '@Radio10am') return false;
 
@@ -51,7 +54,18 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
 
       return matchesSearch && matchesTag && matchesSuperchatFilter;
     });
-  }, [channels, searchQuery, selectedTag, filterSuperchatsOnly]);
+
+    return list.sort((a, b) => {
+      if (sortBy === 'likes') {
+        return (Number(b.avg_likes) || 0) - (Number(a.avg_likes) || 0);
+      }
+      if (sortBy === 'comments') {
+        return (Number(b.avg_comments) || 0) - (Number(a.avg_comments) || 0);
+      }
+      // default: 'viewers' (espectador promedio mayor a menor)
+      return (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
+    });
+  }, [channels, searchQuery, selectedTag, filterSuperchatsOnly, sortBy]);
 
   return (
     <div className="space-y-6">
@@ -111,9 +125,24 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
 
       {/* Channels List */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between text-sm text-gray-500 px-1">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm text-gray-500 px-1">
           <span>Mostrando {filteredChannels.length} canales</span>
-          <span>Ordenado por promedio de conectados</span>
+
+          <div className="flex items-center gap-2">
+            <label htmlFor="channels-sort-select" className="text-xs font-semibold text-gray-600 shrink-0">
+              Ordenar por:
+            </label>
+            <select
+              id="channels-sort-select"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as ChannelSortOption)}
+              className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-bold text-gray-800 shadow-2xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none cursor-pointer"
+            >
+              <option value="viewers">Espectador promedio (mayor a menor)</option>
+              <option value="likes">Likes por emisión (mayor a menor)</option>
+              <option value="comments">Mensajes por emisión (mayor a menor)</option>
+            </select>
+          </div>
         </div>
 
         {filteredChannels.length === 0 ? (
@@ -228,22 +257,24 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
                         <div className="text-[10px] text-gray-500">PROMEDIO</div>
                       </div>
 
-                      {/* Avg Likes */}
-                      <div className="text-center min-w-[80px]">
+                      {/* Likes por emisión */}
+                      <div className="text-center min-w-[85px]">
                         <div className="text-xs text-gray-400 font-semibold mb-0.5">LIKES</div>
                         <div className="text-2xl font-black text-rose-500">
                           {formatNumber(Math.max(0, channel.avg_likes || 0))}
                         </div>
-                        <div className="text-[10px] text-gray-500">POR HORA</div>
+                        <div className="text-[10px] text-gray-500 font-medium">POR EMISIÓN</div>
+                        {/* Decimal ratio comentado: {Number(channel.likes_per_viewer || 0).toFixed(2)}/esp */}
                       </div>
 
-                      {/* Avg Comments */}
-                      <div className="text-center min-w-[80px]">
+                      {/* Mensajes por emisión */}
+                      <div className="text-center min-w-[85px]">
                         <div className="text-xs text-gray-400 font-semibold mb-0.5">MENSAJES</div>
                         <div className="text-2xl font-black text-amber-500">
                           {formatNumber(Math.max(0, channel.avg_comments || 0))}
                         </div>
-                        <div className="text-[10px] text-gray-500">POR HORA</div>
+                        <div className="text-[10px] text-gray-500 font-medium">POR EMISIÓN</div>
+                        {/* Decimal ratio comentado: {Number(channel.comments_per_viewer || 0).toFixed(2)}/esp */}
                       </div>
                     </div>
                   </div>
@@ -290,18 +321,18 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
                         </p>
 
                         <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-50 flex-wrap gap-2">
-                          <div className="flex items-center space-x-3">
-                            <div className="flex items-center space-x-1 text-red-600">
+                          <div className="flex items-center space-x-2">
+                            <div className="flex items-center space-x-1 text-red-600 bg-red-50 px-2 py-0.5 rounded-md">
                               <Radio className="w-3 h-3" />
                               <span className="text-xs font-bold">
                                 {formatNumber(channel.avg_viewers)}
                               </span>
                             </div>
-                            <div className="text-xs text-gray-500">
-                              👍 {formatNumber(Math.max(0, channel.avg_likes || 0))}/h
+                            <div className="text-xs font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200/60" title="Likes promedio por emisión">
+                              ❤️ {formatNumber(Math.max(0, channel.avg_likes || 0))}
                             </div>
-                            <div className="text-xs text-gray-500">
-                              💬 {formatNumber(Math.max(0, channel.avg_comments || 0))}/h
+                            <div className="text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/60" title="Mensajes promedio por emisión">
+                              💬 {formatNumber(Math.max(0, channel.avg_comments || 0))}
                             </div>
                           </div>
 

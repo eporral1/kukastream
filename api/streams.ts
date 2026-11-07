@@ -361,11 +361,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     tag = tagParam.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
 
+  const rawSearch = (((req.query.q || req.query.search || '') as string) || '').trim();
+  // Strip enclosing quotes like "la trinchera" or 'la trinchera'
+  const searchParam = rawSearch.replace(/^["'«»“”„]+|["'«»“”„]+$/g, '').trim();
+
   try {
-    // 1. Standard channels: Query individual streams from public.live (distinct by video_id with max viewers)
+    // 1. Standard channels: Query individual streams from public.live
+    const standardParams: any[] = [];
+    let paramIndex = 1;
+
     let standardQuery = `
       SELECT 
-        sub.video_id, sub.channel_id, sub.concurrent_viewers, sub.old_viewers,
+        sub.video_id, sub.channel_id, 
+        GREATEST(sub.concurrent_viewers, sub.old_viewers, 0)::int AS concurrent_viewers,
+        sub.old_viewers,
+        COALESCE(NULLIF(v_avg.avg_viewers, 0), sub.old_viewers, sub.concurrent_viewers, 0)::int AS avg_viewers,
         sub.current_likes, sub.old_likes, sub.scrape_date, sub.start_date, sub.live,
         sub.video_title,
         c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter, c.type,
@@ -378,15 +388,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           current_likes, old_likes, scrape_date, start_date, live,
           COALESCE(video_title, '') AS video_title
         FROM public.live
-        WHERE concurrent_viewers > 0
-          AND (scrape_date >= '${OCT_2026_CUTOFF}' OR start_date >= '${OCT_2026_CUTOFF}')
-        ORDER BY video_id, concurrent_viewers DESC
+        WHERE (scrape_date >= '${OCT_2026_CUTOFF}' OR start_date >= '${OCT_2026_CUTOFF}')
+        ${!searchParam ? 'AND concurrent_viewers > 0' : ''}
+        ORDER BY video_id, (CASE WHEN video_title IS NOT NULL AND video_title <> '' THEN 1 ELSE 0 END) DESC, concurrent_viewers DESC
       ) sub
       JOIN public.channels c ON sub.channel_id = c.channel_id
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(ROUND(AVG(m.concurrent_viewers)), 0)::int as avg_viewers
+        FROM public.minute m 
+        WHERE m.video_id = sub.video_id AND m.concurrent_viewers > 0
+          AND m.scrape_date >= '${OCT_2026_CUTOFF}'
+      ) v_avg ON true
       LEFT JOIN LATERAL (
         SELECT COALESCE(m.comments_count, 0) as comments_count
         FROM public.minute m 
         WHERE m.video_id = sub.video_id 
+          AND m.scrape_date >= '${OCT_2026_CUTOFF}'
         ORDER BY m.scrape_date DESC, m.id DESC 
         LIMIT 1
       ) comm ON true
@@ -394,13 +411,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         AND (c.type IS NULL OR c.type <> 'eternal')
     `;
 
-    const standardParams: any[] = [];
     if (tag) {
       standardParams.push(`%${tag}%`);
-      standardQuery += ` AND (c.tags ILIKE $1 OR REPLACE(c.tags, 'í', 'i') ILIKE $1)`;
+      standardQuery += ` AND (c.tags ILIKE $${paramIndex} OR REPLACE(c.tags, 'í', 'i') ILIKE $${paramIndex})`;
+      paramIndex++;
     }
 
-    standardQuery += ` ORDER BY sub.concurrent_viewers DESC LIMIT 30;`;
+    if (searchParam) {
+      standardParams.push(`%${searchParam}%`);
+      standardQuery += ` AND (sub.video_title ILIKE $${paramIndex} OR c.channel_name ILIKE $${paramIndex} OR c.channel ILIKE $${paramIndex} OR sub.video_id ILIKE $${paramIndex})`;
+      paramIndex++;
+    }
+
+    standardQuery += ` ORDER BY COALESCE(NULLIF(v_avg.avg_viewers, 0), sub.old_viewers, sub.concurrent_viewers, 0) DESC LIMIT ${searchParam ? 200 : 100};`;
     const standardRes: any = await executeQuery(standardQuery, standardParams);
     const standardStreams: any[] = standardRes.rows || [];
 
@@ -413,9 +436,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         WHERE active::text IN ('1', 'true') AND type = 'eternal'
       `;
       const eternalChParams: any[] = [];
+      let eternalParamIdx = 1;
       if (tag) {
         eternalChParams.push(`%${tag}%`);
-        eternalChQuery += ` AND (tags ILIKE $1 OR REPLACE(tags, 'í', 'i') ILIKE $1)`;
+        eternalChQuery += ` AND (tags ILIKE $${eternalParamIdx} OR REPLACE(tags, 'í', 'i') ILIKE $${eternalParamIdx})`;
+        eternalParamIdx++;
       }
 
       const eternalChRes: any = await executeQuery(eternalChQuery, eternalChParams);
@@ -437,27 +462,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           liveMap.set(r.channel_id, r);
         }
 
-        const titleGroupsRes: any = await executeQuery(
-          `SELECT video_title,
-                  video_id,
-                  channel_id,
-                  MIN(scrape_date) AS start_time,
-                  MAX(scrape_date) AS end_time,
-                  MAX(concurrent_viewers) AS max_viewers,
-                  AVG(concurrent_viewers)::int AS avg_viewers,
-                  MIN(likes) AS min_likes,
-                  MAX(likes) AS max_likes,
-                  MIN(comments_count) AS min_comments,
-                  MAX(comments_count) AS max_comments,
-                  COUNT(*) AS point_count
-           FROM public.minute
-           WHERE channel_id = ANY($1) 
-             AND scrape_date >= '${OCT_2026_CUTOFF}'
-             AND video_title IS NOT NULL AND video_title <> ''
-           GROUP BY video_title, video_id, channel_id
-           ORDER BY MAX(scrape_date) DESC`,
-          [eternalChannelIds]
-        );
+        let titleGroupsQuery = `
+          SELECT video_title,
+                 video_id,
+                 channel_id,
+                 MIN(scrape_date) AS start_time,
+                 MAX(scrape_date) AS end_time,
+                 MAX(concurrent_viewers) AS max_viewers,
+                 AVG(concurrent_viewers)::int AS avg_viewers,
+                 MIN(likes) AS min_likes,
+                 MAX(likes) AS max_likes,
+                 MIN(comments_count) AS min_comments,
+                 MAX(comments_count) AS max_comments,
+                 COUNT(*) AS point_count
+          FROM public.minute
+          WHERE channel_id = ANY($1) 
+            AND scrape_date >= '${OCT_2026_CUTOFF}'
+            AND video_title IS NOT NULL AND video_title <> ''
+        `;
+
+        const titleParams: any[] = [eternalChannelIds];
+        if (searchParam) {
+          titleParams.push(`%${searchParam}%`);
+          titleGroupsQuery += ` AND (video_title ILIKE $2 OR video_id ILIKE $2)`;
+        }
+
+        titleGroupsQuery += ` GROUP BY video_title, video_id, channel_id ORDER BY MAX(scrape_date) DESC LIMIT ${searchParam ? 200 : 100}`;
+
+        const titleGroupsRes: any = await executeQuery(titleGroupsQuery, titleParams);
 
         const chGroupsMap = new Map<string, any[]>();
         for (const row of titleGroupsRes.rows || []) {
@@ -499,6 +531,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           chained.forEach((group: any, idx: number) => {
             const isLiveShow = isChannelLive && idx === 0;
+            if (searchParam) {
+              const qLower = searchParam.toLowerCase();
+              const titleMatch = (group.video_title || '').toLowerCase().includes(qLower);
+              const chNameMatch = (ch.channel_name || '').toLowerCase().includes(qLower);
+              const chHandleMatch = (ch.channel || '').toLowerCase().includes(qLower);
+              const vidMatch = (group.video_id || '').toLowerCase().includes(qLower);
+              if (!titleMatch && !chNameMatch && !chHandleMatch && !vidMatch) {
+                return;
+              }
+            }
+
             eternalStreams.push({
               video_id: group.video_id,
               channel_id: ch.channel_id,
@@ -513,6 +556,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               live: isLiveShow ? 'live' : 'none',
               concurrent_viewers: isLiveShow ? (liveRow.concurrent_viewers || group.max_viewers) : group.max_viewers,
               old_viewers: group.avg_viewers,
+              avg_viewers: group.avg_viewers,
               current_likes: group.likes_delta,
               old_likes: group.min_likes,
               comments_count: group.comm_delta,
@@ -530,11 +574,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const allStreams = [...standardStreams, ...eternalStreams];
     const filtered = allStreams.filter((s: any) => s.channel !== '@Radio10am');
-    filtered.sort((a: any, b: any) => (Number(b.concurrent_viewers) || 0) - (Number(a.concurrent_viewers) || 0));
+    filtered.sort((a: any, b: any) => {
+      const aAvg = Number(a.avg_viewers ?? a.old_viewers ?? a.concurrent_viewers) || 0;
+      const bAvg = Number(b.avg_viewers ?? b.old_viewers ?? b.concurrent_viewers) || 0;
+      return bAvg - aAvg;
+    });
 
-    const topStreams = filtered.slice(0, 10);
+    const returnStreams = searchParam ? filtered.slice(0, 200) : filtered.slice(0, 50);
 
-    for (const stream of topStreams) {
+    const scLimit = Math.min(returnStreams.length, 25);
+    for (let i = 0; i < scLimit; i++) {
+      const stream = returnStreams[i];
       try {
         if (stream.type === 'eternal') {
           const scRes: any = await executeQuery(
@@ -569,7 +619,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({
       success: true,
-      streams: topStreams,
+      streams: returnStreams,
+      total_found: filtered.length,
+      is_search: Boolean(searchParam),
     });
   } catch (err: any) {
     console.error('Error in /api/streams:', err);

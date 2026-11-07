@@ -339,10 +339,31 @@ async function enrichEternalChannels(channels: any[]) {
 
           const totalComments = titleGroups.reduce((acc: number, g: any) => acc + g.comm_delta, 0);
           channel.avg_comments = Math.round(totalComments / titleGroups.length);
+
+          const validGroups = titleGroups.filter((g: any) => (g.max_viewers || 0) > 0);
+          if (validGroups.length > 0) {
+            channel.likes_per_viewer = Number(
+              (
+                validGroups.reduce((acc: number, g: any) => acc + (g.likes_delta / g.max_viewers), 0) /
+                validGroups.length
+              ).toFixed(2)
+            );
+            channel.comments_per_viewer = Number(
+              (
+                validGroups.reduce((acc: number, g: any) => acc + (g.comm_delta / g.max_viewers), 0) /
+                validGroups.length
+              ).toFixed(2)
+            );
+          } else {
+            channel.likes_per_viewer = 0;
+            channel.comments_per_viewer = 0;
+          }
         } else {
           channel.avg_viewers = 0;
           channel.avg_likes = 0;
           channel.avg_comments = 0;
+          channel.likes_per_viewer = 0;
+          channel.comments_per_viewer = 0;
         }
       } catch (err) {
         console.error(`Error enriching eternal channel ${channel.channel}:`, err);
@@ -388,32 +409,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     let query = `
-      WITH comm_stats AS (
+      WITH video_stats AS (
+        SELECT 
+          m.channel_id,
+          m.video_id,
+          MAX(m.concurrent_viewers) AS max_viewers,
+          MAX(m.likes) AS max_likes,
+          MAX(m.comments_count) AS max_comments
+        FROM public.minute m
+        WHERE m.scrape_date >= '${OCT_2026_CUTOFF}'
+        GROUP BY m.channel_id, m.video_id
+        HAVING MAX(m.concurrent_viewers) > 0
+      ),
+      viewer_stats AS (
         SELECT channel_id,
-               COALESCE(ROUND(AVG(comments_rate)), 0)::int AS avg_comments
+               COALESCE(ROUND(AVG(max_viewers)), 0)::int AS avg_viewers
         FROM (
           SELECT video_id, channel_id,
-                 (MAX(comments_count) - MIN(comments_count))::numeric / 
-                 GREATEST(0.25, EXTRACT(EPOCH FROM (MAX(scrape_date) - MIN(scrape_date))) / 3600.0) AS comments_rate
-          FROM public.minute
-          WHERE scrape_date >= '${OCT_2026_CUTOFF}' AND comments_count > 0
+                 MAX(concurrent_viewers) AS max_viewers
+          FROM public.live
+          WHERE scrape_date >= '${OCT_2026_CUTOFF}' AND concurrent_viewers > 0
           GROUP BY video_id, channel_id
-          HAVING MAX(scrape_date) > MIN(scrape_date)
         ) sub
+        GROUP BY channel_id
+      ),
+      ratio_stats AS (
+        SELECT 
+          channel_id,
+          COALESCE(ROUND(AVG(max_viewers)), 0)::int AS minute_avg_viewers,
+          COALESCE(ROUND(AVG(max_likes)), 0)::int AS avg_likes,
+          COALESCE(ROUND(AVG(max_comments)), 0)::int AS avg_comments,
+          COALESCE(ROUND(AVG(CASE WHEN max_viewers > 0 THEN max_likes::numeric / max_viewers ELSE 0 END), 2), 0)::numeric AS likes_per_viewer,
+          COALESCE(ROUND(AVG(CASE WHEN max_viewers > 0 THEN max_comments::numeric / max_viewers ELSE 0 END), 2), 0)::numeric AS comments_per_viewer
+        FROM video_stats
         GROUP BY channel_id
       )
       SELECT 
         c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, c.type,
-        COALESCE(AVG(l.concurrent_viewers), 0)::int AS avg_viewers,
-        COALESCE(AVG(CASE WHEN l.current_likes > l.old_likes THEN (l.current_likes - l.old_likes) * 6 END), 0)::int AS avg_likes,
-        COALESCE(cs.avg_comments, 0)::int AS avg_comments
+        COALESCE(vs.avg_viewers, rs.minute_avg_viewers, 0)::int AS avg_viewers,
+        COALESCE(rs.avg_likes, 0)::int AS avg_likes,
+        COALESCE(rs.avg_comments, 0)::int AS avg_comments,
+        COALESCE(rs.likes_per_viewer, 0)::numeric AS likes_per_viewer,
+        COALESCE(rs.comments_per_viewer, 0)::numeric AS comments_per_viewer
       FROM public.channels c
-      LEFT JOIN public.live l ON l.channel_id = c.channel_id 
-        AND l.scrape_date >= '${OCT_2026_CUTOFF}' 
-        AND l.concurrent_viewers > 0
-      LEFT JOIN comm_stats cs ON cs.channel_id = c.channel_id
+      LEFT JOIN viewer_stats vs ON vs.channel_id = c.channel_id
+      LEFT JOIN ratio_stats rs ON rs.channel_id = c.channel_id
       WHERE c.active::text IN ('1', 'true')
-      GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, c.type, cs.avg_comments
       ORDER BY avg_viewers DESC;
     `;
     let result: any;
@@ -421,34 +462,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       result = await executeQuery(query);
     } catch {
       query = `
-        WITH comm_stats AS (
-          SELECT channel_id,
-                 COALESCE(ROUND(AVG(comments_rate)), 0)::int AS avg_comments
-        FROM (
-          SELECT video_id, channel_id,
-                 (MAX(comments_count) - MIN(comments_count))::numeric / 
-                 GREATEST(0.25, EXTRACT(EPOCH FROM (MAX(scrape_date) - MIN(scrape_date))) / 3600.0) AS comments_rate
-          FROM public.minute
-          WHERE scrape_date >= '${OCT_2026_CUTOFF}' AND comments_count > 0
-          GROUP BY video_id, channel_id
-          HAVING MAX(scrape_date) > MIN(scrape_date)
-        ) sub
-        GROUP BY channel_id
-      )
-      SELECT 
-        c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, c.type,
-        COALESCE(AVG(l.concurrent_viewers), 0)::int AS avg_viewers,
-        COALESCE(AVG(CASE WHEN l.current_likes > l.old_likes THEN (l.current_likes - l.old_likes) * 6 END), 0)::int AS avg_likes,
-        COALESCE(cs.avg_comments, 0)::int AS avg_comments
-      FROM public.channels c
-      LEFT JOIN public.live l ON l.channel_id = c.channel_id 
-        AND l.scrape_date >= '${OCT_2026_CUTOFF}' 
-        AND l.concurrent_viewers > 0
-      LEFT JOIN comm_stats cs ON cs.channel_id = c.channel_id
-      WHERE c.active = 1
-      GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, c.type, cs.avg_comments
-      ORDER BY avg_viewers DESC;
-    `;
+        WITH live_stats AS (
+          SELECT 
+            channel_id,
+            video_id,
+            MAX(concurrent_viewers) AS max_viewers,
+            MAX(current_likes) AS max_likes
+          FROM public.live
+          WHERE scrape_date >= '${OCT_2026_CUTOFF}' AND concurrent_viewers > 0
+          GROUP BY channel_id, video_id
+        ),
+        channel_ratios AS (
+          SELECT 
+            channel_id,
+            COALESCE(ROUND(AVG(max_viewers)), 0)::int AS avg_viewers,
+            COALESCE(ROUND(AVG(max_likes)), 0)::int AS avg_likes,
+            COALESCE(ROUND(AVG(CASE WHEN max_viewers > 0 THEN max_likes::numeric / max_viewers ELSE 0 END), 2), 0)::numeric AS likes_per_viewer,
+            0::numeric AS comments_per_viewer
+          FROM live_stats
+          GROUP BY channel_id
+        )
+        SELECT 
+          c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, c.type,
+          COALESCE(cr.avg_viewers, 0)::int AS avg_viewers,
+          COALESCE(cr.avg_likes, 0)::int AS avg_likes,
+          0::int AS avg_comments,
+          COALESCE(cr.likes_per_viewer, 0)::numeric AS likes_per_viewer,
+          COALESCE(cr.comments_per_viewer, 0)::numeric AS comments_per_viewer
+        FROM public.channels c
+        LEFT JOIN channel_ratios cr ON cr.channel_id = c.channel_id
+        WHERE c.active::text IN ('1', 'true')
+        ORDER BY avg_viewers DESC;
+      `;
       result = await executeQuery(query);
     }
     if (result && result.rows) {

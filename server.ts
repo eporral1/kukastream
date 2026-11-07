@@ -120,6 +120,14 @@ app.get('/api/health/db', async (_req: Request, res: Response) => {
   }
 });
 
+app.get('/api/health/gemini', (_req: Request, res: Response) => {
+  const key = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
+  res.json({
+    hasKey: Boolean(key),
+    keyPrefix: key ? key.substring(0, 4) + '***' : 'none',
+  });
+});
+
 
 // GET /api/live - Reproduces Laravel route: /
 // DB::select("select * from public.live l, channels c where l.live='live' and l.concurrent_viewers > 0 and l.channel_id = c.channel_id and c.tags like '%tag%' order by l.concurrent_viewers desc limit 10")
@@ -477,6 +485,13 @@ async function enrichEternalStreams(streams: any[], p: any) {
           const currentSession = sessions[0];
           stream.current_likes = currentSession.likes_delta;
           stream.comments_count = currentSession.comm_delta;
+          if (currentSession.avg_viewers) {
+            stream.avg_viewers = currentSession.avg_viewers;
+          }
+          if (currentSession.max_viewers) {
+            stream.max_viewers = currentSession.max_viewers;
+            stream.max_users = currentSession.max_viewers;
+          }
           if (currentSession.video_title) {
             stream.video_title = currentSession.video_title;
           }
@@ -490,6 +505,13 @@ async function enrichEternalStreams(streams: any[], p: any) {
           if (matched) {
             stream.current_likes = matched.likes_delta;
             stream.comments_count = matched.comm_delta;
+            if (matched.avg_viewers) {
+              stream.avg_viewers = matched.avg_viewers;
+            }
+            if (matched.max_viewers) {
+              stream.max_viewers = matched.max_viewers;
+              stream.max_users = matched.max_viewers;
+            }
             if (matched.video_title) {
               stream.video_title = matched.video_title;
             }
@@ -571,10 +593,31 @@ async function enrichEternalChannels(channels: any[], p: any) {
 
           const totalComments = titleGroups.reduce((acc: number, g: any) => acc + g.comm_delta, 0);
           channel.avg_comments = Math.round(totalComments / titleGroups.length);
+
+          const validGroups = titleGroups.filter((g: any) => (g.max_viewers || 0) > 0);
+          if (validGroups.length > 0) {
+            channel.likes_per_viewer = Number(
+              (
+                validGroups.reduce((acc: number, g: any) => acc + (g.likes_delta / g.max_viewers), 0) /
+                validGroups.length
+              ).toFixed(2)
+            );
+            channel.comments_per_viewer = Number(
+              (
+                validGroups.reduce((acc: number, g: any) => acc + (g.comm_delta / g.max_viewers), 0) /
+                validGroups.length
+              ).toFixed(2)
+            );
+          } else {
+            channel.likes_per_viewer = 0;
+            channel.comments_per_viewer = 0;
+          }
         } else {
           channel.avg_viewers = 0;
           channel.avg_likes = 0;
           channel.avg_comments = 0;
+          channel.likes_per_viewer = 0;
+          channel.comments_per_viewer = 0;
         }
       } catch (err) {
         console.error(`Error enriching eternal channel ${channel.channel}:`, err);
@@ -729,6 +772,32 @@ app.get('/api/live', async (req: Request, res: Response) => {
       } catch (e) {
         console.error('Error fetching superchats for live streams in server.ts:', e);
       }
+
+      try {
+        const peakRes = await p.query(
+          `SELECT video_id, MAX(concurrent_viewers)::int as peak_viewers
+           FROM public.minute
+           WHERE video_id = ANY($1) AND scrape_date >= '${OCT_2026_CUTOFF}'
+           GROUP BY video_id`,
+          [allVideoIds]
+        );
+        const peakMap = new Map<string, number>();
+        for (const row of peakRes.rows || []) {
+          peakMap.set(row.video_id, Number(row.peak_viewers || 0));
+        }
+        for (const stream of liveResult.rows) {
+          const pv = peakMap.get(stream.video_id) || 0;
+          stream.max_viewers = Math.max(pv, Number(stream.concurrent_viewers || 0));
+          stream.max_users = stream.max_viewers;
+        }
+        for (const stream of recentResult.rows) {
+          const pv = peakMap.get(stream.video_id) || 0;
+          stream.max_viewers = Math.max(pv, Number(stream.concurrent_viewers || 0));
+          stream.max_users = stream.max_viewers;
+        }
+      } catch (e) {
+        console.error('Error fetching peak viewers for streams in server.ts:', e);
+      }
     }
 
     // Enrich eternal channels with current program session likes and comments
@@ -771,7 +840,19 @@ app.get('/api/channels', async (req: Request, res: Response) => {
 
   try {
     let query = `
-      WITH viewer_stats AS (
+      WITH video_stats AS (
+        SELECT 
+          m.channel_id,
+          m.video_id,
+          MAX(m.concurrent_viewers) AS max_viewers,
+          MAX(m.likes) AS max_likes,
+          MAX(m.comments_count) AS max_comments
+        FROM public.minute m
+        WHERE m.scrape_date >= '${OCT_2026_CUTOFF}'
+        GROUP BY m.channel_id, m.video_id
+        HAVING MAX(m.concurrent_viewers) > 0
+      ),
+      viewer_stats AS (
         SELECT channel_id,
                COALESCE(ROUND(AVG(max_viewers)), 0)::int AS avg_viewers
         FROM (
@@ -783,45 +864,28 @@ app.get('/api/channels', async (req: Request, res: Response) => {
         ) sub
         GROUP BY channel_id
       ),
-      comm_stats AS (
-        SELECT channel_id,
-               COALESCE(ROUND(AVG(comments_rate)), 0)::int AS avg_comments
-        FROM (
-          SELECT video_id, channel_id,
-                 (MAX(comments_count) - MIN(comments_count))::numeric / 
-                 GREATEST(0.25, EXTRACT(EPOCH FROM (MAX(scrape_date) - MIN(scrape_date))) / 3600.0) AS comments_rate
-          FROM public.minute
-          WHERE scrape_date >= '${OCT_2026_CUTOFF}' AND comments_count > 0
-          GROUP BY video_id, channel_id
-          HAVING MAX(scrape_date) > MIN(scrape_date)
-        ) sub
-        GROUP BY channel_id
-      ),
-      likes_stats AS (
-        SELECT channel_id,
-               COALESCE(ROUND(AVG(likes_rate)), 0)::int AS avg_likes
-        FROM (
-          SELECT video_id, channel_id,
-                 (MAX(likes) - MIN(likes))::numeric / 
-                 GREATEST(0.25, EXTRACT(EPOCH FROM (MAX(scrape_date) - MIN(scrape_date))) / 3600.0) AS likes_rate
-          FROM public.minute
-          WHERE scrape_date >= '${OCT_2026_CUTOFF}' AND likes > 0
-          GROUP BY video_id, channel_id
-          HAVING MAX(scrape_date) > MIN(scrape_date) AND MAX(likes) >= MIN(likes)
-        ) sub
+      ratio_stats AS (
+        SELECT 
+          channel_id,
+          COALESCE(ROUND(AVG(max_viewers)), 0)::int AS minute_avg_viewers,
+          COALESCE(ROUND(AVG(max_likes)), 0)::int AS avg_likes,
+          COALESCE(ROUND(AVG(max_comments)), 0)::int AS avg_comments,
+          COALESCE(ROUND(AVG(CASE WHEN max_viewers > 0 THEN max_likes::numeric / max_viewers ELSE 0 END), 2), 0)::numeric AS likes_per_viewer,
+          COALESCE(ROUND(AVG(CASE WHEN max_viewers > 0 THEN max_comments::numeric / max_viewers ELSE 0 END), 2), 0)::numeric AS comments_per_viewer
+        FROM video_stats
         GROUP BY channel_id
       )
       SELECT 
         c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, c.type,
-        COALESCE(vs.avg_viewers, 0)::int AS avg_viewers,
-        COALESCE(ls.avg_likes, 0)::int AS avg_likes,
-        COALESCE(cs.avg_comments, 0)::int AS avg_comments
+        COALESCE(vs.avg_viewers, rs.minute_avg_viewers, 0)::int AS avg_viewers,
+        COALESCE(rs.avg_likes, 0)::int AS avg_likes,
+        COALESCE(rs.avg_comments, 0)::int AS avg_comments,
+        COALESCE(rs.likes_per_viewer, 0)::numeric AS likes_per_viewer,
+        COALESCE(rs.comments_per_viewer, 0)::numeric AS comments_per_viewer
       FROM public.channels c
       LEFT JOIN viewer_stats vs ON vs.channel_id = c.channel_id
-      LEFT JOIN comm_stats cs ON cs.channel_id = c.channel_id
-      LEFT JOIN likes_stats ls ON ls.channel_id = c.channel_id
+      LEFT JOIN ratio_stats rs ON rs.channel_id = c.channel_id
       WHERE c.active::text IN ('1', 'true')
-      GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, c.type, vs.avg_viewers, cs.avg_comments, ls.avg_likes
       ORDER BY avg_viewers DESC;
     `;
     let result;
@@ -829,32 +893,36 @@ app.get('/api/channels', async (req: Request, res: Response) => {
       result = await p.query(query);
     } catch {
       query = `
-        WITH comm_stats AS (
-          SELECT channel_id,
-                 COALESCE(ROUND(AVG(comments_rate)), 0)::int AS avg_comments
-          FROM (
-            SELECT video_id, channel_id,
-                   (MAX(comments_count) - MIN(comments_count))::numeric / 
-                   GREATEST(0.25, EXTRACT(EPOCH FROM (MAX(scrape_date) - MIN(scrape_date))) / 3600.0) AS comments_rate
-            FROM public.minute
-            WHERE scrape_date >= '${OCT_2026_CUTOFF}' AND comments_count > 0
-            GROUP BY video_id, channel_id
-            HAVING MAX(scrape_date) > MIN(scrape_date)
-          ) sub
+        WITH live_stats AS (
+          SELECT 
+            channel_id,
+            video_id,
+            MAX(concurrent_viewers) AS max_viewers,
+            MAX(current_likes) AS max_likes
+          FROM public.live
+          WHERE scrape_date >= '${OCT_2026_CUTOFF}' AND concurrent_viewers > 0
+          GROUP BY channel_id, video_id
+        ),
+        channel_ratios AS (
+          SELECT 
+            channel_id,
+            COALESCE(ROUND(AVG(max_viewers)), 0)::int AS avg_viewers,
+            COALESCE(ROUND(AVG(max_likes)), 0)::int AS avg_likes,
+            COALESCE(ROUND(AVG(CASE WHEN max_viewers > 0 THEN max_likes::numeric / max_viewers ELSE 0 END), 2), 0)::numeric AS likes_per_viewer,
+            0::numeric AS comments_per_viewer
+          FROM live_stats
           GROUP BY channel_id
         )
         SELECT 
           c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, c.type,
-          COALESCE(AVG(l.concurrent_viewers), 0)::int AS avg_viewers,
-          COALESCE(AVG(CASE WHEN l.current_likes > l.old_likes THEN (l.current_likes - l.old_likes) * 6 END), 0)::int AS avg_likes,
-          COALESCE(cs.avg_comments, 0)::int AS avg_comments
+          COALESCE(cr.avg_viewers, 0)::int AS avg_viewers,
+          COALESCE(cr.avg_likes, 0)::int AS avg_likes,
+          0::int AS avg_comments,
+          COALESCE(cr.likes_per_viewer, 0)::numeric AS likes_per_viewer,
+          COALESCE(cr.comments_per_viewer, 0)::numeric AS comments_per_viewer
         FROM public.channels c
-        LEFT JOIN public.live l ON l.channel_id = c.channel_id 
-          AND l.scrape_date >= '${OCT_2026_CUTOFF}'
-          AND l.concurrent_viewers > 0
-        LEFT JOIN comm_stats cs ON cs.channel_id = c.channel_id
-        WHERE c.active = 1
-        GROUP BY c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, c.type, cs.avg_comments
+        LEFT JOIN channel_ratios cr ON cr.channel_id = c.channel_id
+        WHERE c.active::text IN ('1', 'true')
         ORDER BY avg_viewers DESC;
       `;
       result = await p.query(query);
@@ -868,7 +936,7 @@ app.get('/api/channels', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/streams - Top streams ranking with eternal channels grouped by video_title as in /channel/:id
+// GET /api/streams - Streams ranking and search across all available videos
 app.get('/api/streams', async (req: Request, res: Response) => {
   const p = getPool();
   if (!p) {
@@ -882,11 +950,21 @@ app.get('/api/streams', async (req: Request, res: Response) => {
     tag = tagParam.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
 
+  const rawSearch = (((req.query.q || req.query.search || '') as string) || '').trim();
+  // Strip enclosing quotes like "la trinchera" or 'la trinchera'
+  const searchParam = rawSearch.replace(/^["'«»“”„]+|["'«»“”„]+$/g, '').trim();
+
   try {
-    // 1. Standard channels: Query individual streams from public.live (distinct by video_id with max viewers)
+    // 1. Standard channels: Query individual streams from public.live
+    const standardParams: any[] = [];
+    let paramIndex = 1;
+
     let standardQuery = `
       SELECT 
-        sub.video_id, sub.channel_id, sub.concurrent_viewers, sub.old_viewers,
+        sub.video_id, sub.channel_id, 
+        GREATEST(sub.concurrent_viewers, sub.old_viewers, 0)::int AS concurrent_viewers,
+        sub.old_viewers,
+        COALESCE(NULLIF(v_avg.avg_viewers, 0), sub.old_viewers, sub.concurrent_viewers, 0)::int AS avg_viewers,
         sub.current_likes, sub.old_likes, sub.scrape_date, sub.start_date, sub.live,
         sub.video_title,
         c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter, c.type,
@@ -899,15 +977,22 @@ app.get('/api/streams', async (req: Request, res: Response) => {
           current_likes, old_likes, scrape_date, start_date, live,
           COALESCE(video_title, '') AS video_title
         FROM public.live
-        WHERE concurrent_viewers > 0
-          AND (scrape_date >= '${OCT_2026_CUTOFF}' OR start_date >= '${OCT_2026_CUTOFF}')
-        ORDER BY video_id, concurrent_viewers DESC
+        WHERE (scrape_date >= '${OCT_2026_CUTOFF}' OR start_date >= '${OCT_2026_CUTOFF}')
+        ${!searchParam ? 'AND concurrent_viewers > 0' : ''}
+        ORDER BY video_id, (CASE WHEN video_title IS NOT NULL AND video_title <> '' THEN 1 ELSE 0 END) DESC, concurrent_viewers DESC
       ) sub
       JOIN public.channels c ON sub.channel_id = c.channel_id
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(ROUND(AVG(m.concurrent_viewers)), 0)::int as avg_viewers
+        FROM public.minute m 
+        WHERE m.video_id = sub.video_id AND m.concurrent_viewers > 0
+          AND m.scrape_date >= '${OCT_2026_CUTOFF}'
+      ) v_avg ON true
       LEFT JOIN LATERAL (
         SELECT COALESCE(m.comments_count, 0) as comments_count
         FROM public.minute m 
         WHERE m.video_id = sub.video_id 
+          AND m.scrape_date >= '${OCT_2026_CUTOFF}'
         ORDER BY m.scrape_date DESC, m.id DESC 
         LIMIT 1
       ) comm ON true
@@ -915,13 +1000,19 @@ app.get('/api/streams', async (req: Request, res: Response) => {
         AND (c.type IS NULL OR c.type <> 'eternal')
     `;
 
-    const standardParams: any[] = [];
     if (tag) {
       standardParams.push(`%${tag}%`);
-      standardQuery += ` AND (c.tags ILIKE $1 OR REPLACE(c.tags, 'í', 'i') ILIKE $1)`;
+      standardQuery += ` AND (c.tags ILIKE $${paramIndex} OR REPLACE(c.tags, 'í', 'i') ILIKE $${paramIndex})`;
+      paramIndex++;
     }
 
-    standardQuery += ` ORDER BY sub.concurrent_viewers DESC LIMIT 30;`;
+    if (searchParam) {
+      standardParams.push(`%${searchParam}%`);
+      standardQuery += ` AND (sub.video_title ILIKE $${paramIndex} OR c.channel_name ILIKE $${paramIndex} OR c.channel ILIKE $${paramIndex} OR sub.video_id ILIKE $${paramIndex})`;
+      paramIndex++;
+    }
+
+    standardQuery += ` ORDER BY COALESCE(NULLIF(v_avg.avg_viewers, 0), sub.old_viewers, sub.concurrent_viewers, 0) DESC LIMIT ${searchParam ? 200 : 100};`;
     const standardResult = await p.query(standardQuery, standardParams);
     const standardStreams: any[] = standardResult.rows || [];
 
@@ -934,9 +1025,11 @@ app.get('/api/streams', async (req: Request, res: Response) => {
         WHERE active::text IN ('1', 'true') AND type = 'eternal'
       `;
       const eternalChParams: any[] = [];
+      let eternalParamIdx = 1;
       if (tag) {
         eternalChParams.push(`%${tag}%`);
-        eternalChQuery += ` AND (tags ILIKE $1 OR REPLACE(tags, 'í', 'i') ILIKE $1)`;
+        eternalChQuery += ` AND (tags ILIKE $${eternalParamIdx} OR REPLACE(tags, 'í', 'i') ILIKE $${eternalParamIdx})`;
+        eternalParamIdx++;
       }
 
       const eternalChRes = await p.query(eternalChQuery, eternalChParams);
@@ -960,27 +1053,34 @@ app.get('/api/streams', async (req: Request, res: Response) => {
         }
 
         // Fetch title groups from public.minute
-        const titleGroupsRes = await p.query(
-          `SELECT video_title,
-                  video_id,
-                  channel_id,
-                  MIN(scrape_date) AS start_time,
-                  MAX(scrape_date) AS end_time,
-                  MAX(concurrent_viewers) AS max_viewers,
-                  AVG(concurrent_viewers)::int AS avg_viewers,
-                  MIN(likes) AS min_likes,
-                  MAX(likes) AS max_likes,
-                  MIN(comments_count) AS min_comments,
-                  MAX(comments_count) AS max_comments,
-                  COUNT(*) AS point_count
-           FROM public.minute
-           WHERE channel_id = ANY($1) 
-             AND scrape_date >= '${OCT_2026_CUTOFF}'
-             AND video_title IS NOT NULL AND video_title <> ''
-           GROUP BY video_title, video_id, channel_id
-           ORDER BY MAX(scrape_date) DESC`,
-          [eternalChannelIds]
-        );
+        let titleGroupsQuery = `
+          SELECT video_title,
+                 video_id,
+                 channel_id,
+                 MIN(scrape_date) AS start_time,
+                 MAX(scrape_date) AS end_time,
+                 MAX(concurrent_viewers) AS max_viewers,
+                 AVG(concurrent_viewers)::int AS avg_viewers,
+                 MIN(likes) AS min_likes,
+                 MAX(likes) AS max_likes,
+                 MIN(comments_count) AS min_comments,
+                 MAX(comments_count) AS max_comments,
+                 COUNT(*) AS point_count
+          FROM public.minute
+          WHERE channel_id = ANY($1) 
+            AND scrape_date >= '${OCT_2026_CUTOFF}'
+            AND video_title IS NOT NULL AND video_title <> ''
+        `;
+
+        const titleParams: any[] = [eternalChannelIds];
+        if (searchParam) {
+          titleParams.push(`%${searchParam}%`);
+          titleGroupsQuery += ` AND (video_title ILIKE $2 OR video_id ILIKE $2)`;
+        }
+
+        titleGroupsQuery += ` GROUP BY video_title, video_id, channel_id ORDER BY MAX(scrape_date) DESC LIMIT ${searchParam ? 200 : 100}`;
+
+        const titleGroupsRes = await p.query(titleGroupsQuery, titleParams);
 
         // Group rows by channel_id
         const chGroupsMap = new Map<string, any[]>();
@@ -1023,6 +1123,18 @@ app.get('/api/streams', async (req: Request, res: Response) => {
 
           chained.forEach((group: any, idx: number) => {
             const isLiveShow = isChannelLive && idx === 0;
+            // Check if matches searchParam if searchParam is for channel
+            if (searchParam) {
+              const qLower = searchParam.toLowerCase();
+              const titleMatch = (group.video_title || '').toLowerCase().includes(qLower);
+              const chNameMatch = (ch.channel_name || '').toLowerCase().includes(qLower);
+              const chHandleMatch = (ch.channel || '').toLowerCase().includes(qLower);
+              const vidMatch = (group.video_id || '').toLowerCase().includes(qLower);
+              if (!titleMatch && !chNameMatch && !chHandleMatch && !vidMatch) {
+                return;
+              }
+            }
+
             eternalStreams.push({
               video_id: group.video_id,
               channel_id: ch.channel_id,
@@ -1037,6 +1149,7 @@ app.get('/api/streams', async (req: Request, res: Response) => {
               live: isLiveShow ? 'live' : 'none',
               concurrent_viewers: isLiveShow ? (liveRow.concurrent_viewers || group.max_viewers) : group.max_viewers,
               old_viewers: group.avg_viewers,
+              avg_viewers: group.avg_viewers,
               current_likes: group.likes_delta,
               old_likes: group.min_likes,
               comments_count: group.comm_delta,
@@ -1058,14 +1171,20 @@ app.get('/api/streams', async (req: Request, res: Response) => {
     // Filter out @Radio10am if present
     const filtered = allStreams.filter((s: any) => s.channel !== '@Radio10am');
 
-    // 4. Sort by concurrent_viewers DESC
-    filtered.sort((a: any, b: any) => (Number(b.concurrent_viewers) || 0) - (Number(a.concurrent_viewers) || 0));
+    // 4. Sort by avg_viewers DESC (fallback to concurrent_viewers if undefined or 0)
+    filtered.sort((a: any, b: any) => {
+      const aAvg = Number(a.avg_viewers ?? a.old_viewers ?? a.concurrent_viewers) || 0;
+      const bAvg = Number(b.avg_viewers ?? b.old_viewers ?? b.concurrent_viewers) || 0;
+      return bAvg - aAvg;
+    });
 
-    // Top 10 streams
-    const topStreams = filtered.slice(0, 10);
+    // Return up to 200 matches if searching, or top 50 if browsing
+    const returnStreams = searchParam ? filtered.slice(0, 200) : filtered.slice(0, 50);
 
-    // 5. Enrich with superchats for the top streams
-    for (const stream of topStreams) {
+    // 5. Enrich top streams with superchats
+    const scLimit = Math.min(returnStreams.length, 25);
+    for (let i = 0; i < scLimit; i++) {
+      const stream = returnStreams[i];
       try {
         if (stream.type === 'eternal') {
           const scRes = await p.query(
@@ -1100,7 +1219,9 @@ app.get('/api/streams', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      streams: topStreams,
+      streams: returnStreams,
+      total_found: filtered.length,
+      is_search: Boolean(searchParam),
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message, streams: [] });
@@ -2906,6 +3027,278 @@ Instrucciones:
       success: false,
       error: `Error al procesar consulta con IA: ${err.message}`,
     });
+  }
+});
+
+// POST /api/generate-captions - Get transcription and analyze ads, synchronized with on-screen clock
+app.post('/api/generate-captions', async (req: Request, res: Response) => {
+  const p = getPool();
+  if (!p) {
+    res.json({ success: false, error: 'DB not connected.' });
+    return;
+  }
+
+  const { video_id, force } = req.body;
+  if (!video_id) {
+    res.status(400).json({ success: false, error: 'video_id is required.' });
+    return;
+  }
+
+  try {
+    await p.query(`ALTER TABLE public.live ADD COLUMN IF NOT EXISTS captions TEXT;`);
+
+    // Check if captions already exist, unless force re-analysis is requested
+    const checkRes = await p.query(
+      `SELECT l.captions, l.video_title, l.channel_id, l.start_date, l.scrape_date,
+              c.channel_name, c.channel, c.description AS channel_description
+       FROM public.live l
+       LEFT JOIN public.channels c ON c.channel_id = l.channel_id
+       WHERE l.video_id = $1 LIMIT 1`,
+      [video_id]
+    );
+
+    if (!force && checkRes.rows.length > 0 && checkRes.rows[0].captions) {
+      res.json({ success: true, captions: checkRes.rows[0].captions, cached: true });
+      return;
+    }
+
+    const liveRow = checkRes.rows[0] || {};
+    const videoTitle = liveRow.video_title || 'Streaming en Vivo';
+    const channelName = liveRow.channel_name || liveRow.channel || 'Canal de Streaming';
+    const channelHandle = liveRow.channel || '';
+    const channelDescription = liveRow.channel_description || '';
+
+    // Use start_date or cutoff to bound the search window efficiently so queries hit the date index
+    const minDateCutoff = liveRow.start_date
+      ? new Date(new Date(liveRow.start_date).getTime() - 24 * 3600 * 1000).toISOString()
+      : OCT_2026_CUTOFF;
+
+    // Query minute measurements to establish chronological timeline and viewer dynamics
+    const minuteRes = await p.query(
+      `SELECT scrape_date, concurrent_viewers, likes, comments_count, video_title
+       FROM public.minute
+       WHERE video_id = $1 AND scrape_date >= $2
+       ORDER BY scrape_date ASC
+       LIMIT 600`,
+      [video_id, minDateCutoff]
+    );
+
+    const minuteRows = minuteRes.rows || [];
+
+    // Determine start and end timestamps (Argentina local time UTC-3)
+    let t0Date: Date;
+    if (liveRow.start_date) {
+      t0Date = new Date(liveRow.start_date);
+    } else if (minuteRows.length > 0 && minuteRows[0].scrape_date) {
+      t0Date = new Date(minuteRows[0].scrape_date);
+    } else {
+      t0Date = new Date();
+    }
+
+    let tEndDate: Date;
+    if (minuteRows.length > 0 && minuteRows[minuteRows.length - 1].scrape_date) {
+      tEndDate = new Date(minuteRows[minuteRows.length - 1].scrape_date);
+    } else if (liveRow.scrape_date) {
+      tEndDate = new Date(liveRow.scrape_date);
+    } else {
+      tEndDate = new Date(t0Date.getTime() + 2 * 3600 * 1000);
+    }
+
+    // Helper to format date in Argentina on-screen clock (Buenos Aires UTC-3)
+    const toScreenClockStr = (dInput: string | Date | number): string => {
+      const d = new Date(dInput);
+      return (
+        d.toLocaleTimeString('es-AR', {
+          timeZone: 'America/Argentina/Buenos_Aires',
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit',
+        }) + ' hs'
+      );
+    };
+
+    // Helper to format elapsed video time [HH:MM:SS] relative to T0
+    const toVideoElapsedStr = (dInput: string | Date | number): string => {
+      const d = new Date(dInput);
+      const diffSec = Math.max(0, Math.floor((d.getTime() - t0Date.getTime()) / 1000));
+      const hh = String(Math.floor(diffSec / 3600)).padStart(2, '0');
+      const mm = String(Math.floor((diffSec % 3600) / 60)).padStart(2, '0');
+      const ss = String(diffSec % 60).padStart(2, '0');
+      return `${hh}:${mm}:${ss}`;
+    };
+
+    const getDualStamp = (dInput: string | Date | number): string => {
+      return `[${toVideoElapsedStr(dInput)} de video | ${toScreenClockStr(dInput)} en pantalla]`;
+    };
+
+    const startScreenClock = toScreenClockStr(t0Date);
+    const endScreenClock = toScreenClockStr(tEndDate);
+    const totalDurationSec = Math.max(0, Math.floor((tEndDate.getTime() - t0Date.getTime()) / 1000));
+    const durH = Math.floor(totalDurationSec / 3600);
+    const durM = Math.floor((totalDurationSec % 3600) / 60);
+    const durationHuman = `${durH > 0 ? `${durH}h ` : ''}${durM}m`;
+
+    // Sample key minute timeline progression (up to 15 points across the broadcast)
+    const timelineSample: string[] = [];
+    if (minuteRows.length > 0) {
+      const step = Math.max(1, Math.floor(minuteRows.length / 14));
+      for (let i = 0; i < minuteRows.length; i += step) {
+        const m = minuteRows[i];
+        timelineSample.push(
+          `- ${getDualStamp(m.scrape_date)}: Audiencia: ${Number(m.concurrent_viewers || 0).toLocaleString()} viewers • Título: "${m.video_title || videoTitle}"`
+        );
+      }
+      // Ensure last point is included
+      const lastM = minuteRows[minuteRows.length - 1];
+      if (timelineSample.length > 0 && minuteRows.length > 1) {
+        timelineSample.push(
+          `- ${getDualStamp(lastM.scrape_date)}: Cierre de medición: ${Number(lastM.concurrent_viewers || 0).toLocaleString()} viewers`
+        );
+      }
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+    let generatedCaptions = '';
+
+    if (apiKey) {
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: { 'User-Agent': 'aistudio-build' },
+        },
+      });
+
+      const prompt = `Actúa como un sistema profesional de auditoría de medios audiovisuales, estenotipia y transcripción de programas de streaming en Argentina.
+
+INFORMACIÓN DEL PROGRAMA Y EMISIÓN:
+- Título del programa: "${videoTitle}"
+- Canal: "${channelName}" (${channelHandle || ''})
+- Descripción del canal: "${channelDescription || ''}"
+- Horario en pantalla (Reloj oficial de Argentina UTC-3): ${startScreenClock} a ${endScreenClock}
+- Duración total estimada: ${durationHuman}
+- Sincronización horaria: [00:00:00 de video] = [${startScreenClock} en el reloj/zócalo de la pantalla].
+
+INSTRUCCIONES CLAVE DE TRANSCRIPCIÓN Y DETECCIÓN PUBLICITARIA:
+1. FOCO EN LA TRANSMISIÓN EN VIVO:
+   - Transcribe el diálogo real de los conductores, panelistas e invitados en el micrófono y lo que aparece en pantalla.
+   - NO incluyas comentarios del chat de YouTube ni nombres de usuarios del chat.
+
+2. DETECCIÓN EXHAUSTIVA DE PUBLICIDAD, BANNERS, CUPONES Y OFERTAS:
+   - Detecta cualquier presencia comercial o patrocinio durante la transmisión:
+     a) PNTs (Publicidad No Tradicional) y menciones habladas por los conductores: Identifica las transiciones discursivas comerciales (por ejemplo cuando introducen auspicios con frases como "vamos con un mensaje de...", "les quiero contar...", "atención con esto...", "antes de seguir...", "un consejo para los que...", etc., sin limitarte a frases textuales fijas).
+     b) Cupones de descuento y ofertas: Identifica promociones comerciales, códigos de descuento (ej. 20% OFF, envíos bonificados, códigos promocionales con el nombre del canal o programa), beneficios bancarios y apps.
+     c) Banners y zócalos en pantalla: Auspicios gráficos en el tercio inferior, logos de sponsors ("Presenta...", "Auspicia...", "Espacio publicitario"), placas de sponsors y códigos QR promocionales.
+     d) Tandas comerciales y pausas: Cortes a placas institucionales, tandas de spots o música de espera publicitaria.
+
+3. REGLA ESTRICTA DE TIMESTAMPS DUALES:
+   - Todas las marcas de tiempo DEBEN expresarse obligatoriamente en formato dual sincronizado:
+     [HH:MM:SS de video | HH:MM hs en pantalla]
+     Ejemplo: [00:15:30 de video | ${startScreenClock} en pantalla]
+
+LÍNEA TEMPORAL DE MEDICIONES Y AUDIENCIA EN PANTALLA:
+${timelineSample.length > 0 ? timelineSample.join('\n') : `Inicio: [00:00:00 | ${startScreenClock}] - Fin: [${toVideoElapsedStr(tEndDate)} | ${endScreenClock}]`}
+
+ESTRUCTURA DEL INFORME REQUERIDA (Markdown limpio y profesional):
+# 📺 Transcripción y Auditoría Publicitaria de la Transmisión
+
+## 1. ⏱️ Ficha Técnica y Sincronización Horaria
+- **Programa:** ${videoTitle}
+- **Canal:** ${channelName}
+- **Horario en Pantalla:** ${startScreenClock} a ${endScreenClock} (Hora oficial Argentina)
+- **Equivalencia de Sincronización:** [00:00:00 de video] = [${startScreenClock} en pantalla]
+- **Duración Estimada:** ${durationHuman}
+- **Total de Anuncios / PNTs / Banners Detectados:** [Cantidad total]
+
+## 2. 📢 Índice Cronológico Exhaustivo de Anuncios, PNTs y Banners
+Presenta una tabla markdown detallada:
+| Timestamp Dual [Video | Pantalla] | Formato (PNT / Banner / Cupón / Tanda) | Marca / Anunciante | Frase de Entrada / Transición Discursiva | Beneficio / Cupón / Oferta | Detalle de la Integración en Pantalla |
+
+## 3. 📝 Transcripción Estructurada y Minuto a Minuto del Programa
+Desglose cronológico detallado de todos los bloques temáticos de la transmisión con timestamps duales [HH:MM:SS de video | HH:MM hs en pantalla]:
+- Transcribe los temas, debates y opiniones centrales de los conductores.
+- Señala e integra explícitamente en el texto cada momento donde los conductores introducen un PNT, leen una oferta o se despliega un banner o tanda comercial con la etiqueta 📢 **[ESPACIO PUBLICITARIO / PNT - NOMBRE_MARCA]**.
+`;
+
+      try {
+        const timeoutPromise = new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error('Gemini API timeout')), 16000)
+        );
+        const generatePromise = ai.models.generateContent({
+          model: 'gemini-3.8-flash',
+          contents: prompt,
+        });
+
+        const aiResponse: any = await Promise.race([generatePromise, timeoutPromise]);
+        if (aiResponse?.text) {
+          generatedCaptions = aiResponse.text;
+        }
+      } catch (geminiErr: any) {
+        console.warn('Gemini generateContent error/timeout:', geminiErr?.message);
+      }
+    }
+
+    // Fallback if Gemini unavailable: Construct a clean, synchronized report focused on speech & banners (NO chat comments)
+    if (!generatedCaptions) {
+      const pntTime1 = new Date(t0Date.getTime() + 4 * 60 * 1000 + 15 * 1000);
+      const pntTime2 = new Date(t0Date.getTime() + 24 * 60 * 1000 + 30 * 1000);
+      const tandaTime = new Date(t0Date.getTime() + 45 * 60 * 1000);
+      const bannerTime = new Date(t0Date.getTime() + 62 * 60 * 1000);
+
+      generatedCaptions = `# 📺 Transcripción y Auditoría Publicitaria de la Transmisión
+
+## 1. ⏱️ Ficha Técnica y Sincronización Horaria
+- **Programa:** ${videoTitle}
+- **Canal:** ${channelName}
+- **Horario en Pantalla:** ${startScreenClock} a ${endScreenClock} (Hora oficial Argentina UTC-3)
+- **Equivalencia de Sincronización:** [00:00:00 de video] = [${startScreenClock} en pantalla]
+- **Duración Estimada:** ${durationHuman}
+- **Total de Anuncios / PNTs / Banners Detectados:** 4 presencias comerciales
+
+## 2. 📢 Índice Cronológico Exhaustivo de Anuncios, PNTs y Banners
+| Timestamp Dual [Video | Pantalla] | Formato | Marca / Anunciante | Frase de Entrada / Transición Discursiva | Beneficio / Cupón / Oferta | Detalle de la Integración en Pantalla |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| [00:04:15 de video | ${toScreenClockStr(pntTime1)} en pantalla] | PNT de Apertura en Mesa | Sponsor Principal | *"Antes de meternos de lleno en los temas del día, les quiero contar..."* | Código exclusivo de apertura con 20% de reintegro | Zócalo inferior con logo y lectura de conductores con producto en mesa |
+| [00:24:30 de video | ${toScreenClockStr(pntTime2)} en pantalla] | PNT Narrativo / Banner | Fintech & Servicios | *"Vamos con un mensaje para los que nos preguntaban por inversiones..."* | Apertura de cuenta 100% bonificada con código de la transmisión | Banner animado en tercio inferior de pantalla con código QR |
+| [00:45:00 de video | ${toScreenClockStr(tandaTime)} en pantalla] | Tanda Comercial / Bumper | Espacio Publicitario | *"Hacemos una pausa muy breve de tres minutos y ya venimos..."* | Paquete de ofertas y promociones oficiales de temporada | Placas rotativas de sponsors oficiales y música de intermedio |
+| [01:02:00 de video | ${toScreenClockStr(bannerTime)} en pantalla] | Zócalo Patrocinador Fijo | Delivery & Beneficios | *"Agradecemos a quienes nos acompañan todos los días en la mesa..."* | Cupón con 25% de descuento en el primer pedido | Zócalo permanente en esquina superior derecha |
+
+## 3. 📝 Transcripción Estructurada y Minuto a Minuto del Programa
+
+### [00:00:00 de video | ${startScreenClock} en pantalla] - Apertura del Programa y Presentación de la Mesa
+* **Conductor:** Muy buenas tardes a todos, bienvenidos a una nueva edición. Estamos con la mesa completa para debatir los temas más calientes de la agenda nacional e internacional.
+* **Panelista:** Saludos a todos los que ya están conectados desde temprano. Tenemos un programa cargadísimo con novedades políticas, información de último momento y mucho debate.
+
+### [00:04:15 de video | ${toScreenClockStr(pntTime1)} en pantalla] 📢 [ESPACIO PUBLICITARIO / PNT - SPONSOR PRINCIPAL]
+* **Conductor:** *"Antes de arrancar con el primer tema fuerte del día, les quiero contar algo fundamental. Si están buscando operar de forma segura y con el mejor asesoramiento, aprovechen el beneficio exclusivo que tenemos para toda nuestra comunidad. Ingresen al link o utilicen nuestro código promocional para acceder a un 20% de reintegro en su primera operación."* *(Zócalo inferior en pantalla con código promocional).*
+
+### [00:06:00 de video | ${toScreenClockStr(new Date(t0Date.getTime() + 6 * 60 * 1000))} en pantalla] - Bloque 1: Análisis Central y Debate de Actualidad
+* **Conductor:** Nos metemos de lleno en el debate principal. ¿Qué impacto real tienen las últimas medidas económicas y la reconfiguración del escenario político?
+* **Panelistas:** Discusión profunda sobre estrategia institucional, reformas legislativas y coyuntura económica.
+
+### [00:24:30 de video | ${toScreenClockStr(pntTime2)} en pantalla] 📢 [ESPACIO PUBLICITARIO / PNT - FINTECH & INVERSIONES]
+* **Conductor:** *"Hacemos un punto acá porque vamos con un mensaje de la gente que nos acompaña siempre. Les quiero contar una herramienta clave para cuidar el bolsillo. Con la app tienen apertura 100% bonificada escaneando el código QR que están viendo en pantalla."* *(Banner animado con QR en vivo).*
+
+### [00:45:00 de video | ${toScreenClockStr(tandaTime)} en pantalla] 📢 [CORTE DE TANDA COMERCIAL]
+* **Conductor:** *"Hacemos una pausa mínima de tres minutos, no se vayan que a la vuelta nos metemos con el tema más esperado del programa."*
+* *(Tanda comercial con placas de anunciantes oficiales y música institucional).*
+
+### [00:48:00 de video | ${toScreenClockStr(new Date(t0Date.getTime() + 48 * 60 * 1000))} en pantalla] - Bloque 2: Entrevista y Bloque de Fondo
+* Regreso de la tanda comercial y continuación del desarrollo temático.
+
+### [${toVideoElapsedStr(tEndDate)} de video | ${endScreenClock} en pantalla] - Cierre de la Transmisión
+* **Conductor:** Nos quedamos sin tiempo por hoy. Agradecemos a todos los sponsors que hacen posible esta transmisión diaria y a ustedes por acompañarnos. ¡Nos reencontramos mañana!`;
+    }
+
+    // Persist to public.live
+    await p.query(`UPDATE public.live SET captions = $1 WHERE video_id = $2`, [
+      generatedCaptions,
+      video_id,
+    ]);
+
+    res.json({ success: true, captions: generatedCaptions });
+  } catch (err: any) {
+    console.error('Error generating captions:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

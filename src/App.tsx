@@ -494,88 +494,118 @@ export default function App() {
                   </div>
 
                   <div className="space-y-3">
-                    {recentStreams.map((stream, idx) => (
-                      <div
-                        key={stream.video_id}
-                        className="bg-white/90 rounded-xl p-4 sm:p-5 border border-gray-200/80 shadow-2xs hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-                      >
-                        <div className="flex items-start sm:items-center space-x-3.5 min-w-0 flex-1">
-                          <button
-                            onClick={() => navigate(`/channel/${stream.channel}`)}
-                            className="shrink-0 focus:outline-none cursor-pointer"
-                          >
-                            <img
-                              src={stream.thumb || `https://i.ytimg.com/vi/${stream.video_id}/hqdefault.jpg`}
-                              alt={stream.channel_name}
-                              className="w-12 h-12 rounded-full object-cover border-2 border-gray-100"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).src = `https://i.ytimg.com/vi/${stream.video_id}/hqdefault.jpg`;
-                              }}
-                            />
-                          </button>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <button
-                                onClick={() => navigate(`/channel/${stream.channel}`)}
-                                className="font-bold text-gray-900 text-sm sm:text-base hover:text-blue-600 transition-colors text-left"
-                              >
-                                {stream.channel_name}
-                              </button>
-                              <span className="text-xs text-gray-400 font-mono">
-                                {stream.channel}
-                              </span>
-                              <span className="text-[11px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-md font-medium">
-                                Finalizado
-                              </span>
-                            </div>
-                            <p className="text-xs text-gray-600 truncate mt-0.5" title={stream.video_title}>
-                              {stream.video_title || 'Emisión finalizada'}
-                            </p>
-                            <div className="flex items-center gap-2 mt-2 flex-wrap">
-                              <button
-                                onClick={() => navigate(`/channel/${stream.channel}`)}
-                                className="bg-purple-50 hover:bg-purple-100 text-purple-700 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors cursor-pointer"
-                              >
-                                Ver Métricas
-                              </button>
-                              <button
-                                onClick={() => setSelectedCommentsStream(stream)}
-                                className="bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer border border-blue-200/50"
-                              >
-                                💬 Mensajes ({(stream.comments_count || 0).toLocaleString('es-AR')})
-                              </button>
-                              {Number(stream.superchats_total) > 0 && (
+                    {recentStreams.map((stream, idx) => {
+                      const rPeak = stream.max_viewers || stream.max_users || stream.concurrent_viewers || stream.avg_viewers || 0;
+                      const rLikes = Number(stream.current_likes || 0);
+                      const rComments = Number(stream.comments_count || 0);
+                      const rLikesRatio = rPeak > 0 ? (rLikes / rPeak) : 0;
+                      const rCommentsRatio = rPeak > 0 ? (rComments / rPeak) : 0;
+
+                      return (
+                        <div
+                          key={stream.video_id}
+                          className="bg-white/90 rounded-xl p-4 sm:p-5 border border-gray-200/80 shadow-2xs hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                        >
+                          <div className="flex items-start sm:items-center space-x-3.5 min-w-0 flex-1">
+                            <button
+                              onClick={() => navigate(`/channel/${stream.channel}`)}
+                              className="shrink-0 focus:outline-none cursor-pointer"
+                            >
+                              <img
+                                src={stream.thumb || `https://i.ytimg.com/vi/${stream.video_id}/hqdefault.jpg`}
+                                alt={stream.channel_name}
+                                className="w-12 h-12 rounded-full object-cover border-2 border-gray-100"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src = `https://i.ytimg.com/vi/${stream.video_id}/hqdefault.jpg`;
+                                }}
+                              />
+                            </button>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <button
+                                  onClick={() => navigate(`/channel/${stream.channel}`)}
+                                  className="font-bold text-gray-900 text-sm sm:text-base hover:text-blue-600 transition-colors text-left"
+                                >
+                                  {stream.channel_name}
+                                </button>
+                                <span className="text-xs text-gray-400 font-mono">
+                                  {stream.channel}
+                                </span>
+                                <span className="text-[11px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-md font-medium">
+                                  Finalizado
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-600 truncate mt-0.5" title={stream.video_title}>
+                                {stream.video_title || 'Emisión finalizada'}
+                              </p>
+                              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                <button
+                                  onClick={() => navigate(`/channel/${stream.channel}`)}
+                                  className="bg-purple-50 hover:bg-purple-100 text-purple-700 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors cursor-pointer"
+                                >
+                                  Ver Métricas
+                                </button>
                                 <button
                                   onClick={() => setSelectedCommentsStream(stream)}
-                                  className="bg-amber-100 hover:bg-amber-200 text-amber-900 text-[11px] font-bold px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer border border-amber-300"
+                                  className="bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer border border-blue-200/50"
                                 >
-                                  💰 ${stream.superchats_total} ARS
+                                  💬 Mensajes ({(stream.comments_count || 0).toLocaleString('es-AR')})
                                 </button>
-                              )}
+                                {Number(stream.superchats_total) > 0 && (
+                                  <button
+                                    onClick={() => setSelectedCommentsStream(stream)}
+                                    className="bg-amber-100 hover:bg-amber-200 text-amber-900 text-[11px] font-bold px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer border border-amber-300"
+                                  >
+                                    💰 ${stream.superchats_total} ARS
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        <div className="flex items-center justify-between sm:justify-end gap-5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100">
-                          <div className="text-right">
-                            <div className="text-xs text-gray-400">Espectadores pico</div>
-                            <div className="text-base sm:text-lg font-extrabold text-gray-900">
-                              {new Intl.NumberFormat('es-AR').format(stream.concurrent_viewers)}
+                          <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-6 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 flex-wrap sm:flex-nowrap">
+                            <div className="text-right min-w-[70px]">
+                              <div className="text-[11px] text-gray-400 font-semibold">ESPECTADORES</div>
+                              <div className="text-base sm:text-lg font-extrabold text-gray-900">
+                                {new Intl.NumberFormat('es-AR').format(rPeak || stream.concurrent_viewers)}
+                              </div>
+                              <div className="text-[10px] text-gray-400">PICO</div>
                             </div>
+
+                            <div className="text-right min-w-[75px]">
+                              <div className="text-[11px] text-gray-400 font-semibold">LIKES</div>
+                              <div className="text-base sm:text-lg font-extrabold text-rose-500">
+                                {new Intl.NumberFormat('es-AR').format(rLikes)}
+                              </div>
+                              <div className="text-[10px] text-gray-500 font-medium" title="Likes por espectador pico del episodio">
+                                {rLikesRatio > 0 ? rLikesRatio.toFixed(2) : '0.00'} / esp
+                              </div>
+                            </div>
+
+                            <div className="text-right min-w-[75px]">
+                              <div className="text-[11px] text-gray-400 font-semibold">MENSAJES</div>
+                              <div className="text-base sm:text-lg font-extrabold text-amber-500">
+                                {new Intl.NumberFormat('es-AR').format(rComments)}
+                              </div>
+                              <div className="text-[10px] text-gray-500 font-medium" title="Mensajes por espectador pico del episodio">
+                                {rCommentsRatio > 0 ? rCommentsRatio.toFixed(2) : '0.00'} / esp
+                              </div>
+                            </div>
+
+                            {stream.video_id && (
+                              <a
+                                href={`https://youtube.com/watch?v=${stream.video_id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-1.5 bg-gray-100 hover:bg-red-50 text-gray-700 hover:text-red-600 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 shrink-0"
+                              >
+                                ▶ YouTube
+                              </a>
+                            )}
                           </div>
-                          {stream.video_id && (
-                            <a
-                              href={`https://youtube.com/watch?v=${stream.video_id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-3 py-1.5 bg-gray-100 hover:bg-red-50 text-gray-700 hover:text-red-600 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1"
-                            >
-                              ▶ YouTube
-                            </a>
-                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

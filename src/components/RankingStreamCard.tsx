@@ -30,8 +30,13 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
 
   const thumbUrl = stream.thumb || `https://i.ytimg.com/vi/${stream.video_id}/hqdefault.jpg`;
   const superchatsTotal = Number(stream.superchats_total || 0);
-  const commentsCount = stream.comments_count;
+  const commentsCount = Number(stream.comments_count || 0);
+  const currentLikes = Number(stream.current_likes || 0);
   const isLive = stream.live === 'live';
+  const viewers = (isLive ? stream.concurrent_viewers : (stream.avg_viewers || stream.concurrent_viewers)) || 0;
+  const peakViewers = (stream.max_viewers || stream.max_users || (isLive ? stream.concurrent_viewers : (stream.avg_viewers || stream.concurrent_viewers))) || 0;
+  const likesRatio = peakViewers > 0 ? (currentLikes / peakViewers) : 0;
+  const commentsRatio = peakViewers > 0 ? (commentsCount / peakViewers) : 0;
 
   return (
     <div
@@ -129,32 +134,32 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
             <div className="text-center min-w-[90px]">
               <div className="text-xs text-gray-400 font-semibold mb-0.5">ESPECTADORES</div>
               <div className="font-extrabold text-2xl text-gray-900">
-                {formatNumber(isLive ? stream.concurrent_viewers : (stream.avg_viewers || stream.concurrent_viewers))}
+                {formatNumber(viewers)}
               </div>
-              <div className="text-[10px] text-gray-500">
+              <div className="text-[10px] text-gray-500 font-medium">
                 {isLive ? 'ACTUALES' : 'PROMEDIO'}
               </div>
             </div>
 
             {/* Likes Count */}
-            <div className="text-center min-w-[75px]">
+            <div className="text-center min-w-[85px]">
               <div className="text-xs text-gray-400 font-semibold mb-0.5">LIKES</div>
               <div className="font-extrabold text-2xl text-rose-500">
-                {formatNumber(stream.current_likes || 0)}
+                {formatNumber(currentLikes)}
               </div>
-              <div className="text-[10px] text-gray-500">
-                TOTALES
+              <div className="text-[10px] text-gray-500 font-medium" title="Likes por espectador pico del episodio">
+                {likesRatio > 0 ? likesRatio.toFixed(2) : '0.00'} / esp
               </div>
             </div>
 
             {/* Comments Count */}
-            <div className="text-center min-w-[75px]">
+            <div className="text-center min-w-[85px]">
               <div className="text-xs text-gray-400 font-semibold mb-0.5">MENSAJES</div>
               <div className="font-extrabold text-2xl text-amber-500">
-                {formatNumber(stream.comments_count || 0)}
+                {formatNumber(commentsCount)}
               </div>
-              <div className="text-[10px] text-gray-500">
-                TOTALES
+              <div className="text-[10px] text-gray-500 font-medium" title="Mensajes por espectador pico del episodio">
+                {commentsRatio > 0 ? commentsRatio.toFixed(2) : '0.00'} / esp
               </div>
             </div>
           </div>
@@ -198,11 +203,11 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
               </p>
 
               {/* Mobile Stats */}
-              <div className="flex items-center space-x-3 mt-3 flex-wrap gap-y-1">
+              <div className="flex items-center space-x-2 mt-3 flex-wrap gap-y-1.5">
                 <div className="flex items-center space-x-1.5 bg-red-50 text-red-600 px-2 py-0.5 rounded-md">
                   <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div>
                   <span className="text-xs font-bold">
-                    {formatNumber(isLive ? stream.concurrent_viewers : (stream.avg_viewers || stream.concurrent_viewers))}
+                    {formatNumber(viewers)}
                   </span>
                 </div>
 
@@ -215,12 +220,30 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                   {formatNumber(diffViewers)} (10m)
                 </div>
 
+                <div
+                  className="flex items-center gap-1 bg-rose-50 text-rose-600 px-2 py-0.5 rounded-md text-xs font-semibold border border-rose-200/60"
+                  title="Likes totales y ratio sobre espectador pico del episodio"
+                >
+                  <span>❤️</span>
+                  <span>{formatNumber(currentLikes)}</span>
+                  <span className="text-[10px] text-gray-500 font-normal">({likesRatio > 0 ? likesRatio.toFixed(2) : '0.00'}/esp)</span>
+                </div>
+
+                <div
+                  className="flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md text-xs font-semibold border border-amber-200/60"
+                  title="Mensajes totales y ratio sobre espectador pico del episodio"
+                >
+                  <span>💬</span>
+                  <span>{formatNumber(commentsCount)}</span>
+                  <span className="text-[10px] text-gray-500 font-normal">({commentsRatio > 0 ? commentsRatio.toFixed(2) : '0.00'}/esp)</span>
+                </div>
+
                 {onOpenComments && (
                   <button
                     onClick={() => onOpenComments(stream)}
                     className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-xs font-semibold border border-blue-200"
                   >
-                    💬 {commentsCount}
+                    Chat
                   </button>
                 )}
 
