@@ -265,7 +265,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                 </div>
                 <div className="text-left md:text-right">
                   <div className="text-xs text-gray-500 uppercase tracking-wider font-semibold">
-                    Likes / Hora
+                    Likes por emisión
                   </div>
                   <div className="text-xl sm:text-2xl font-black text-rose-500">
                     {formatNumber(Math.max(0, channel.avg_likes || 0))}
@@ -273,7 +273,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                 </div>
                 <div className="text-left md:text-right">
                   <div className="text-xs text-gray-500 uppercase tracking-wider font-semibold">
-                    Mensajes / Hora
+                    Mensajes por emisión
                   </div>
                   <div className="text-xl sm:text-2xl font-black text-amber-500">
                     {formatNumber(Math.max(0, channel.avg_comments || 0))}

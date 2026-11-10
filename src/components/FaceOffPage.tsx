@@ -139,7 +139,7 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
 
   // Preset matchups
   const presets = [
-    { label: 'Vorterix vs Gelatina', ch1: '@VorterixOficial', ch2: '@SomosGelatina' },
+   // { label: 'Vorterix vs Gelatina', ch1: '@VorterixOficial', ch2: '@SomosGelatina' },
     { label: 'Futurock vs Carajo', ch1: '@futurock', ch2: '@carajostream' },
     { label: 'Urbana Play vs Radio Con Vos', ch1: '@UrbanaPlayFM', ch2: '@RadioConVos89.9' },
     { label: 'Infobae vs Longobardi', ch1: '@Infobae', ch2: '@LongobardiM' },
@@ -297,20 +297,20 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
       },
       {
         id: 'avg_likes',
-        title: 'Likes por Hora',
-        description: 'Velocidad de Me Gusta recibidos en vivo',
+        title: 'Likes por emisión',
+        description: 'Promedio de Me Gusta recibidos por emisión',
         valA: metricsA.avgLikes,
         valB: metricsB.avgLikes,
-        format: (v: number) => `${formatNumber(v)}/h`,
+        format: (v: number) => formatNumber(v),
         icon: Heart,
       },
       {
         id: 'avg_comments',
-        title: 'Mensajes por Hora',
-        description: 'Ritmo de mensajes en el chat durante el directo',
+        title: 'Mensajes por emisión',
+        description: 'Promedio de mensajes y comentarios en el chat por emisión',
         valA: metricsA.avgComments,
         valB: metricsB.avgComments,
-        format: (v: number) => `${formatNumber(v)}/h`,
+        format: (v: number) => formatNumber(v),
         icon: MessageSquare,
       },
       {
@@ -586,8 +586,8 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
                     avg_viewers: 'Espectadores',
                     peak_viewers: 'Pico máx',
                     subs: 'Suscriptores',
-                    avg_likes: 'Likes / hora',
-                    avg_comments: 'Msgs / hora',
+                    avg_likes: 'Likes / emisión',
+                    avg_comments: 'Msgs / emisión',
                     total_likes: 'Total likes',
                     total_comments: 'Total msgs',
                     peak_likes: 'Pico likes',

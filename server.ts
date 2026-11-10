@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
+import { isStreamTitleBlocked } from './src/config/streamFilters.ts';
 
 dotenv.config();
 
@@ -983,10 +984,25 @@ app.get('/api/streams', async (req: Request, res: Response) => {
       ) sub
       JOIN public.channels c ON sub.channel_id = c.channel_id
       LEFT JOIN LATERAL (
-        SELECT COALESCE(ROUND(AVG(m.concurrent_viewers)), 0)::int as avg_viewers
-        FROM public.minute m 
-        WHERE m.video_id = sub.video_id AND m.concurrent_viewers > 0
-          AND m.scrape_date >= '${OCT_2026_CUTOFF}'
+        -- Promedio simple previo (comentado):
+        -- SELECT COALESCE(ROUND(AVG(m.concurrent_viewers)), 0)::int as avg_viewers
+        -- FROM public.minute m 
+        -- WHERE m.video_id = sub.video_id AND m.concurrent_viewers > 0
+        --   AND m.scrape_date >= '${OCT_2026_CUTOFF}'
+        -- Promedio con umbral sobre el pico (descarta placa previa / arranque en 0 < 20% del pico):
+        WITH m_pts AS (
+          SELECT m.concurrent_viewers,
+                 MAX(m.concurrent_viewers) OVER () AS peak_viewers
+          FROM public.minute m 
+          WHERE m.video_id = sub.video_id AND m.concurrent_viewers > 0
+            AND m.scrape_date >= '${OCT_2026_CUTOFF}'
+        )
+        SELECT COALESCE(
+          ROUND(AVG(CASE WHEN concurrent_viewers >= (peak_viewers * 0.20) THEN concurrent_viewers END)),
+          ROUND(AVG(concurrent_viewers)),
+          0
+        )::int AS avg_viewers
+        FROM m_pts
       ) v_avg ON true
       LEFT JOIN LATERAL (
         SELECT COALESCE(m.comments_count, 0) as comments_count
@@ -1012,7 +1028,15 @@ app.get('/api/streams', async (req: Request, res: Response) => {
       paramIndex++;
     }
 
-    standardQuery += ` ORDER BY COALESCE(NULLIF(v_avg.avg_viewers, 0), sub.old_viewers, sub.concurrent_viewers, 0) DESC LIMIT ${searchParam ? 200 : 100};`;
+    const sortParam = (((req.query.sort || '') as string) || 'viewers').toLowerCase();
+
+    if (sortParam === 'likes') {
+      standardQuery += ` ORDER BY COALESCE(sub.current_likes, sub.old_likes, 0) DESC LIMIT ${searchParam ? 200 : 100};`;
+    } else if (sortParam === 'comments') {
+      standardQuery += ` ORDER BY COALESCE(comm.comments_count, 0) DESC LIMIT ${searchParam ? 200 : 100};`;
+    } else {
+      standardQuery += ` ORDER BY COALESCE(NULLIF(v_avg.avg_viewers, 0), sub.old_viewers, sub.concurrent_viewers, 0) DESC LIMIT ${searchParam ? 200 : 100};`;
+    }
     const standardResult = await p.query(standardQuery, standardParams);
     const standardStreams: any[] = standardResult.rows || [];
 
@@ -1054,22 +1078,13 @@ app.get('/api/streams', async (req: Request, res: Response) => {
 
         // Fetch title groups from public.minute
         let titleGroupsQuery = `
-          SELECT video_title,
-                 video_id,
-                 channel_id,
-                 MIN(scrape_date) AS start_time,
-                 MAX(scrape_date) AS end_time,
-                 MAX(concurrent_viewers) AS max_viewers,
-                 AVG(concurrent_viewers)::int AS avg_viewers,
-                 MIN(likes) AS min_likes,
-                 MAX(likes) AS max_likes,
-                 MIN(comments_count) AS min_comments,
-                 MAX(comments_count) AS max_comments,
-                 COUNT(*) AS point_count
-          FROM public.minute
-          WHERE channel_id = ANY($1) 
-            AND scrape_date >= '${OCT_2026_CUTOFF}'
-            AND video_title IS NOT NULL AND video_title <> ''
+          WITH m_filtered AS (
+            SELECT video_title, video_id, channel_id, scrape_date, concurrent_viewers, likes, comments_count,
+                   MAX(concurrent_viewers) OVER (PARTITION BY video_title, video_id, channel_id) AS peak_v
+            FROM public.minute
+            WHERE channel_id = ANY($1) 
+              AND scrape_date >= '${OCT_2026_CUTOFF}'
+              AND video_title IS NOT NULL AND video_title <> ''
         `;
 
         const titleParams: any[] = [eternalChannelIds];
@@ -1078,7 +1093,32 @@ app.get('/api/streams', async (req: Request, res: Response) => {
           titleGroupsQuery += ` AND (video_title ILIKE $2 OR video_id ILIKE $2)`;
         }
 
-        titleGroupsQuery += ` GROUP BY video_title, video_id, channel_id ORDER BY MAX(scrape_date) DESC LIMIT ${searchParam ? 200 : 100}`;
+        titleGroupsQuery += `
+          )
+          SELECT video_title,
+                 video_id,
+                 channel_id,
+                 MIN(scrape_date) AS start_time,
+                 MAX(scrape_date) AS end_time,
+                 MAX(concurrent_viewers) AS max_viewers,
+                 -- Promedio simple anterior (comentado):
+                 -- AVG(concurrent_viewers)::int AS avg_viewers,
+                 -- Promedio con umbral sobre el pico (descarta puntos < 20% del pico):
+                 COALESCE(
+                   ROUND(AVG(CASE WHEN concurrent_viewers >= (peak_v * 0.20) THEN concurrent_viewers END)),
+                   ROUND(AVG(concurrent_viewers)),
+                   0
+                 )::int AS avg_viewers,
+                 MIN(likes) AS min_likes,
+                 MAX(likes) AS max_likes,
+                 MIN(comments_count) AS min_comments,
+                 MAX(comments_count) AS max_comments,
+                 COUNT(*) AS point_count
+          FROM m_filtered
+          GROUP BY video_title, video_id, channel_id
+          ORDER BY MAX(scrape_date) DESC 
+          LIMIT ${searchParam ? 200 : 100}
+        `;
 
         const titleGroupsRes = await p.query(titleGroupsQuery, titleParams);
 
@@ -1165,14 +1205,75 @@ app.get('/api/streams', async (req: Request, res: Response) => {
       console.warn('Error fetching eternal channel programs for /api/streams:', e);
     }
 
-    // 3. Combine both standard and eternal streams
+    // 3. Batch superchats for standard streams
+    const standardVideoIds = standardStreams.map((s: any) => s.video_id).filter(Boolean);
+    if (standardVideoIds.length > 0) {
+      try {
+        const scRes = await p.query(
+          `SELECT video_id,
+                  SUM(CASE WHEN currency = 'ARS' OR UPPER(currency) LIKE '%ARS%' THEN amount ELSE 0 END)::numeric as superchats_total,
+                  COUNT(*)::int as superchats_count
+           FROM public.superchats
+           WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
+           GROUP BY video_id`,
+          [standardVideoIds]
+        );
+        const scMap = new Map<string, any>();
+        for (const row of scRes.rows || []) {
+          scMap.set(row.video_id, row);
+        }
+        for (const s of standardStreams) {
+          const sc = scMap.get(s.video_id);
+          s.superchats_total = sc ? Number(sc.superchats_total || 0) : 0;
+          s.superchats_count = sc ? Number(sc.superchats_count || 0) : 0;
+        }
+      } catch (scErr) {
+        console.warn('Error fetching standard superchats for /api/streams:', scErr);
+      }
+    }
+
+    // 4. Enrich eternal streams with bounded superchats
+    for (const stream of eternalStreams) {
+      try {
+        const scRes = await p.query(
+          `SELECT SUM(CASE WHEN currency = 'ARS' OR UPPER(currency) LIKE '%ARS%' THEN amount ELSE 0 END)::numeric AS superchats_total,
+                  COUNT(id)::int AS sc_count
+           FROM public.superchats
+           WHERE video_id = $1 AND created_at >= $2 AND created_at <= $3`,
+          [stream.video_id, stream.start_date, stream.scrape_date]
+        );
+        if (scRes.rows && scRes.rows.length > 0) {
+          stream.superchats_total = Number(scRes.rows[0].superchats_total || 0);
+          stream.superchats_count = Number(scRes.rows[0].sc_count || 0);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // 5. Combine both standard and eternal streams
     const allStreams = [...standardStreams, ...eternalStreams];
 
-    // Filter out @Radio10am if present
-    const filtered = allStreams.filter((s: any) => s.channel !== '@Radio10am');
+    // Filter out @Radio10am if present and any streams with blocked title keywords (e.g. "DALE MATCH")
+    const filtered = allStreams.filter((s: any) => s.channel !== '@Radio10am' && !isStreamTitleBlocked(s.video_title));
 
-    // 4. Sort by avg_viewers DESC (fallback to concurrent_viewers if undefined or 0)
+    // 6. Sort according to requested sort option (default: avg_viewers)
     filtered.sort((a: any, b: any) => {
+      if (sortParam === 'likes') {
+        const aLikes = Number(a.current_likes ?? a.max_likes ?? a.old_likes) || 0;
+        const bLikes = Number(b.current_likes ?? b.max_likes ?? b.old_likes) || 0;
+        return bLikes - aLikes;
+      }
+      if (sortParam === 'comments') {
+        const aComm = Number(a.comments_count) || 0;
+        const bComm = Number(b.comments_count) || 0;
+        return bComm - aComm;
+      }
+      if (sortParam === 'superchats') {
+        const aSc = Number(a.superchats_total) || 0;
+        const bSc = Number(b.superchats_total) || 0;
+        return bSc - aSc;
+      }
       const aAvg = Number(a.avg_viewers ?? a.old_viewers ?? a.concurrent_viewers) || 0;
       const bAvg = Number(b.avg_viewers ?? b.old_viewers ?? b.concurrent_viewers) || 0;
       return bAvg - aAvg;
@@ -1180,42 +1281,6 @@ app.get('/api/streams', async (req: Request, res: Response) => {
 
     // Return up to 200 matches if searching, or top 50 if browsing
     const returnStreams = searchParam ? filtered.slice(0, 200) : filtered.slice(0, 50);
-
-    // 5. Enrich top streams with superchats
-    const scLimit = Math.min(returnStreams.length, 25);
-    for (let i = 0; i < scLimit; i++) {
-      const stream = returnStreams[i];
-      try {
-        if (stream.type === 'eternal') {
-          const scRes = await p.query(
-            `SELECT currency, SUM(amount)::numeric AS total_amount, COUNT(id)::int AS sc_count
-             FROM public.superchats
-             WHERE video_id = $1 AND created_at >= $2 AND created_at <= $3
-             GROUP BY currency`,
-            [stream.video_id, stream.start_date, stream.scrape_date]
-          );
-          const arsSc = (scRes.rows || []).find((item: any) =>
-            item.currency === 'ARS' || String(item.currency).toUpperCase().includes('ARS')
-          );
-          stream.superchats_total = arsSc ? Number(arsSc.total_amount || 0) : 0;
-          stream.superchats_count = arsSc ? Number(arsSc.sc_count || 0) : 0;
-        } else {
-          const scRes = await p.query(
-            `SELECT SUM(CASE WHEN currency = 'ARS' THEN amount ELSE 0 END)::numeric as superchats_total,
-                    COUNT(*)::int as superchats_count
-             FROM public.superchats
-             WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'`,
-            [stream.video_id]
-          );
-          if (scRes.rows && scRes.rows.length > 0) {
-            stream.superchats_total = Number(scRes.rows[0].superchats_total || 0);
-            stream.superchats_count = Number(scRes.rows[0].superchats_count || 0);
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
 
     res.json({
       success: true,
@@ -1728,68 +1793,62 @@ const channelHandler = async (req: Request, res: Response) => {
 
     // Overall channel averages (non-costly query with zero negative values)
     try {
+      // Overall channel averages (matching /api/channels formula: per emission / video_id)
       const statsRes = await p.query(
-        `SELECT 
-           COALESCE(ROUND(AVG(max_viewers)), 0)::int AS avg_viewers,
-           COALESCE(MAX(max_viewers), 0)::int AS peak_viewers,
-           COALESCE(SUM(current_likes), 0)::int AS total_likes,
-           COALESCE(MAX(current_likes), 0)::int AS peak_likes,
-           COUNT(DISTINCT video_id)::int AS total_streams
-         FROM (
-           SELECT video_id, 
-                  MAX(concurrent_viewers) AS max_viewers,
-                  MAX(COALESCE(current_likes, 0)) AS current_likes
+        `WITH video_stats AS (
+           SELECT 
+             m.video_id,
+             MAX(m.concurrent_viewers) AS max_viewers,
+             MAX(m.likes) AS max_likes,
+             MAX(m.comments_count) AS max_comments
+           FROM public.minute m
+           WHERE m.channel_id = $1 AND m.scrape_date >= '${OCT_2026_CUTOFF}'
+           GROUP BY m.video_id
+           HAVING MAX(m.concurrent_viewers) > 0
+         ),
+         live_v_stats AS (
+           SELECT 
+             video_id,
+             MAX(concurrent_viewers) AS max_viewers,
+             MAX(COALESCE(current_likes, 0)) AS current_likes
            FROM public.live
            WHERE channel_id = $1 
              AND scrape_date >= '${OCT_2026_CUTOFF}' 
              AND concurrent_viewers > 0
            GROUP BY video_id
-         ) sub`,
+         )
+         SELECT 
+           COALESCE(
+             (SELECT ROUND(AVG(max_viewers))::int FROM live_v_stats),
+             (SELECT ROUND(AVG(max_viewers))::int FROM video_stats),
+             0
+           ) AS avg_viewers,
+           COALESCE((SELECT MAX(max_viewers)::int FROM live_v_stats), (SELECT MAX(max_viewers)::int FROM video_stats), 0) AS peak_viewers,
+           COALESCE((SELECT SUM(current_likes)::int FROM live_v_stats), 0) AS total_likes,
+           COALESCE((SELECT MAX(current_likes)::int FROM live_v_stats), (SELECT MAX(max_likes)::int FROM video_stats), 0) AS peak_likes,
+           COALESCE((SELECT COUNT(DISTINCT video_id)::int FROM live_v_stats), (SELECT COUNT(DISTINCT video_id)::int FROM video_stats), 0) AS total_streams,
+           COALESCE(
+             (SELECT ROUND(AVG(max_likes))::int FROM video_stats),
+             (SELECT ROUND(AVG(current_likes))::int FROM live_v_stats),
+             0
+           ) AS avg_likes,
+           COALESCE((SELECT ROUND(AVG(max_comments))::int FROM video_stats), 0) AS avg_comments,
+           COALESCE((SELECT MAX(max_comments)::int FROM video_stats), 0) AS peak_comments,
+           COALESCE((SELECT SUM(max_comments)::int FROM video_stats), 0) AS total_comments`,
         [channelId]
       );
       if (statsRes.rows && statsRes.rows.length > 0) {
-        channel.avg_viewers = Number(statsRes.rows[0].avg_viewers || 0);
-        channel.peak_viewers = Number(statsRes.rows[0].peak_viewers || 0);
-        channel.total_likes = Number(statsRes.rows[0].total_likes || 0);
-        channel.peak_likes = Number(statsRes.rows[0].peak_likes || 0);
-        channel.total_streams = Number(statsRes.rows[0].total_streams || 0);
+        const row = statsRes.rows[0];
+        channel.avg_viewers = Number(row.avg_viewers || 0);
+        channel.peak_viewers = Number(row.peak_viewers || 0);
+        channel.total_likes = Number(row.total_likes || 0);
+        channel.peak_likes = Number(row.peak_likes || 0);
+        channel.total_streams = Number(row.total_streams || 0);
+        channel.avg_likes = Number(row.avg_likes || 0);
+        channel.avg_comments = Number(row.avg_comments || 0);
+        channel.peak_comments = Number(row.peak_comments || 0);
+        channel.total_comments = Number(row.total_comments || 0);
       }
-
-      const likesStatsRes = await p.query(
-        `SELECT COALESCE(ROUND(AVG(likes_rate)), 0)::int AS avg_likes
-         FROM (
-           SELECT video_id,
-                  (MAX(likes) - MIN(likes))::numeric / 
-                  GREATEST(0.25, EXTRACT(EPOCH FROM (MAX(scrape_date) - MIN(scrape_date))) / 3600.0) AS likes_rate
-           FROM public.minute
-           WHERE channel_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}' AND likes > 0
-           GROUP BY video_id
-           HAVING MAX(scrape_date) > MIN(scrape_date) AND MAX(likes) >= MIN(likes)
-         ) sub`,
-        [channelId]
-      );
-      channel.avg_likes = Number(likesStatsRes.rows?.[0]?.avg_likes || 0);
-
-      const commStatsRes = await p.query(
-        `SELECT 
-           COALESCE(ROUND(AVG(comments_rate)), 0)::int AS avg_comments,
-           COALESCE(MAX(max_comm), 0)::int AS peak_comments,
-           COALESCE(SUM(max_comm), 0)::int AS total_comments
-         FROM (
-           SELECT video_id,
-                  MAX(comments_count) as max_comm,
-                  (MAX(comments_count) - MIN(comments_count))::numeric / 
-                  GREATEST(0.25, EXTRACT(EPOCH FROM (MAX(scrape_date) - MIN(scrape_date))) / 3600.0) AS comments_rate
-           FROM public.minute
-           WHERE channel_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}' AND comments_count > 0
-           GROUP BY video_id
-           HAVING MAX(scrape_date) > MIN(scrape_date)
-         ) sub`,
-        [channelId]
-      );
-      channel.avg_comments = Number(commStatsRes.rows?.[0]?.avg_comments || 0);
-      channel.peak_comments = Number(commStatsRes.rows?.[0]?.peak_comments || 0);
-      channel.total_comments = Number(commStatsRes.rows?.[0]?.total_comments || 0);
 
       // Superchats totals in ARS (matching /api/superchats-ranking exactly)
       const scStatsRes = await p.query(

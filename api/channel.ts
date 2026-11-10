@@ -963,68 +963,62 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
     try {
-      const statsRes = await executeQuery(
-        `SELECT 
-           COALESCE(ROUND(AVG(max_viewers)), 0)::int AS avg_viewers,
-           COALESCE(MAX(max_viewers), 0)::int AS peak_viewers,
-           COALESCE(SUM(current_likes), 0)::int AS total_likes,
-           COALESCE(MAX(current_likes), 0)::int AS peak_likes,
-           COUNT(DISTINCT video_id)::int AS total_streams
-         FROM (
-           SELECT video_id, 
-                  MAX(concurrent_viewers) AS max_viewers,
-                  MAX(COALESCE(current_likes, 0)) AS current_likes
+      // Overall channel averages (matching /api/channels formula: per emission / video_id)
+      const statsRes: any = await executeQuery(
+        `WITH video_stats AS (
+           SELECT 
+             m.video_id,
+             MAX(m.concurrent_viewers) AS max_viewers,
+             MAX(m.likes) AS max_likes,
+             MAX(m.comments_count) AS max_comments
+           FROM public.minute m
+           WHERE m.channel_id = $1 AND m.scrape_date >= '${OCT_2026_CUTOFF}'
+           GROUP BY m.video_id
+           HAVING MAX(m.concurrent_viewers) > 0
+         ),
+         live_v_stats AS (
+           SELECT 
+             video_id,
+             MAX(concurrent_viewers) AS max_viewers,
+             MAX(COALESCE(current_likes, 0)) AS current_likes
            FROM public.live
            WHERE channel_id = $1 
              AND scrape_date >= '${OCT_2026_CUTOFF}' 
              AND concurrent_viewers > 0
            GROUP BY video_id
-         ) sub`,
+         )
+         SELECT 
+           COALESCE(
+             (SELECT ROUND(AVG(max_viewers))::int FROM live_v_stats),
+             (SELECT ROUND(AVG(max_viewers))::int FROM video_stats),
+             0
+           ) AS avg_viewers,
+           COALESCE((SELECT MAX(max_viewers)::int FROM live_v_stats), (SELECT MAX(max_viewers)::int FROM video_stats), 0) AS peak_viewers,
+           COALESCE((SELECT SUM(current_likes)::int FROM live_v_stats), 0) AS total_likes,
+           COALESCE((SELECT MAX(current_likes)::int FROM live_v_stats), (SELECT MAX(max_likes)::int FROM video_stats), 0) AS peak_likes,
+           COALESCE((SELECT COUNT(DISTINCT video_id)::int FROM live_v_stats), (SELECT COUNT(DISTINCT video_id)::int FROM video_stats), 0) AS total_streams,
+           COALESCE(
+             (SELECT ROUND(AVG(max_likes))::int FROM video_stats),
+             (SELECT ROUND(AVG(current_likes))::int FROM live_v_stats),
+             0
+           ) AS avg_likes,
+           COALESCE((SELECT ROUND(AVG(max_comments))::int FROM video_stats), 0) AS avg_comments,
+           COALESCE((SELECT MAX(max_comments)::int FROM video_stats), 0) AS peak_comments,
+           COALESCE((SELECT SUM(max_comments)::int FROM video_stats), 0) AS total_comments`,
         [channelId]
       );
       if (statsRes.rows && statsRes.rows.length > 0) {
-        channel.avg_viewers = Number(statsRes.rows[0].avg_viewers || 0);
-        channel.peak_viewers = Number(statsRes.rows[0].peak_viewers || 0);
-        channel.total_likes = Number(statsRes.rows[0].total_likes || 0);
-        channel.peak_likes = Number(statsRes.rows[0].peak_likes || 0);
-        channel.total_streams = Number(statsRes.rows[0].total_streams || 0);
+        const row = statsRes.rows[0];
+        channel.avg_viewers = Number(row.avg_viewers || 0);
+        channel.peak_viewers = Number(row.peak_viewers || 0);
+        channel.total_likes = Number(row.total_likes || 0);
+        channel.peak_likes = Number(row.peak_likes || 0);
+        channel.total_streams = Number(row.total_streams || 0);
+        channel.avg_likes = Number(row.avg_likes || 0);
+        channel.avg_comments = Number(row.avg_comments || 0);
+        channel.peak_comments = Number(row.peak_comments || 0);
+        channel.total_comments = Number(row.total_comments || 0);
       }
-
-      const likesStatsRes = await executeQuery(
-        `SELECT COALESCE(ROUND(AVG(likes_rate)), 0)::int AS avg_likes
-         FROM (
-           SELECT video_id,
-                  (MAX(likes) - MIN(likes))::numeric / 
-                  GREATEST(0.25, EXTRACT(EPOCH FROM (MAX(scrape_date) - MIN(scrape_date))) / 3600.0) AS likes_rate
-           FROM public.minute
-           WHERE channel_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}' AND likes > 0
-           GROUP BY video_id
-           HAVING MAX(scrape_date) > MIN(scrape_date) AND MAX(likes) >= MIN(likes)
-         ) sub`,
-        [channelId]
-      );
-      channel.avg_likes = Number(likesStatsRes.rows?.[0]?.avg_likes || 0);
-
-      const commStatsRes = await executeQuery(
-        `SELECT 
-           COALESCE(ROUND(AVG(comments_rate)), 0)::int AS avg_comments,
-           COALESCE(MAX(max_comm), 0)::int AS peak_comments,
-           COALESCE(SUM(max_comm), 0)::int AS total_comments
-         FROM (
-           SELECT video_id,
-                  MAX(comments_count) as max_comm,
-                  (MAX(comments_count) - MIN(comments_count))::numeric / 
-                  GREATEST(0.25, EXTRACT(EPOCH FROM (MAX(scrape_date) - MIN(scrape_date))) / 3600.0) AS comments_rate
-           FROM public.minute
-           WHERE channel_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}' AND comments_count > 0
-           GROUP BY video_id
-           HAVING MAX(scrape_date) > MIN(scrape_date)
-         ) sub`,
-        [channelId]
-      );
-      channel.avg_comments = Number(commStatsRes.rows?.[0]?.avg_comments || 0);
-      channel.peak_comments = Number(commStatsRes.rows?.[0]?.peak_comments || 0);
-      channel.total_comments = Number(commStatsRes.rows?.[0]?.total_comments || 0);
 
       // Superchats totals in ARS (matching /api/superchats-ranking exactly)
       const scStatsRes = await executeQuery(

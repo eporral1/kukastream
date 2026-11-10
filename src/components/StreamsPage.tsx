@@ -4,6 +4,10 @@ import { formatNumber, formatSubs } from '../data/mockData';
 import { StreamCommentsModal } from './StreamCommentsModal';
 import { formatArgentinaDateTime } from '../utils/dateFilter';
 import { Search, Radio, Heart, MessageSquare, DollarSign, Sparkles, RefreshCw, BarChart2, ExternalLink } from 'lucide-react';
+import { BLOCKED_STREAM_TITLE_KEYWORDS, isStreamTitleBlocked } from '../config/streamFilters';
+export { BLOCKED_STREAM_TITLE_KEYWORDS };
+
+export type StreamSortOption = 'viewers' | 'likes' | 'comments' | 'superchats';
 
 interface StreamsPageProps {
   onNavigateChannel: (channelId: string) => void;
@@ -55,12 +59,13 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<StreamSortOption>('viewers');
   const [selectedCommentsStream, setSelectedCommentsStream] = useState<Stream | null>(null);
   const [filterSuperchatsOnly, setFilterSuperchatsOnly] = useState<boolean>(false);
 
   const cleanSearchTerm = useMemo(() => cleanQueryString(searchQuery), [searchQuery]);
 
-  const fetchStreams = useCallback(async (tag?: string, query?: string) => {
+  const fetchStreams = useCallback(async (tag?: string, query?: string, sort?: StreamSortOption) => {
     setIsLoading(true);
     try {
       const params = new URLSearchParams();
@@ -71,12 +76,15 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
       if (cleanQ) {
         params.append('q', cleanQ);
       }
+      if (sort) {
+        params.append('sort', sort);
+      }
       const qs = params.toString();
       const url = qs ? `/api/streams?${qs}` : '/api/streams';
       const res = await fetch(url);
       const data = await res.json();
       if (data.success && Array.isArray(data.streams)) {
-        setStreams(data.streams);
+        setStreams(data.streams.filter((s: Stream) => !isStreamTitleBlocked(s.video_title)));
       }
     } catch (err) {
       console.error('Error fetching /api/streams:', err);
@@ -87,10 +95,10 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
 
   useEffect(() => {
     const handler = setTimeout(() => {
-      fetchStreams(selectedTag, searchQuery);
+      fetchStreams(selectedTag, searchQuery, sortBy);
     }, 250);
     return () => clearTimeout(handler);
-  }, [searchQuery, selectedTag, fetchStreams]);
+  }, [searchQuery, selectedTag, sortBy, fetchStreams]);
 
   const filteredStreams = useMemo(() => {
     if (!Array.isArray(streams)) return [];
@@ -99,6 +107,7 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
     return streams.filter((s) => {
       if (!s) return false;
       if (s.channel === '@Radio10am') return false;
+      if (isStreamTitleBlocked(s.video_title)) return false;
       const hasSuperchats = Number(s.superchats_total) > 0 || Number(s.superchats_count) > 0;
       const matchesSuperchat = !filterSuperchatsOnly || hasSuperchats;
 
@@ -128,11 +137,26 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
       return false;
     })
     .sort((a, b) => {
+      if (sortBy === 'likes') {
+        const aLikes = Number(a.current_likes ?? a.max_likes ?? a.old_likes) || 0;
+        const bLikes = Number(b.current_likes ?? b.max_likes ?? b.old_likes) || 0;
+        return bLikes - aLikes;
+      }
+      if (sortBy === 'comments') {
+        const aComments = Number(a.comments_count) || 0;
+        const bComments = Number(b.comments_count) || 0;
+        return bComments - aComments;
+      }
+      if (sortBy === 'superchats') {
+        const aSuperchats = Number(a.superchats_total) || 0;
+        const bSuperchats = Number(b.superchats_total) || 0;
+        return bSuperchats - aSuperchats;
+      }
       const aAvg = Number(a.avg_viewers ?? a.old_viewers ?? a.concurrent_viewers) || 0;
       const bAvg = Number(b.avg_viewers ?? b.old_viewers ?? b.concurrent_viewers) || 0;
       return bAvg - aAvg;
     });
-  }, [streams, cleanSearchTerm, filterSuperchatsOnly]);
+  }, [streams, cleanSearchTerm, filterSuperchatsOnly, sortBy]);
 
   return (
     <div className="space-y-6">
@@ -179,16 +203,32 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
 
       {/* Streams Ranking List */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between text-sm text-gray-500 px-1">
-          <span>
-            {cleanSearchTerm
-              ? `Resultados de búsqueda: ${filteredStreams.length} videos`
-              : `Top ${filteredStreams.length} streams`}
-          </span>
-          <span className="flex items-center gap-1.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm text-gray-500 px-1">
+          <div className="flex items-center gap-2">
+            <span>
+              {cleanSearchTerm
+                ? `Resultados de búsqueda: ${filteredStreams.length} videos`
+                : `Top ${filteredStreams.length} streams`}
+            </span>
             {isLoading && <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />}
-            <span>Ordenado por promedio de espectadores</span>
-          </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label htmlFor="streams-sort-select" className="text-xs font-semibold text-gray-600 shrink-0">
+              Ordenar por:
+            </label>
+            <select
+              id="streams-sort-select"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as StreamSortOption)}
+              className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-bold text-gray-800 shadow-2xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none cursor-pointer"
+            >
+              <option value="viewers">Promedio de espectadores (mayor a menor)</option>
+              <option value="likes">Likes (mayor a menor)</option>
+              <option value="comments">Mensajes (mayor a menor)</option>
+              <option value="superchats">Recaudación en superchats en ARS (mayor a menor)</option>
+            </select>
+          </div>
         </div>
 
         {isLoading && streams.length === 0 ? (
@@ -382,6 +422,16 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                       </div>
                       <div className="text-[10px] text-gray-500">TOTALES</div>
                     </div>
+
+                    {/*(superchatsTotal > 0 || sortBy === 'superchats') && (
+                      <div className="text-center min-w-[90px]">
+                        <div className="text-xs text-emerald-600 font-bold mb-0.5">SUPERCHATS</div>
+                        <div className="font-extrabold text-2xl text-emerald-600">
+                          ${formatNumber(superchatsTotal)}
+                        </div>
+                        <div className="text-[10px] text-gray-500 font-medium">ARS</div>
+                      </div>
+                    )*/}
                   </div>
                 </div>
 
@@ -445,9 +495,9 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                           💬 {formatNumber(stream.comments_count || 0)}
                         </div>
 
-                        {superchatsTotal > 0 && (
-                          <div className="text-xs font-bold text-amber-600">
-                            💰 ${formatNumber(superchatsTotal)}
+                        {(superchatsTotal > 0 || sortBy === 'superchats') && (
+                          <div className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                            💰 ${formatNumber(superchatsTotal)} ARS
                           </div>
                         )}
                       </div>
