@@ -3,6 +3,7 @@ import { Stream, DbComment, DbSuperchat } from '../types';
 import { formatNumber } from '../data/mockData';
 import { isOctober2026OrLater } from '../utils/dateFilter';
 import { TopCommentatorsList } from './TopCommentatorsList';
+import { trackEvent } from '../utils/analytics';
 import {
   MessageSquare,
   X,
@@ -53,6 +54,17 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (isOpen && stream) {
+      trackEvent('open_stream_comments', {
+        video_id: stream.video_id,
+        channel: stream.channel,
+        channel_name: stream.channel_name,
+        video_title: stream.video_title,
+      });
+    }
+  }, [isOpen, stream]);
+
   // Captions state
   const [captions, setCaptions] = useState<string | null>(stream.captions || null);
   const [captionsLoading, setCaptionsLoading] = useState(false);
@@ -60,6 +72,11 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
 
   const handleGenerateCaptions = async (force = false) => {
     if (!stream.video_id || captionsLoading) return;
+    trackEvent('generate_stream_captions', {
+      video_id: stream.video_id,
+      channel: stream.channel,
+      force,
+    });
     setCaptionsLoading(true);
     setCaptionsError(null);
     try {

@@ -1,8 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Channel } from '../types';
 import { formatNumber, formatSubs } from '../data/mockData';
 import { ChannelCommentsModal } from './ChannelCommentsModal';
 import { Search, ExternalLink, BarChart2, Radio, Heart, MessageSquare, DollarSign, Sparkles } from 'lucide-react';
+import { SITE_NAME } from '../config/site';
+import { trackEvent } from '../utils/analytics';
 
 interface ChannelsPageProps {
   channels: Channel[];
@@ -20,6 +22,10 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
   const [selectedCommentsChannel, setSelectedCommentsChannel] = useState<Channel | null>(null);
   const [filterSuperchatsOnly, setFilterSuperchatsOnly] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<ChannelSortOption>('viewers');
+
+  useEffect(() => {
+    document.title = `${SITE_NAME} - Canales`;
+  }, []);
 
   const filteredChannels = useMemo(() => {
     if (!Array.isArray(channels)) return [];
@@ -135,7 +141,11 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
             <select
               id="channels-sort-select"
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as ChannelSortOption)}
+              onChange={(e) => {
+                const val = e.target.value as ChannelSortOption;
+                setSortBy(val);
+                trackEvent('sort_channels', { sort_by: val });
+              }}
               className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-bold text-gray-800 shadow-2xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none cursor-pointer"
             >
               <option value="viewers">Espectador promedio (mayor a menor)</option>

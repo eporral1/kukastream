@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { SuperchatChannelRanking, SuperchatVideoRanking } from '../types';
 import { formatNumber } from '../data/mockData';
 import { formatArgentinaDateTime } from '../utils/dateFilter';
+import { SITE_NAME } from '../config/site';
+import { trackEvent } from '../utils/analytics';
 import {
   DollarSign,
   TrendingUp,
@@ -37,6 +39,10 @@ export const SuperchatsRankingPage: React.FC<SuperchatsRankingPageProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    document.title = `${SITE_NAME} - Superchats`;
+  }, []);
 
   const fetchRanking = async () => {
     setIsLoading(true);

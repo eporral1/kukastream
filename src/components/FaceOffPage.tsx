@@ -3,6 +3,7 @@ import { Channel, Stream } from '../types';
 import { formatNumber, formatSubs } from '../data/mockData';
 import { isOctober2026OrLater } from '../utils/dateFilter';
 import { SITE_NAME } from '../config/site';
+import { trackEvent } from '../utils/analytics';
 import {
   Swords,
   Trophy,
@@ -70,13 +71,15 @@ export const FaceOffPage: React.FC<FaceOffPageProps> = ({
     }
   }, [channelsList, selectedIdA, selectedIdB]);
 
-  // Update URL search params when channels change
+  // Update URL search params and document.title when channels change
   useEffect(() => {
+    document.title = `${SITE_NAME} - Face-Off`;
     if (selectedIdA && selectedIdB) {
       const url = new URL(window.location.href);
       url.searchParams.set('ch1', selectedIdA);
       url.searchParams.set('ch2', selectedIdB);
       window.history.replaceState({}, '', url.toString());
+      trackEvent('faceoff_compare', { channel_a: selectedIdA, channel_b: selectedIdB });
     }
   }, [selectedIdA, selectedIdB]);
 

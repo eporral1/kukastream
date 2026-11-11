@@ -5,6 +5,8 @@ import { StreamCommentsModal } from './StreamCommentsModal';
 import { formatArgentinaDateTime } from '../utils/dateFilter';
 import { Search, Radio, Heart, MessageSquare, DollarSign, Sparkles, RefreshCw, BarChart2, ExternalLink } from 'lucide-react';
 import { BLOCKED_STREAM_TITLE_KEYWORDS, isStreamTitleBlocked } from '../config/streamFilters';
+import { SITE_NAME } from '../config/site';
+import { trackEvent } from '../utils/analytics';
 export { BLOCKED_STREAM_TITLE_KEYWORDS };
 
 export type StreamSortOption = 'viewers' | 'likes' | 'comments' | 'superchats';
@@ -63,6 +65,10 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
   const [selectedCommentsStream, setSelectedCommentsStream] = useState<Stream | null>(null);
   const [filterSuperchatsOnly, setFilterSuperchatsOnly] = useState<boolean>(false);
 
+  useEffect(() => {
+    document.title = `${SITE_NAME} - Streams`;
+  }, []);
+
   const cleanSearchTerm = useMemo(() => cleanQueryString(searchQuery), [searchQuery]);
 
   const fetchStreams = useCallback(async (tag?: string, query?: string, sort?: StreamSortOption) => {
@@ -95,6 +101,9 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
 
   useEffect(() => {
     const handler = setTimeout(() => {
+      if (searchQuery.trim()) {
+        trackEvent('search_streams', { search_term: searchQuery.trim(), sort_by: sortBy });
+      }
       fetchStreams(selectedTag, searchQuery, sortBy);
     }, 250);
     return () => clearTimeout(handler);
@@ -220,7 +229,11 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
             <select
               id="streams-sort-select"
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as StreamSortOption)}
+              onChange={(e) => {
+                const val = e.target.value as StreamSortOption;
+                setSortBy(val);
+                trackEvent('sort_streams', { sort_by: val });
+              }}
               className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-bold text-gray-800 shadow-2xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none cursor-pointer"
             >
               <option value="viewers">Promedio de espectadores (mayor a menor)</option>

@@ -15,6 +15,7 @@ import { CategoryTag, Stream, Channel } from './types';
 import { isOctober2026OrLater, formatArgentinaTime } from './utils/dateFilter';
 import { RefreshCw, Radio, Sparkles, Clock, AlertCircle, X } from 'lucide-react';
 import { SITE_NAME } from './config/site';
+import { initAnalytics, trackPageView, trackEvent } from './utils/analytics';
 
 export interface InitialPrerenderData {
   streams?: Stream[];
@@ -136,9 +137,9 @@ export default function App({ initialData }: AppProps) {
     }
   }, []);
 
-  // Set document title dynamically with SITE_NAME
+  // Initialize Google Analytics on mount
   useEffect(() => {
-    document.title = `${SITE_NAME} - Ranking de Streaming en Vivo`;
+    initAnalytics();
   }, []);
 
   // Initial fetch on mount & category change
@@ -163,6 +164,7 @@ export default function App({ initialData }: AppProps) {
 
   // Manual refresh button
   const handleManualRefresh = () => {
+    trackEvent('manual_refresh', { page_path: currentPath });
     setIsRefreshing(true);
     setIsDbErrorDismissed(false);
     fetchLiveData(false);
@@ -174,6 +176,7 @@ export default function App({ initialData }: AppProps) {
   const handleShareTwitter = async () => {
     try {
       setIsCapturing(true);
+      trackEvent('share_twitter_ranking', { active_streams: streams.length });
       const top3 = streams.slice(0, 3);
       const top3Text = top3.map((s, i) => `${i + 1}. ${s.channel_name}: ${Number(s.concurrent_viewers || 0).toLocaleString('es-AR')} espectadores`).join('\n');
       const text = encodeURIComponent(`📊 TOP 3 STREAMINGS EN VIVO (${SITE_NAME})\n\n${top3Text}\n\nMirá todo el ranking acá: ${window.location.origin}`);
@@ -207,6 +210,7 @@ export default function App({ initialData }: AppProps) {
 
   // Sync URL history state
   const navigate = useCallback((path: string) => {
+    trackEvent('navigation_click', { destination: path });
     setCurrentPath(path);
     if (window.location.pathname !== path) {
       window.history.pushState({}, '', path);
@@ -285,6 +289,11 @@ export default function App({ initialData }: AppProps) {
       avg_likes: 0,
     };
   }, [currentChannelIdentifier, channelsList]);
+
+  // Dynamically set document.title ("SITE_NAME - SECCION") and fire GA4 page_view on route change
+  useEffect(() => {
+    trackPageView(currentPath, currentChannel?.channel_name);
+  }, [currentPath, currentChannel?.channel_name]);
 
   const currentChannelLiveStream = useMemo(() => {
     if (!currentChannel) return undefined;

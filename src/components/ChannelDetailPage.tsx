@@ -9,6 +9,8 @@ import { StreamLineChart } from './StreamLineChart';
 import { StreamCommentsModal } from './StreamCommentsModal';
 import { isOctober2026OrLater, formatArgentinaDateTime } from '../utils/dateFilter';
 import { ArrowLeft, ExternalLink, Calendar, Heart, Eye, MessageSquare, Radio, RefreshCw, AlertCircle, Swords } from 'lucide-react';
+import { SITE_NAME } from '../config/site';
+import { trackEvent } from '../utils/analytics';
 
 interface ChannelDetailPageProps {
   channel: Channel;
@@ -76,6 +78,11 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
   const [channelError, setChannelError] = useState<string | null>(null);
   const lastFetchedId = useRef<string | null>(null);
 
+  useEffect(() => {
+    const label = channel?.channel_name || channel?.channel || 'Canal';
+    document.title = `${SITE_NAME} - ${label}`;
+  }, [channel?.channel_name, channel?.channel]);
+
   const tryFetchChannel = React.useCallback(async (channelIdentifier: string) => {
     if (lastFetchedId.current === channelIdentifier) return;
     lastFetchedId.current = channelIdentifier;
@@ -92,7 +99,14 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
         const data = await res.json().catch(() => null);
         
         if (res.ok && data?.success) {
-          if (data.channel) setChannel(data.channel);
+          if (data.channel) {
+            setChannel(data.channel);
+            trackEvent('view_channel_detail', {
+              channel: data.channel.channel,
+              channel_name: data.channel.channel_name,
+              is_live: Boolean(data.live?.live === 'live'),
+            });
+          }
           const liveData = data.live;
           setLiveStream(liveData?.live === 'live' && (isOctober2026OrLater(liveData.scrape_date) || isOctober2026OrLater(liveData.start_date)) ? liveData : undefined);
           const streamList = data.streams || data.history || [];
