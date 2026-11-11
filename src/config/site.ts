@@ -11,5 +11,6 @@ export const SITE_NAME =
 export const GA_MEASUREMENT_ID =
   (typeof process !== 'undefined' && (process.env?.VITE_GA_ID || process.env?.GA_MEASUREMENT_ID)) ||
   metaEnv?.VITE_GA_ID ||
+  metaEnv?.GA_ID ||
   metaEnv?.VITE_GA_MEASUREMENT_ID ||
   'G-XXXXXXXXXX';
