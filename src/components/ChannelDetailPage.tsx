@@ -523,7 +523,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                       <div className="text-xl font-black text-gray-900">
                         {formatNumber(pastStream.max_likes || pastStream.current_likes)}
                       </div>
-                      <div className="text-xs text-gray-500">total programa</div>
+                      <div className="text-xs text-gray-500">total emisión</div>
                     </div>
 
                     <div className="text-center">
@@ -534,7 +534,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                       <div className="text-xl font-black text-amber-600">
                         {formatNumber(pastStream.comments_count || 0)}
                       </div>
-                      <div className="text-xs text-gray-500">total programa</div>
+                      <div className="text-xs text-gray-500">total emisión</div>
                     </div>
                   </div>
                 </div>
