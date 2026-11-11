@@ -11,10 +11,13 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
-    envPrefix: ['VITE_', 'SITE_'],
+    envPrefix: ['VITE_', 'SITE_', 'GA_'],
     define: {
       'process.env.SITE_NAME': JSON.stringify(
         process.env.SITE_NAME || process.env.VITE_SITE_NAME || 'StreamData'
+      ),
+      'process.env.GA_ID': JSON.stringify(
+        process.env.GA_ID || process.env.VITE_GA_ID || process.env.GA_MEASUREMENT_ID || ''
       ),
     },
     server: {

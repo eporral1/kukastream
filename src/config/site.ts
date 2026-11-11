@@ -7,10 +7,10 @@ export const SITE_NAME =
   metaEnv?.SITE_NAME ||
   'StreamData';
 
-// Google Analytics 4 Measurement ID (reemplazar 'G-XXXXXXXXXX' o definir VITE_GA_ID en .env / Vercel)
+// Google Analytics 4 Measurement ID (definir GA_ID en Vercel / .env o reemplazar 'G-XXXXXXXXXX')
 export const GA_MEASUREMENT_ID =
-  (typeof process !== 'undefined' && (process.env?.VITE_GA_ID || process.env?.GA_MEASUREMENT_ID)) ||
-  metaEnv?.VITE_GA_ID ||
+  (typeof process !== 'undefined' && (process.env?.GA_ID || process.env?.VITE_GA_ID || process.env?.GA_MEASUREMENT_ID)) ||
   metaEnv?.GA_ID ||
+  metaEnv?.VITE_GA_ID ||
   metaEnv?.VITE_GA_MEASUREMENT_ID ||
   'G-XXXXXXXXXX';

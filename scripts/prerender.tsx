@@ -255,6 +255,12 @@ function buildJsonLd(data: InitialPrerenderData): string {
 function injectPrerenderIntoHtml(rawHtml: string, appHtml: string, jsonLdTag: string): string {
   let html = rawHtml;
 
+  // 0. If GA_ID is provided in environment (e.g. Vercel GA_ID), replace G-XXXXXXXXXX placeholder in <head>
+  const envGaId = process.env.GA_ID || process.env.VITE_GA_ID || process.env.GA_MEASUREMENT_ID;
+  if (envGaId && envGaId !== 'G-XXXXXXXXXX') {
+    html = html.replace(/G-XXXXXXXXXX/g, envGaId.trim());
+  }
+
   // 1. Inject or update JSON-LD in <head>
   if (html.includes('id="schema-jsonld"')) {
     html = html.replace(/<script id="schema-jsonld" type="application\/ld\+json">[\s\S]*?<\/script>/, jsonLdTag);
