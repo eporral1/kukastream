@@ -252,7 +252,7 @@ function buildJsonLd(data: InitialPrerenderData): string {
   return `<script id="schema-jsonld" type="application/ld+json">${JSON.stringify(schema)}</script>`;
 }
 
-function injectPrerenderIntoHtml(rawHtml: string, appHtml: string, initialData: InitialPrerenderData, jsonLdTag: string): string {
+function injectPrerenderIntoHtml(rawHtml: string, appHtml: string, jsonLdTag: string): string {
   let html = rawHtml;
 
   // 1. Inject or update JSON-LD in <head>
@@ -262,14 +262,8 @@ function injectPrerenderIntoHtml(rawHtml: string, appHtml: string, initialData: 
     html = html.replace('</head>', `    ${jsonLdTag}\n  </head>`);
   }
 
-  // 2. Inject or update window.__INITIAL_DATA__ script
-  const serializedData = JSON.stringify(initialData).replace(/</g, '\\u003c');
-  const dataScriptTag = `<script id="prerender-data">window.__INITIAL_DATA__ = ${serializedData};</script>`;
-  if (html.includes('id="prerender-data"')) {
-    html = html.replace(/<script id="prerender-data">[\s\S]*?<\/script>/, dataScriptTag);
-  } else {
-    html = html.replace('<script type="module"', `${dataScriptTag}\n    <script type="module"`);
-  }
+  // 2. Remove any exposed prerender-data script if present
+  html = html.replace(/\s*<script id="prerender-data">[\s\S]*?<\/script>/g, '');
 
   // 3. Inject prerendered HTML into <div id="root">...</div>
   if (html.includes('<!--PRERENDER_START-->')) {
@@ -296,7 +290,7 @@ async function runPrerender() {
   const distIndexPath = path.join(ROOT_DIR, 'dist', 'index.html');
   if (fs.existsSync(distIndexPath)) {
     const distHtml = fs.readFileSync(distIndexPath, 'utf-8');
-    const updatedDistHtml = injectPrerenderIntoHtml(distHtml, appHtml, initialData, jsonLdTag);
+    const updatedDistHtml = injectPrerenderIntoHtml(distHtml, appHtml, jsonLdTag);
     fs.writeFileSync(distIndexPath, updatedDistHtml, 'utf-8');
     console.log(`[prerender] Successfully injected prerendered Home HTML (${appHtml.length} chars) into dist/index.html`);
   }
@@ -305,7 +299,7 @@ async function runPrerender() {
   const rootIndexPath = path.join(ROOT_DIR, 'index.html');
   if (fs.existsSync(rootIndexPath)) {
     const rootHtml = fs.readFileSync(rootIndexPath, 'utf-8');
-    const updatedRootHtml = injectPrerenderIntoHtml(rootHtml, appHtml, initialData, jsonLdTag);
+    const updatedRootHtml = injectPrerenderIntoHtml(rootHtml, appHtml, jsonLdTag);
     fs.writeFileSync(rootIndexPath, updatedRootHtml, 'utf-8');
     console.log(`[prerender] Successfully injected prerendered Home HTML (${appHtml.length} chars) into index.html`);
   }

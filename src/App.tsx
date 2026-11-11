@@ -29,13 +29,7 @@ export interface AppProps {
 }
 
 export default function App({ initialData }: AppProps) {
-  const resolvedInitialData: InitialPrerenderData | undefined = useMemo(() => {
-    if (initialData) return initialData;
-    if (typeof window !== 'undefined' && (window as any).__INITIAL_DATA__) {
-      return (window as any).__INITIAL_DATA__ as InitialPrerenderData;
-    }
-    return undefined;
-  }, [initialData]);
+  const resolvedInitialData: InitialPrerenderData | undefined = initialData;
 
   // Navigation state: path e.g. '/', '/channels', '/channel/@futurock'
   const [currentPath, setCurrentPath] = useState<string>(() => {
