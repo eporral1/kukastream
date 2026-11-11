@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build",
+    "build": "vite build && tsx scripts/prerender.tsx",
+    "prerender": "tsx scripts/prerender.tsx",
     "preview": "vite preview",
     "start": "NODE_ENV=production tsx server.ts",
     "clean": "rm -rf dist server.js",

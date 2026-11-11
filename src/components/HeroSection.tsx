@@ -37,65 +37,42 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
       </div>
 
       {/* Main Title */}
-      <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 mb-6 leading-tight tracking-tight">
+      <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 mb-4 leading-tight tracking-tight">
         <span className="bg-gradient-to-r font-black bg-clip-text">
           {SITE_NAME}
         </span>
       </h1>
 
-      {/* Subtitle */}
-      {/*<p className="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto mb-8 leading-relaxed">
-        {SITE_NAME}
-      </p>*/}
-
-      {/* Feature Pills */}
-      {/*<div className="flex flex-wrap justify-center gap-2 sm:gap-3 mb-8">
-        <div className="inline-flex items-center space-x-2 bg-white/90 backdrop-blur-sm border border-gray-200 px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-medium text-gray-700 shadow-xs">
-          <span>📊</span>
-          <span>Decisiones más precisas</span>
-        </div>
-        <div className="inline-flex items-center space-x-2 bg-white/90 backdrop-blur-sm border border-gray-200 px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-medium text-gray-700 shadow-xs">
-          <span>🎯</span>
-          <span>Nuevas Oportunidades</span>
-        </div>
-        <div className="inline-flex items-center space-x-2 bg-white/90 backdrop-blur-sm border border-gray-200 px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-medium text-gray-700 shadow-xs">
-          <span>⚡</span>
-          <span>Monitoreo continuo</span>
-        </div>
-      </div>*/}
+      {/* Subtitle for SEO & Users */}
+      <p className="text-sm sm:text-base text-gray-600 max-w-2xl mx-auto mb-8 leading-relaxed">
+        Ranking en vivo, métricas de audiencia en tiempo real, superchats y estadísticas de canales de streaming en Argentina.
+      </p>
 
       {/* CTA Buttons */}
       <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center items-center mb-10">
-        <button
-          onClick={onScrollToLive}
+        <a
+          href="#live"
+          onClick={(e) => {
+            e.preventDefault();
+            onScrollToLive();
+          }}
           className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 bg-gradient-to-r from-blue-600 to-teal-500 hover:from-blue-700 hover:to-teal-600 text-white px-7 py-3.5 rounded-xl font-semibold text-base shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
         >
           <span>🚀</span>
           <span>Top Streamings</span>
           <ArrowRight className="w-4 h-4 ml-1" />
-        </button>
-        <button
-          onClick={onExploreChannels}
+        </a>
+        <a
+          href="/channels"
+          onClick={(e) => {
+            e.preventDefault();
+            onExploreChannels();
+          }}
           className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 bg-white text-gray-800 px-7 py-3.5 rounded-xl font-semibold text-base border border-gray-200 shadow-xs hover:shadow-md hover:bg-gray-50 transition-all duration-200 cursor-pointer"
         >
           <BarChart3 className="w-4 h-4 text-blue-600" />
           <span>Métricas por canal</span>
-        </button>
-        {/*<button
-          onClick={onShareTwitter}
-          disabled={isCapturing}
-          className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 bg-black hover:bg-gray-900 text-white px-6 py-3.5 rounded-xl font-semibold text-base shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer disabled:opacity-50"
-          title="Capturar Top 3 y publicar en X"
-        >
-          {isCapturing ? (
-            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-          ) : (
-            <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-            </svg>
-          )}
-          <span>{isCapturing ? 'Capturando...' : 'Publicar Top 3 en X'}</span>
-        </button>*/}
+        </a>
       </div>
 
       {/* Stats Overview */}

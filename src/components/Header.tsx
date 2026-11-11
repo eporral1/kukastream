@@ -34,36 +34,32 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex justify-between items-center h-16">
           {/* Logo + Title */}
           <div className="flex items-center space-x-3">
-            <button
-              onClick={() => handleNav('/')}
+            <a
+              href="/"
+              onClick={(e) => {
+                e.preventDefault();
+                handleNav('/');
+              }}
               className="flex items-center space-x-3 text-left focus:outline-none group"
             >
-              {/*<img
-                src="/assets/aistudio/logo_kuka_430f41ee.png"
-                alt={`${SITE_NAME} Logo`}
-                className="w-11 h-11 object-contain shrink-0 group-hover:scale-105 transition-transform drop-shadow-xs"
-                onError={(e) => {
-                  // Fallback if image fails
-                  (e.target as HTMLElement).style.display = 'none';
-                }}
-              />*/}
               <div>
                 <h1 className="text-xl font-black tracking-tight text-gray-900 group-hover:text-blue-600 transition-colors">
                   {SITE_NAME}
                 </h1>
-                {/*<p className="text-xs text-gray-500 hidden sm:flex font-medium">
-                  Contenido que nos chupa la pija.
-                </p>*/}
               </div>
-            </button>
+            </a>
           </div>
 
           {/* Right section: Navigation & Live indicator */}
           <div className="flex items-center space-x-4 md:space-x-6">
             {/* Nav Links */}
-            <nav className="hidden md:flex items-center space-x-4 lg:space-x-6">
-              <button
-                onClick={() => handleNav('/')}
+            <nav className="hidden md:flex items-center space-x-4 lg:space-x-6" aria-label="Navegación principal">
+              <a
+                href="/"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleNav('/');
+                }}
                 className={`font-medium transition-colors px-3 py-1.5 rounded-lg text-sm ${
                   currentPath === '/'
                     ? 'text-blue-600 bg-blue-50 font-semibold'
@@ -71,10 +67,14 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
               >
                 Home
-              </button>
+              </a>
             
-              <button
-                onClick={() => handleNav('/channels')}
+              <a
+                href="/channels"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleNav('/channels');
+                }}
                 className={`font-medium transition-colors px-3 py-1.5 rounded-lg text-sm ${
                   currentPath === '/channels'
                     ? 'text-blue-600 bg-blue-50 font-semibold'
@@ -82,9 +82,13 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
               >
                 Canales
-              </button>
-              <button
-                onClick={() => handleNav('/streams')}
+              </a>
+              <a
+                href="/streams"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleNav('/streams');
+                }}
                 className={`font-medium transition-colors px-3 py-1.5 rounded-lg text-sm ${
                   currentPath === '/streams'
                     ? 'text-blue-600 bg-blue-50 font-semibold'
@@ -92,9 +96,13 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
               >
                 Streams
-              </button>
-              <button
-                onClick={() => handleNav('/superchats')}
+              </a>
+              <a
+                href="/superchats"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleNav('/superchats');
+                }}
                 className={`font-medium transition-colors px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${
                   currentPath === '/superchats'
                     ? 'text-amber-800 bg-amber-50 font-bold border border-amber-200 shadow-2xs'
@@ -103,9 +111,13 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <DollarSign className="w-4 h-4 text-amber-500" />
                 <span>Superchats</span>
-              </button>
-              <button
-                onClick={() => handleNav('/face-off')}
+              </a>
+              <a
+                href="/face-off"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleNav('/face-off');
+                }}
                 className={`font-medium transition-colors px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${
                   currentPath.startsWith('/face-off')
                     ? 'text-indigo-700 bg-indigo-50 font-bold border border-indigo-200 shadow-2xs'
@@ -114,7 +126,7 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Swords className="w-4 h-4 text-indigo-500" />
                 <span>Face-Off</span>
-              </button>
+              </a>
             </nav>
 
             {/* Live Indicator */}

@@ -57,8 +57,12 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
 
           {/* Channel Info */}
           <div className="flex items-center space-x-4 flex-1 min-w-0">
-            <button
-              onClick={() => onNavigateChannel(stream.channel)}
+            <a
+              href={`/channel/${stream.channel}`}
+              onClick={(e) => {
+                e.preventDefault();
+                onNavigateChannel(stream.channel);
+              }}
               className="shrink-0 focus:outline-none cursor-pointer"
             >
               <img
@@ -69,15 +73,19 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                   (e.target as HTMLImageElement).src = `https://i.ytimg.com/vi/${stream.video_id}/hqdefault.jpg`;
                 }}
               />
-            </button>
+            </a>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => onNavigateChannel(stream.channel)}
+                <a
+                  href={`/channel/${stream.channel}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onNavigateChannel(stream.channel);
+                  }}
                   className="text-left font-bold text-gray-900 hover:text-blue-600 transition-colors truncate block max-w-full text-base sm:text-lg focus:outline-none cursor-pointer"
                 >
                   {stream.channel_name}
-                </button>
+                </a>
                 <span className="text-xs text-gray-400 font-mono">
                   {stream.channel} {/* stream.type */}
                 </span>
@@ -86,13 +94,17 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                 {stream.video_title || 'Transmisión en vivo'} 
               </p>
               <div className="mt-2.5 flex items-center gap-2 flex-wrap">
-                <button
-                  onClick={() => onNavigateChannel(stream.channel)}
+                <a
+                  href={`/channel/${stream.channel}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onNavigateChannel(stream.channel);
+                  }}
                   className="bg-purple-100 hover:bg-purple-200 text-purple-800 px-2.5 py-0.5 rounded-full text-xs font-semibold transition-colors cursor-pointer"
                 >
-                     <span>📊</span>
-                            <span>Métricas</span>
-                </button>
+                  <span>📊</span>
+                  <span>Métricas</span>
+                </a>
 
                 {onOpenComments && (
                   <button

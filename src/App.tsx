@@ -16,21 +16,44 @@ import { isOctober2026OrLater, formatArgentinaTime } from './utils/dateFilter';
 import { RefreshCw, Radio, Sparkles, Clock, AlertCircle, X } from 'lucide-react';
 import { SITE_NAME } from './config/site';
 
-export default function App() {
+export interface InitialPrerenderData {
+  streams?: Stream[];
+  recentStreams?: Stream[];
+  channelsList?: Channel[];
+  lastUpdate?: string;
+  isPrerendered?: boolean;
+}
+
+export interface AppProps {
+  initialData?: InitialPrerenderData;
+}
+
+export default function App({ initialData }: AppProps) {
+  const resolvedInitialData: InitialPrerenderData | undefined = useMemo(() => {
+    if (initialData) return initialData;
+    if (typeof window !== 'undefined' && (window as any).__INITIAL_DATA__) {
+      return (window as any).__INITIAL_DATA__ as InitialPrerenderData;
+    }
+    return undefined;
+  }, [initialData]);
+
   // Navigation state: path e.g. '/', '/channels', '/channel/@futurock'
   const [currentPath, setCurrentPath] = useState<string>(() => {
-    return window.location.pathname || '/';
+    if (typeof window !== 'undefined') {
+      return window.location.pathname || '/';
+    }
+    return '/';
   });
 
   const [activeCategory, setActiveCategory] = useState<CategoryTag>('all');
-  const [streams, setStreams] = useState<Stream[]>([]);
-  const [recentStreams, setRecentStreams] = useState<Stream[]>([]);
-  const [channelsList, setChannelsList] = useState<Channel[]>([]);
-  const [lastUpdate, setLastUpdate] = useState<string>('--:--');
+  const [streams, setStreams] = useState<Stream[]>(() => resolvedInitialData?.streams || []);
+  const [recentStreams, setRecentStreams] = useState<Stream[]>(() => resolvedInitialData?.recentStreams || []);
+  const [channelsList, setChannelsList] = useState<Channel[]>(() => resolvedInitialData?.channelsList || []);
+  const [lastUpdate, setLastUpdate] = useState<string>(() => resolvedInitialData?.lastUpdate || 'En vivo');
   const [autoRefresh, setAutoRefresh] = useState<boolean>(true);
   const [isSocialModalOpen, setIsSocialModalOpen] = useState<boolean>(false);
   const [selectedCommentsStream, setSelectedCommentsStream] = useState<Stream | null>(null);
-  const [isLoadingStreams, setIsLoadingStreams] = useState<boolean>(true);
+  const [isLoadingStreams, setIsLoadingStreams] = useState<boolean>(() => !resolvedInitialData?.isPrerendered);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [dbError, setDbError] = useState<string | null>(null);
   const [isDbErrorDismissed, setIsDbErrorDismissed] = useState<boolean>(false);
@@ -126,8 +149,8 @@ export default function App() {
 
   // Initial fetch on mount & category change
   useEffect(() => {
-    fetchLiveData();
-  }, [fetchLiveData]);
+    fetchLiveData(Boolean(resolvedInitialData?.isPrerendered));
+  }, [fetchLiveData, resolvedInitialData]);
 
   useEffect(() => {
     fetchChannelsData();
@@ -507,8 +530,12 @@ export default function App() {
                           className="bg-white/90 rounded-xl p-4 sm:p-5 border border-gray-200/80 shadow-2xs hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                         >
                           <div className="flex items-start sm:items-center space-x-3.5 min-w-0 flex-1">
-                            <button
-                              onClick={() => navigate(`/channel/${stream.channel}`)}
+                            <a
+                              href={`/channel/${stream.channel}`}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                navigate(`/channel/${stream.channel}`);
+                              }}
                               className="shrink-0 focus:outline-none cursor-pointer"
                             >
                               <img
@@ -519,15 +546,19 @@ export default function App() {
                                   (e.target as HTMLImageElement).src = `https://i.ytimg.com/vi/${stream.video_id}/hqdefault.jpg`;
                                 }}
                               />
-                            </button>
+                            </a>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <button
-                                  onClick={() => navigate(`/channel/${stream.channel}`)}
+                                <a
+                                  href={`/channel/${stream.channel}`}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    navigate(`/channel/${stream.channel}`);
+                                  }}
                                   className="font-bold text-gray-900 text-sm sm:text-base hover:text-blue-600 transition-colors text-left"
                                 >
                                   {stream.channel_name}
-                                </button>
+                                </a>
                                 <span className="text-xs text-gray-400 font-mono">
                                   {stream.channel}
                                 </span>
@@ -539,12 +570,16 @@ export default function App() {
                                 {stream.video_title || 'Emisión finalizada'}
                               </p>
                               <div className="flex items-center gap-2 mt-2 flex-wrap">
-                                <button
-                                  onClick={() => navigate(`/channel/${stream.channel}`)}
+                                <a
+                                  href={`/channel/${stream.channel}`}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    navigate(`/channel/${stream.channel}`);
+                                  }}
                                   className="bg-purple-50 hover:bg-purple-100 text-purple-700 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors cursor-pointer"
                                 >
                                   Ver Métricas
-                                </button>
+                                </a>
                                 <button
                                   onClick={() => setSelectedCommentsStream(stream)}
                                   className="bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer border border-blue-200/50"
@@ -608,6 +643,60 @@ export default function App() {
                     })}
                   </div>
                 </div>
+              )}
+
+              {/* Directorio de Canales Monitoreados (Indexable por Google en Home) */}
+              {channelsList.length > 0 && (
+                <section aria-labelledby="monitored-channels-heading" className="mt-12 pt-6 border-t border-gray-200/80">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                    <div>
+                      <h2 id="monitored-channels-heading" className="text-lg sm:text-xl font-bold text-gray-900 tracking-tight">
+                        Canales de Streaming Monitoreados
+                      </h2>
+                      <p className="text-xs text-gray-500">
+                        Estadísticas de audiencia, likes, mensajes por emisión y recaudación en superchats por canal
+                      </p>
+                    </div>
+                    <a
+                      href="/channels"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        navigate('/channels');
+                      }}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                    >
+                      Ver todos los canales ({channelsList.length}) →
+                    </a>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+                    {channelsList.slice(0, 16).map((ch) => (
+                      <a
+                        key={ch.channel_id || ch.channel}
+                        href={`/channel/${ch.channel}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          navigate(`/channel/${ch.channel}`);
+                        }}
+                        className="bg-white/80 hover:bg-white rounded-lg p-3 border border-gray-200/70 hover:border-blue-300 transition-all flex items-center gap-2.5 shadow-2xs"
+                      >
+                        <img
+                          src={ch.thumb}
+                          alt={ch.channel_name}
+                          className="w-8 h-8 rounded-full object-cover shrink-0 border border-gray-100"
+                          loading="lazy"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-gray-900 truncate">
+                            {ch.channel_name}
+                          </div>
+                          <div className="text-[11px] text-gray-400 truncate font-mono">
+                            {ch.channel}
+                          </div>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                </section>
               )}
             </div>
           )}
