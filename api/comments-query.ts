@@ -1,82 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { Pool } from 'pg';
 import { GoogleGenAI } from '@google/genai';
+import { getPool } from '../src/utils/serverDb.ts';
 
-let pool: Pool | null = null;
 const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
-
-function getPool(): Pool | null {
-  if (pool) return pool;
-
-  const connectionString =
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||
-    process.env.POSTGRES_PRISMA_URL ||
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.SUPABASE_DATABASE_URL ||
-    process.env.SUPABASE_DB_URL;
-
-  const poolConfig: any = {
-    ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 15000,
-    idleTimeoutMillis: 5000,
-    max: 3,
-    keepAlive: true,
-  };
-
-  if (connectionString && !connectionString.includes('hjkhjk')) {
-    pool = new Pool({
-      ...poolConfig,
-      connectionString,
-    });
-    return pool;
-  }
-
-  const host =
-    process.env.DB_HOST ||
-    process.env.POSTGRES_HOST ||
-    process.env.PGHOST;
-
-  const user =
-    process.env.DB_USERNAME ||
-    process.env.DB_USER ||
-    process.env.POSTGRES_USER ||
-    process.env.PGUSER;
-
-  const password =
-    process.env.DB_PASSWORD ||
-    process.env.POSTGRES_PASSWORD ||
-    process.env.PGPASSWORD;
-
-  const database =
-    process.env.DB_DATABASE ||
-    process.env.DB_NAME ||
-    process.env.POSTGRES_DATABASE ||
-    process.env.PGDATABASE;
-
-  const port = parseInt(
-    process.env.DB_PORT ||
-    process.env.POSTGRES_PORT ||
-    process.env.PGPORT ||
-    '5432',
-    10
-  );
-
-  if (!host || !password || host.includes('hjkhjk') || password.includes('hjkhjk')) {
-    return null;
-  }
-
-  pool = new Pool({
-    ...poolConfig,
-    host,
-    user,
-    password,
-    database,
-    port,
-  });
-
-  return pool;
-}
 
 // Endpoint deshabilitado temporalmente por motivos de seguridad (riesgo de consumo no autenticado de Gemini)
 const ENABLE_COMMENTS_QUERY = false;

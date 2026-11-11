@@ -1,88 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { Pool } from 'pg';
+import { getPool, executeQuery } from '../src/utils/serverDb.ts';
 
-let pool: Pool | null = null;
-
-function getDiagnosticPool(): Pool | null {
-  if (pool) return pool;
-
-  const connectionString =
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||
-    process.env.POSTGRES_PRISMA_URL ||
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.SUPABASE_DATABASE_URL ||
-    process.env.SUPABASE_DB_URL;
-
-  if (connectionString && !connectionString.includes('hjkhjk')) {
-    pool = new Pool({
-      connectionString,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 15000,
-      idleTimeoutMillis: 5000,
-      max: 2,
-      keepAlive: true,
-    });
-    pool.on('error', (err) => {
-      console.warn('Status diagnostic pool error:', err.message);
-      pool = null;
-    });
-    return pool;
-  }
-
-  const host =
-    process.env.DB_HOST ||
-    process.env.POSTGRES_HOST ||
-    process.env.PGHOST;
-
-  const user =
-    process.env.DB_USERNAME ||
-    process.env.DB_USER ||
-    process.env.POSTGRES_USER ||
-    process.env.PGUSER;
-
-  const password =
-    process.env.DB_PASSWORD ||
-    process.env.POSTGRES_PASSWORD ||
-    process.env.PGPASSWORD;
-
-  const database =
-    process.env.DB_DATABASE ||
-    process.env.DB_NAME ||
-    process.env.POSTGRES_DATABASE ||
-    process.env.PGDATABASE;
-
-  const port = parseInt(
-    process.env.DB_PORT ||
-    process.env.POSTGRES_PORT ||
-    process.env.PGPORT ||
-    '5432',
-    10
-  );
-
-  if (!host || !password || host.includes('hjkhjk') || password.includes('hjkhjk')) {
-    return null;
-  }
-
-  pool = new Pool({
-    host,
-    user,
-    password,
-    database,
-    port,
-    ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 15000,
-    idleTimeoutMillis: 5000,
-    max: 2,
-    keepAlive: true,
-  });
-
-  pool.on('error', (err) => {
-    console.warn('Status diagnostic pool error:', err.message);
-    pool = null;
-  });
-
-  return pool;
+function getDiagnosticPool() {
+  return getPool();
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -165,7 +85,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const start = Date.now();
-    const dbRes = await p.query('SELECT NOW() as current_time, current_database() as db_name, version() as pg_version');
+    const dbRes: any = await executeQuery('SELECT NOW() as current_time, current_database() as db_name, version() as pg_version');
     const latencyMs = Date.now() - start;
 
     return res.status(200).json({

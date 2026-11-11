@@ -1,116 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { Pool } from 'pg';
+import { getPool, executeQuery, getCachedResponse, setCachedResponse } from '../src/utils/serverDb.ts';
 
-let pool: Pool | null = null;
 const OCT_2026_CUTOFF = '2026-10-31 23:59:59';
-
-function getPool(): Pool | null {
-  if (pool) return pool;
-
-  const connectionString =
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||
-    process.env.POSTGRES_PRISMA_URL ||
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.SUPABASE_DATABASE_URL ||
-    process.env.SUPABASE_DB_URL;
-
-  const poolConfig: any = {
-    ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 15000,
-    idleTimeoutMillis: 5000,
-    max: 3,
-    keepAlive: true,
-  };
-
-  if (connectionString && !connectionString.includes('hjkhjk')) {
-    pool = new Pool({
-      ...poolConfig,
-      connectionString,
-    });
-    pool.on('error', (err) => {
-      console.warn('PostgreSQL pool error, resetting pool:', err.message);
-      pool = null;
-    });
-    return pool;
-  }
-
-  const host =
-    process.env.DB_HOST ||
-    process.env.POSTGRES_HOST ||
-    process.env.PGHOST;
-
-  const user =
-    process.env.DB_USERNAME ||
-    process.env.DB_USER ||
-    process.env.POSTGRES_USER ||
-    process.env.PGUSER;
-
-  const password =
-    process.env.DB_PASSWORD ||
-    process.env.POSTGRES_PASSWORD ||
-    process.env.PGPASSWORD;
-
-  const database =
-    process.env.DB_DATABASE ||
-    process.env.DB_NAME ||
-    process.env.POSTGRES_DATABASE ||
-    process.env.PGDATABASE;
-
-  const port = parseInt(
-    process.env.DB_PORT ||
-    process.env.POSTGRES_PORT ||
-    process.env.PGPORT ||
-    '5432',
-    10
-  );
-
-  if (!host || !password || host.includes('hjkhjk') || password.includes('hjkhjk')) {
-    return null;
-  }
-
-  pool = new Pool({
-    ...poolConfig,
-    host,
-    user,
-    password,
-    database,
-    port,
-  });
-
-  pool.on('error', (err) => {
-    console.warn('PostgreSQL pool error, resetting pool:', err.message);
-    pool = null;
-  });
-
-  return pool;
-}
-
-// Resilient query executor that retries once on connection termination/timeout
-async function executeQuery<T = any>(text: string, params: any[] = []): Promise<T> {
-  let p = getPool();
-  if (!p) throw new Error('Base de datos no configurada en Vercel.');
-
-  try {
-    return (await p.query(text, params)) as T;
-  } catch (err: any) {
-    const msg = String(err?.message || '').toLowerCase();
-    if (
-      msg.includes('connection terminated') ||
-      msg.includes('timeout') ||
-      msg.includes('closed') ||
-      msg.includes('socket')
-    ) {
-      console.warn('Retrying channel query after connection reset:', err.message);
-      pool = null;
-      p = getPool();
-      if (p) {
-        return (await p.query(text, params)) as T;
-      }
-    }
-    throw err;
-  }
-}
 
 // Helper to synthesize minute-by-minute timeline if database table `public.minute` has no rows yet
 function synthesizeTimeline(peak: number, likesPeak: number, startDateStr?: string, endDateStr?: string) {
@@ -551,6 +442,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const cleanParam = channelParam.startsWith('@') ? channelParam.substring(1) : channelParam;
   const withAtParam = channelParam.startsWith('@') ? channelParam : `@${channelParam}`;
 
+  const cacheKey = `api:channel:${cleanParam.toLowerCase()}`;
+  const cached = getCachedResponse(cacheKey);
+  if (cached) {
+    res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
+    return res.status(200).json(cached);
+  }
+
   try {
     const chRes = await executeQuery(
       `SELECT * FROM public.channels 
@@ -953,14 +851,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         channel.avg_comments = Math.round(channel.total_comments / titleGroups.length);
       }
 
-      return res.status(200).json({
+      const eternalPayload = {
         success: true,
         channel,
         live: liveStreamObj,
         streams: finishedStreamsList,
         hour_day_data: [],
         avg_data: [],
-      });
+      };
+      setCachedResponse(cacheKey, eternalPayload, 10000);
+      res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
+      return res.status(200).json(eternalPayload);
     }
     try {
       // Overall channel averages (matching /api/channels formula: per emission / video_id)
@@ -1417,7 +1318,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     */
 
-    return res.status(200).json({
+    const standardPayload = {
       success: true,
       channel,
       live,
@@ -1426,7 +1327,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       timeline: live?.data || [],
       hour_day_data: hourDayData,
       avg_data: avgData,
-    });
+    };
+    setCachedResponse(cacheKey, standardPayload, 10000);
+    res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
+    return res.status(200).json(standardPayload);
   } catch (err: any) {
     console.error(`Error fetching channel ${channelParam}:`, err);
     return res.status(200).json({

@@ -1,90 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { Pool } from 'pg';
+import { getPool, executeQuery } from '../src/utils/serverDb.ts';
 
-let pool: Pool | null = null;
 const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
-
-function getPool(): Pool | null {
-  if (pool) return pool;
-
-  const connectionString =
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||
-    process.env.POSTGRES_PRISMA_URL ||
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.SUPABASE_DATABASE_URL ||
-    process.env.SUPABASE_DB_URL;
-
-  const poolConfig: any = {
-    ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 15000,
-    idleTimeoutMillis: 5000,
-    max: 3,
-    keepAlive: true,
-  };
-
-  if (connectionString && !connectionString.includes('hjkhjk')) {
-    pool = new Pool({
-      ...poolConfig,
-      connectionString,
-    });
-    pool.on('error', (err) => {
-      console.warn('Comments pool error:', err.message);
-      pool = null;
-    });
-    return pool;
-  }
-
-  const host =
-    process.env.DB_HOST ||
-    process.env.POSTGRES_HOST ||
-    process.env.PGHOST;
-
-  const user =
-    process.env.DB_USERNAME ||
-    process.env.DB_USER ||
-    process.env.POSTGRES_USER ||
-    process.env.PGUSER;
-
-  const password =
-    process.env.DB_PASSWORD ||
-    process.env.POSTGRES_PASSWORD ||
-    process.env.PGPASSWORD;
-
-  const database =
-    process.env.DB_DATABASE ||
-    process.env.DB_NAME ||
-    process.env.POSTGRES_DATABASE ||
-    process.env.PGDATABASE;
-
-  const port = parseInt(
-    process.env.DB_PORT ||
-    process.env.POSTGRES_PORT ||
-    process.env.PGPORT ||
-    '5432',
-    10
-  );
-
-  if (!host || !password || host.includes('hjkhjk') || password.includes('hjkhjk')) {
-    return null;
-  }
-
-  pool = new Pool({
-    ...poolConfig,
-    host,
-    user,
-    password,
-    database,
-    port,
-  });
-
-  pool.on('error', (err) => {
-    console.warn('Comments pool error:', err.message);
-    pool = null;
-  });
-
-  return pool;
-}
 
 // In-memory rate limiting (max 60 req/min per IP)
 const commentsRateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -177,7 +94,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const cleanChName = chName.startsWith('@') ? chName.substring(1) : chName;
       const atChName = chName.startsWith('@') ? chName : `@${chName}`;
 
-      const vRes = await p.query(
+      const vRes = await executeQuery(
         `SELECT DISTINCT l.video_id 
          FROM public.live l
          JOIN public.channels c ON l.channel_id = c.channel_id
@@ -211,7 +128,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (resolvedVideoId) {
       // Total count of comments
-      const countRes = await p.query(
+      const countRes = await executeQuery(
         `SELECT COUNT(*)::int AS total FROM public.comments WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'`,
         [resolvedVideoId]
       );
@@ -219,7 +136,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Paginated comments without leaking internal DB row IDs
       if (type !== 'superchats') {
-        const commentsRes = await p.query(
+        const commentsRes = await executeQuery(
           `SELECT created_at, video_id, author_id, COALESCE(comment_text, '') AS comment_text
            FROM public.comments
            WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
@@ -238,13 +155,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Superchats capped to 50
       if (type !== 'comments' || offset === 0) {
-        const scCountRes = await p.query(
+        const scCountRes = await executeQuery(
           `SELECT COUNT(*)::int AS total FROM public.superchats WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'`,
           [resolvedVideoId]
         );
         totalSuperchats = scCountRes.rows[0]?.total || 0;
 
-        const scRes = await p.query(
+        const scRes = await executeQuery(
           `SELECT created_at, amount, currency, video_id, COALESCE(superchat_text, '') AS superchat_text
            FROM public.superchats
            WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
@@ -263,14 +180,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     } else if (channelVideoIds.length > 0) {
       // Total count of comments for channel
-      const countRes = await p.query(
+      const countRes = await executeQuery(
         `SELECT COUNT(*)::int AS total FROM public.comments WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'`,
         [channelVideoIds]
       );
       totalComments = countRes.rows[0]?.total || 0;
 
       if (type !== 'superchats') {
-        const commentsRes = await p.query(
+        const commentsRes = await executeQuery(
           `SELECT created_at, video_id, author_id, COALESCE(comment_text, '') AS comment_text
            FROM public.comments
            WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
@@ -288,13 +205,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (type !== 'comments' || offset === 0) {
-        const scCountRes = await p.query(
+        const scCountRes = await executeQuery(
           `SELECT COUNT(*)::int AS total FROM public.superchats WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'`,
           [channelVideoIds]
         );
         totalSuperchats = scCountRes.rows[0]?.total || 0;
 
-        const scRes = await p.query(
+        const scRes = await executeQuery(
           `SELECT created_at, amount, currency, video_id, COALESCE(superchat_text, '') AS superchat_text
            FROM public.superchats
            WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'

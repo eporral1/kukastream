@@ -1,52 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { Pool } from 'pg';
 import { isStreamTitleBlocked } from '../src/config/streamFilters.ts';
+import { getPool, executeQuery, getCachedResponse, setCachedResponse } from '../src/utils/serverDb.ts';
 
-let pool: Pool | null = null;
 const OCT_2026_CUTOFF = '2026-10-31 23:59:59';
-
-function getPool(): Pool | null {
-  if (pool) return pool;
-
-  const connectionString =
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||
-    process.env.POSTGRES_PRISMA_URL;
-
-  if (connectionString) {
-    pool = new Pool({
-      connectionString,
-      ssl: { rejectUnauthorized: false },
-    });
-    return pool;
-  }
-
-  const host = process.env.DB_HOST;
-  const user = process.env.DB_USERNAME || process.env.DB_USER;
-  const password = process.env.DB_PASSWORD;
-  const database = process.env.DB_DATABASE || process.env.DB_NAME;
-  const port = parseInt(process.env.DB_PORT || '5432', 10);
-
-  if (host && user && password && database) {
-    pool = new Pool({
-      host,
-      user,
-      password,
-      database,
-      port,
-      ssl: { rejectUnauthorized: false },
-    });
-    return pool;
-  }
-
-  return null;
-}
-
-async function executeQuery(query: string, params: any[] = []): Promise<any> {
-  const p = getPool();
-  if (!p) throw new Error('Database not configured');
-  return p.query(query, params);
-}
 
 function cleanEternalTitle(s: string): string {
   return s
@@ -365,6 +321,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const rawSearch = (((req.query.q || req.query.search || '') as string) || '').trim();
   // Strip enclosing quotes like "la trinchera" or 'la trinchera'
   const searchParam = rawSearch.replace(/^["'«»“”„]+|["'«»“”„]+$/g, '').trim();
+  const sortParamReq = (((req.query.sort || '') as string) || 'viewers').toLowerCase();
+
+  const cached = getCachedResponse(`api:streams:${tag || 'all'}:${searchParam}:${sortParamReq}`);
+  if (cached) {
+    res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
+    return res.status(200).json(cached);
+  }
 
   try {
     // 1. Standard channels: Query individual streams from public.live
@@ -639,19 +602,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // 4. Enrich eternal streams with bounded superchats
-    for (const stream of eternalStreams) {
+    // 4. Enrich eternal streams with bounded superchats (single batched query)
+    const eternalVideoIds = [...new Set(eternalStreams.map((s: any) => s.video_id).filter(Boolean))];
+    if (eternalVideoIds.length > 0) {
       try {
-        const scRes: any = await executeQuery(
-          `SELECT SUM(CASE WHEN currency = 'ARS' OR UPPER(currency) LIKE '%ARS%' THEN amount ELSE 0 END)::numeric AS superchats_total,
-                  COUNT(id)::int AS sc_count
+        const scEternalRes: any = await executeQuery(
+          `SELECT video_id, created_at, amount, currency
            FROM public.superchats
-           WHERE video_id = $1 AND created_at >= $2 AND created_at <= $3`,
-          [stream.video_id, stream.start_date, stream.scrape_date]
+           WHERE video_id = ANY($1)
+             AND created_at >= '${OCT_2026_CUTOFF}'
+             AND (currency = 'ARS' OR UPPER(currency) LIKE '%ARS%')`,
+          [eternalVideoIds]
         );
-        if (scRes.rows && scRes.rows.length > 0) {
-          stream.superchats_total = Number(scRes.rows[0].superchats_total || 0);
-          stream.superchats_count = Number(scRes.rows[0].sc_count || 0);
+        const scByVideo = new Map<string, any[]>();
+        for (const r of scEternalRes.rows || []) {
+          if (!scByVideo.has(r.video_id)) {
+            scByVideo.set(r.video_id, []);
+          }
+          scByVideo.get(r.video_id)!.push(r);
+        }
+        for (const stream of eternalStreams) {
+          const rows = scByVideo.get(stream.video_id) || [];
+          const tStart = stream.start_date ? new Date(stream.start_date).getTime() : 0;
+          const tEnd = stream.scrape_date ? new Date(stream.scrape_date).getTime() : Infinity;
+          let total = 0;
+          let count = 0;
+          for (const r of rows) {
+            const t = r.created_at ? new Date(r.created_at).getTime() : 0;
+            if (t >= tStart && t <= tEnd) {
+              total += Number(r.amount || 0);
+              count += 1;
+            }
+          }
+          stream.superchats_total = total;
+          stream.superchats_count = count;
         }
       } catch {
         // ignore
@@ -688,12 +672,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const returnStreams = searchParam ? filtered.slice(0, 200) : filtered.slice(0, 50);
 
-    return res.status(200).json({
+    const payload = {
       success: true,
       streams: returnStreams,
       total_found: filtered.length,
       is_search: Boolean(searchParam),
-    });
+    };
+    setCachedResponse(`api:streams:${tag || 'all'}:${searchParam}:${sortParam}`, payload, 12000);
+    res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
+    return res.status(200).json(payload);
   } catch (err: any) {
     console.error('Error in /api/streams:', err);
     return res.status(500).json({

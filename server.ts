@@ -1,10 +1,10 @@
 import express, { Request, Response } from 'express';
-import { Pool } from 'pg';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 import { isStreamTitleBlocked } from './src/config/streamFilters.ts';
+import { getPool } from './src/utils/serverDb.ts';
 
 dotenv.config();
 
@@ -15,83 +15,6 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(express.json());
-
-// Setup PostgreSQL pool with SSL enabled for Supabase / cloud postgres
-let pool: Pool | null = null;
-
-function getPool(): Pool | null {
-  if (pool) return pool;
-
-  const connectionString =
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||
-    process.env.POSTGRES_PRISMA_URL ||
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.SUPABASE_DATABASE_URL ||
-    process.env.SUPABASE_DB_URL;
-
-  if (connectionString && !connectionString.includes('hjkhjk')) {
-    pool = new Pool({
-      connectionString,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 15000,
-      idleTimeoutMillis: 30000,
-      max: 10,
-    });
-    return pool;
-  }
-
-  const host =
-    process.env.DB_HOST ||
-    process.env.POSTGRES_HOST ||
-    process.env.PGHOST;
-
-  const user =
-    process.env.DB_USERNAME ||
-    process.env.DB_USER ||
-    process.env.POSTGRES_USER ||
-    process.env.PGUSER;
-
-  const password =
-    process.env.DB_PASSWORD ||
-    process.env.POSTGRES_PASSWORD ||
-    process.env.PGPASSWORD;
-
-  const database =
-    process.env.DB_DATABASE ||
-    process.env.DB_NAME ||
-    process.env.POSTGRES_DATABASE ||
-    process.env.PGDATABASE;
-
-  const portNum = parseInt(
-    process.env.DB_PORT ||
-    process.env.POSTGRES_PORT ||
-    process.env.PGPORT ||
-    '5432',
-    10
-  );
-
-  // If credentials are empty or default placeholder, do not crash; return null
-  if (!host || host.includes('hjkhjk') || !password || password.includes('hjkhjk')) {
-    return null;
-  }
-
-  pool = new Pool({
-    host,
-    user,
-    password,
-    database,
-    port: portNum,
-    ssl: {
-      rejectUnauthorized: false,
-    },
-    max: 10,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 15000,
-  });
-
-  return pool;
-}
 
 // Check database connection status
 app.get('/api/health/db', async (_req: Request, res: Response) => {
@@ -528,103 +451,112 @@ async function enrichEternalStreams(streams: any[], p: any) {
   }
 }
 
-// Universal enrichment function for eternal channels in /api/channels
+// Universal enrichment function for eternal channels in /api/channels (single batched query)
 async function enrichEternalChannels(channels: any[], p: any) {
   if (!channels || channels.length === 0) return;
-  const eternalChannels = channels.filter((c: any) => c.type === 'eternal');
+  const eternalChannels = channels.filter((c: any) => c.type === 'eternal' && c.channel_id);
   if (eternalChannels.length === 0) return;
 
-  await Promise.all(
-    eternalChannels.map(async (channel: any) => {
-      try {
-        const titleGroupsRes = await p.query(
-          `SELECT video_title,
-                  video_id,
-                  MIN(scrape_date) AS start_time,
-                  MAX(scrape_date) AS end_time,
-                  MAX(concurrent_viewers) AS max_viewers,
-                  AVG(concurrent_viewers)::int AS avg_viewers,
-                  MIN(likes) AS min_likes,
-                  MAX(likes) AS max_likes,
-                  MIN(comments_count) AS min_comments,
-                  MAX(comments_count) AS max_comments,
-                  COUNT(*) AS point_count
-           FROM public.minute
-           WHERE channel_id = $1 
-             AND scrape_date >= '${OCT_2026_CUTOFF}'
-             AND video_title IS NOT NULL AND video_title <> ''
-           GROUP BY video_title, video_id
-           ORDER BY MAX(scrape_date) DESC
-           LIMIT 25`,
-          [channel.channel_id]
+  const eternalChannelIds = eternalChannels.map((c: any) => c.channel_id);
+
+  try {
+    const titleGroupsRes = await p.query(
+      `SELECT channel_id,
+              video_title,
+              video_id,
+              MIN(scrape_date) AS start_time,
+              MAX(scrape_date) AS end_time,
+              MAX(concurrent_viewers) AS max_viewers,
+              AVG(concurrent_viewers)::int AS avg_viewers,
+              MIN(likes) AS min_likes,
+              MAX(likes) AS max_likes,
+              MIN(comments_count) AS min_comments,
+              MAX(comments_count) AS max_comments,
+              COUNT(*) AS point_count
+       FROM public.minute
+       WHERE channel_id = ANY($1)
+         AND scrape_date >= '${OCT_2026_CUTOFF}'
+         AND video_title IS NOT NULL AND video_title <> ''
+       GROUP BY channel_id, video_title, video_id
+       ORDER BY MAX(scrape_date) DESC`,
+      [eternalChannelIds]
+    );
+
+    const byChannel = new Map<string, any[]>();
+    for (const row of titleGroupsRes.rows || []) {
+      const chId = row.channel_id;
+      if (!byChannel.has(chId)) {
+        byChannel.set(chId, []);
+      }
+      const list = byChannel.get(chId)!;
+      if (list.length >= 25) continue;
+
+      const maxLikes = Number(row.max_likes || 0);
+      const minLikes = Number(row.min_likes || 0);
+      const maxComm = Number(row.max_comments || 0);
+      const minComm = Number(row.min_comments || 0);
+
+      list.push({
+        video_title: row.video_title,
+        video_id: row.video_id,
+        start_time: row.start_time,
+        end_time: row.end_time,
+        max_viewers: Number(row.max_viewers || 0),
+        avg_viewers: Number(row.avg_viewers || 0),
+        min_likes: minLikes,
+        max_likes: maxLikes,
+        likes_delta: Math.max(0, maxLikes - minLikes),
+        min_comments: minComm,
+        max_comments: maxComm,
+        comm_delta: Math.max(0, maxComm - minComm),
+        point_count: Number(row.point_count || 0),
+      });
+    }
+
+    for (const channel of eternalChannels) {
+      let titleGroups = byChannel.get(channel.channel_id) || [];
+      titleGroups = clusterEternalTitleGroups(titleGroups);
+      titleGroups = chainEternalTitleDeltas(titleGroups);
+
+      if (titleGroups.length > 0) {
+        channel.avg_viewers = Math.round(
+          titleGroups.reduce((acc: number, g: any) => acc + (g.max_viewers || 0), 0) / titleGroups.length
         );
+        const totalLikes = titleGroups.reduce((acc: number, g: any) => acc + g.likes_delta, 0);
+        channel.avg_likes = Math.round(totalLikes / titleGroups.length);
 
-        let titleGroups = (titleGroupsRes.rows || []).map((row: any) => {
-          const maxLikes = Number(row.max_likes || 0);
-          const minLikes = Number(row.min_likes || 0);
-          const maxComm = Number(row.max_comments || 0);
-          const minComm = Number(row.min_comments || 0);
+        const totalComments = titleGroups.reduce((acc: number, g: any) => acc + g.comm_delta, 0);
+        channel.avg_comments = Math.round(totalComments / titleGroups.length);
 
-          return {
-            video_title: row.video_title,
-            video_id: row.video_id,
-            start_time: row.start_time,
-            end_time: row.end_time,
-            max_viewers: Number(row.max_viewers || 0),
-            avg_viewers: Number(row.avg_viewers || 0),
-            min_likes: minLikes,
-            max_likes: maxLikes,
-            likes_delta: Math.max(0, maxLikes - minLikes),
-            min_comments: minComm,
-            max_comments: maxComm,
-            comm_delta: Math.max(0, maxComm - minComm),
-            point_count: Number(row.point_count || 0),
-          };
-        });
-
-        titleGroups = clusterEternalTitleGroups(titleGroups);
-        titleGroups = chainEternalTitleDeltas(titleGroups);
-
-        if (titleGroups.length > 0) {
-          channel.avg_viewers = Math.round(
-            titleGroups.reduce((acc: number, g: any) => acc + (g.max_viewers || 0), 0) / titleGroups.length
+        const validGroups = titleGroups.filter((g: any) => (g.max_viewers || 0) > 0);
+        if (validGroups.length > 0) {
+          channel.likes_per_viewer = Number(
+            (
+              validGroups.reduce((acc: number, g: any) => acc + (g.likes_delta / g.max_viewers), 0) /
+              validGroups.length
+            ).toFixed(2)
           );
-          const totalLikes = titleGroups.reduce((acc: number, g: any) => acc + g.likes_delta, 0);
-          channel.avg_likes = Math.round(totalLikes / titleGroups.length);
-
-          const totalComments = titleGroups.reduce((acc: number, g: any) => acc + g.comm_delta, 0);
-          channel.avg_comments = Math.round(totalComments / titleGroups.length);
-
-          const validGroups = titleGroups.filter((g: any) => (g.max_viewers || 0) > 0);
-          if (validGroups.length > 0) {
-            channel.likes_per_viewer = Number(
-              (
-                validGroups.reduce((acc: number, g: any) => acc + (g.likes_delta / g.max_viewers), 0) /
-                validGroups.length
-              ).toFixed(2)
-            );
-            channel.comments_per_viewer = Number(
-              (
-                validGroups.reduce((acc: number, g: any) => acc + (g.comm_delta / g.max_viewers), 0) /
-                validGroups.length
-              ).toFixed(2)
-            );
-          } else {
-            channel.likes_per_viewer = 0;
-            channel.comments_per_viewer = 0;
-          }
+          channel.comments_per_viewer = Number(
+            (
+              validGroups.reduce((acc: number, g: any) => acc + (g.comm_delta / g.max_viewers), 0) /
+              validGroups.length
+            ).toFixed(2)
+          );
         } else {
-          channel.avg_viewers = 0;
-          channel.avg_likes = 0;
-          channel.avg_comments = 0;
           channel.likes_per_viewer = 0;
           channel.comments_per_viewer = 0;
         }
-      } catch (err) {
-        console.error(`Error enriching eternal channel ${channel.channel}:`, err);
+      } else {
+        channel.avg_viewers = 0;
+        channel.avg_likes = 0;
+        channel.avg_comments = 0;
+        channel.likes_per_viewer = 0;
+        channel.comments_per_viewer = 0;
       }
-    })
-  );
+    }
+  } catch (err) {
+    console.error('Error enriching eternal channels in /api/channels:', err);
+  }
 
   // Re-sort channels by avg_viewers DESC
   channels.sort((a: any, b: any) => (b.avg_viewers || 0) - (a.avg_viewers || 0));
@@ -1232,19 +1164,40 @@ app.get('/api/streams', async (req: Request, res: Response) => {
       }
     }
 
-    // 4. Enrich eternal streams with bounded superchats
-    for (const stream of eternalStreams) {
+    // 4. Enrich eternal streams with bounded superchats (single batched query)
+    const eternalVideoIds = [...new Set(eternalStreams.map((s: any) => s.video_id).filter(Boolean))];
+    if (eternalVideoIds.length > 0) {
       try {
-        const scRes = await p.query(
-          `SELECT SUM(CASE WHEN currency = 'ARS' OR UPPER(currency) LIKE '%ARS%' THEN amount ELSE 0 END)::numeric AS superchats_total,
-                  COUNT(id)::int AS sc_count
+        const scEternalRes = await p.query(
+          `SELECT video_id, created_at, amount, currency
            FROM public.superchats
-           WHERE video_id = $1 AND created_at >= $2 AND created_at <= $3`,
-          [stream.video_id, stream.start_date, stream.scrape_date]
+           WHERE video_id = ANY($1)
+             AND created_at >= '${OCT_2026_CUTOFF}'
+             AND (currency = 'ARS' OR UPPER(currency) LIKE '%ARS%')`,
+          [eternalVideoIds]
         );
-        if (scRes.rows && scRes.rows.length > 0) {
-          stream.superchats_total = Number(scRes.rows[0].superchats_total || 0);
-          stream.superchats_count = Number(scRes.rows[0].sc_count || 0);
+        const scByVideo = new Map<string, any[]>();
+        for (const r of scEternalRes.rows || []) {
+          if (!scByVideo.has(r.video_id)) {
+            scByVideo.set(r.video_id, []);
+          }
+          scByVideo.get(r.video_id)!.push(r);
+        }
+        for (const stream of eternalStreams) {
+          const rows = scByVideo.get(stream.video_id) || [];
+          const tStart = stream.start_date ? new Date(stream.start_date).getTime() : 0;
+          const tEnd = stream.scrape_date ? new Date(stream.scrape_date).getTime() : Infinity;
+          let total = 0;
+          let count = 0;
+          for (const r of rows) {
+            const t = r.created_at ? new Date(r.created_at).getTime() : 0;
+            if (t >= tStart && t <= tEnd) {
+              total += Number(r.amount || 0);
+              count += 1;
+            }
+          }
+          stream.superchats_total = total;
+          stream.superchats_count = count;
         }
       } catch {
         // ignore

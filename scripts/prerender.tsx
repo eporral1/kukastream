@@ -2,13 +2,13 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import { Pool } from 'pg';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import App, { InitialPrerenderData } from '../src/App.tsx';
 import { CHANNELS } from '../src/data/mockData.ts';
 import { SITE_NAME } from '../src/config/site.ts';
 import { formatArgentinaTime, isOctober2026OrLater } from '../src/utils/dateFilter.ts';
+import { getPool, executeQuery, resetPool } from '../src/utils/serverDb.ts';
 
 dotenv.config();
 
@@ -17,51 +17,9 @@ const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
 const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
 
-function getBuildPool(): Pool | null {
-  const connectionString =
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||
-    process.env.POSTGRES_PRISMA_URL ||
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.SUPABASE_DATABASE_URL ||
-    process.env.SUPABASE_DB_URL;
-
-  if (connectionString && !connectionString.includes('hjkhjk')) {
-    return new Pool({
-      connectionString,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 4000,
-      idleTimeoutMillis: 5000,
-      max: 2,
-    });
-  }
-
-  const host = process.env.DB_HOST || process.env.POSTGRES_HOST || process.env.PGHOST;
-  const user = process.env.DB_USERNAME || process.env.DB_USER || process.env.POSTGRES_USER || process.env.PGUSER;
-  const password = process.env.DB_PASSWORD || process.env.POSTGRES_PASSWORD || process.env.PGPASSWORD;
-  const database = process.env.DB_DATABASE || process.env.DB_NAME || process.env.POSTGRES_DATABASE || process.env.PGDATABASE;
-  const portNum = parseInt(process.env.DB_PORT || process.env.POSTGRES_PORT || process.env.PGPORT || '5432', 10);
-
-  if (!host || host.includes('hjkhjk') || !password || password.includes('hjkhjk')) {
-    return null;
-  }
-
-  return new Pool({
-    host,
-    user,
-    password,
-    database,
-    port: portNum,
-    ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 4000,
-    idleTimeoutMillis: 5000,
-    max: 2,
-  });
-}
-
 async function fetchPrerenderData(): Promise<InitialPrerenderData> {
   // 1. Try direct PostgreSQL connection during Vercel build if env vars are available
-  const pool = getBuildPool();
+  const pool = getPool();
   if (pool) {
     try {
       const liveQuery = `
@@ -132,13 +90,11 @@ async function fetchPrerenderData(): Promise<InitialPrerenderData> {
         ORDER BY subs DESC NULLS LAST;
       `;
 
-      const [liveRes, recentRes, chRes] = await Promise.all([
-        pool.query(liveQuery).catch(() => ({ rows: [] })),
-        pool.query(recentQuery).catch(() => ({ rows: [] })),
-        pool.query(channelsQuery).catch(() => ({ rows: [] })),
-      ]);
+      const liveRes: any = await executeQuery(liveQuery).catch(() => ({ rows: [] }));
+      const recentRes: any = await executeQuery(recentQuery).catch(() => ({ rows: [] }));
+      const chRes: any = await executeQuery(channelsQuery).catch(() => ({ rows: [] }));
 
-      await pool.end().catch(() => {});
+      resetPool();
 
       const streams = (liveRes.rows || []).filter(
         (s: any) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)
@@ -163,7 +119,7 @@ async function fetchPrerenderData(): Promise<InitialPrerenderData> {
       }
     } catch (err: any) {
       console.warn('[prerender] Direct PostgreSQL query skipped:', err?.message);
-      await pool.end().catch(() => {});
+      resetPool();
     }
   }
 
