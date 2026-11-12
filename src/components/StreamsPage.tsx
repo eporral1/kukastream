@@ -13,6 +13,7 @@ export type StreamSortOption = 'viewers' | 'likes' | 'comments' | 'superchats';
 
 interface StreamsPageProps {
   onNavigateChannel: (channelId: string) => void;
+  onNavigateContact?: () => void;
 }
 
 const cleanQueryString = (raw: string): string => {
@@ -56,6 +57,7 @@ const highlightMatch = (text: string, query: string): React.ReactNode => {
 
 export const StreamsPage: React.FC<StreamsPageProps> = ({
   onNavigateChannel,
+  onNavigateContact,
 }) => {
   const [streams, setStreams] = useState<Stream[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -271,7 +273,8 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
             )}
           </div>
         ) : (
-          filteredStreams.map((stream, index) => {
+          <>
+            {filteredStreams.slice(0, 10).map((stream, index) => {
             let badgeStyle = 'bg-gray-100 text-gray-600';
             if (index === 0) badgeStyle = 'bg-amber-400 text-amber-950 ring-2 ring-amber-300 shadow-xs';
             else if (index === 1) badgeStyle = 'bg-slate-300 text-slate-800 ring-2 ring-slate-200 shadow-xs';
@@ -545,7 +548,16 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                 </div>
               </div>
             );
-          })
+          })}
+          <div className="pt-2 flex justify-center">
+            <button
+              onClick={() => onNavigateContact?.()}
+              className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-sm transition-colors cursor-pointer"
+            >
+              Ver más
+            </button>
+          </div>
+          </>
         )}
       </div>
 

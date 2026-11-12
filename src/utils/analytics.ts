@@ -76,6 +76,9 @@ export function getSectionTitle(pathname: string, channelName?: string): { title
   if (cleanPath === '/superchats') {
     return { title: `${SITE_NAME} - Superchats`, section: 'Superchats' };
   }
+  if (cleanPath === '/usuarios' || cleanPath === '/comentaristas' || cleanPath === '/bots') {
+    return { title: `${SITE_NAME} - Usuarios y Bots`, section: 'Usuarios y Bots' };
+  }
   if (cleanPath.startsWith('/face-off')) {
     return { title: `${SITE_NAME} - Face-Off`, section: 'Face-Off' };
   }

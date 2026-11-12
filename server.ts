@@ -6,6 +6,7 @@ import { GoogleGenAI } from '@google/genai';
 import { isStreamTitleBlocked } from './src/config/streamFilters.ts';
 import { getPool, executeQuery } from './src/utils/serverDb.ts';
 import { generateSitemapXml, generateRobotsTxt, resolveBaseUrl } from './src/utils/sitemap.ts';
+import { fetchGlobalCrossChannelCommentators } from './src/utils/serverCommentators.ts';
 
 dotenv.config();
 
@@ -2773,61 +2774,9 @@ app.get('/api/top-commentators', async (req: Request, res: Response) => {
       return;
     }
 
-    // Global Top Commentators
-    const countRes = await p.query(
-      `SELECT COUNT(*)::int AS total_comments, COUNT(DISTINCT author_id)::int AS unique_commentators 
-       FROM public.comments 
-       WHERE created_at >= '${OCT_2026_CUTOFF}' AND author_id IS NOT NULL AND TRIM(author_id) != ''`
-    );
-    const totalComments = countRes.rows[0]?.total_comments || 0;
-    const uniqueCommentators = countRes.rows[0]?.unique_commentators || 0;
-
-    const topRes = await p.query(
-      `WITH top_authors AS (
-         SELECT 
-           c.author_id,
-           COUNT(c.id)::int AS comment_count,
-           COUNT(DISTINCT c.video_id)::int AS streams_count,
-           MIN(c.created_at) AS first_comment_at,
-           MAX(c.created_at) AS last_comment_at
-         FROM public.comments c
-         WHERE c.created_at >= '${OCT_2026_CUTOFF}'
-           AND c.author_id IS NOT NULL 
-           AND TRIM(c.author_id) != ''
-         GROUP BY c.author_id
-         ORDER BY comment_count DESC
-         LIMIT $1
-       )
-       SELECT 
-         ta.*,
-         (
-           SELECT comment_text 
-           FROM public.comments 
-           WHERE author_id = ta.author_id AND created_at >= '${OCT_2026_CUTOFF}'
-           ORDER BY created_at DESC 
-           LIMIT 1
-         ) AS latest_comment
-       FROM top_authors ta;`,
-      [limit]
-    );
-
-    const commentators = topRes.rows.map((row: any, idx: number) => ({
-      rank: idx + 1,
-      author_id: row.author_id,
-      comment_count: row.comment_count,
-      streams_count: row.streams_count,
-      first_comment_at: row.first_comment_at,
-      last_comment_at: row.last_comment_at,
-      latest_comment: row.latest_comment,
-      percentage: totalComments > 0 ? Number(((row.comment_count / totalComments) * 100).toFixed(1)) : 0,
-    }));
-
-    res.json({
-      success: true,
-      commentators,
-      total_comments: totalComments,
-      unique_commentators: uniqueCommentators,
-    });
+    // Global Top Commentators + Cross-Channel Breakdown + Bot Analysis
+    const globalData = await fetchGlobalCrossChannelCommentators(limit);
+    res.json(globalData);
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message, fallback: false });
   }

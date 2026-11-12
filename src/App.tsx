@@ -11,6 +11,7 @@ import { FaceOffPage } from './components/FaceOffPage';
 import { DevSocialModal } from './components/DevSocialModal';
 import { StreamCommentsModal } from './components/StreamCommentsModal';
 import { ContactPage } from './components/ContactPage';
+import { CrossChatUsersPage } from './components/CrossChatUsersPage';
 import { Footer } from './components/Footer';
 import { CategoryTag, Stream, Channel } from './types';
 import { isOctober2026OrLater, formatArgentinaTime } from './utils/dateFilter';
@@ -378,12 +379,14 @@ export default function App({ initialData }: AppProps) {
           {currentPath === '/streams' ? (
             <StreamsPage
               onNavigateChannel={(handle) => navigate(`/channel/${handle}`)}
+              onNavigateContact={() => navigate('/contacto')}
             />
           ) : currentPath === '/channels' ? (
             /* Route: Canales Directory */
             <ChannelsPage
               channels={channelsList}
               onNavigateChannel={(handle) => navigate(`/channel/${handle}`)}
+              onNavigateContact={() => navigate('/contacto')}
             />
           ) : currentPath === '/superchats' ? (
             /* Route: Superchats Ranking */
@@ -391,6 +394,11 @@ export default function App({ initialData }: AppProps) {
               onNavigateChannel={(handle) => navigate(`/channel/${handle}`)}
               onOpenStreamComments={(streamStub) => setSelectedCommentsStream(streamStub as any)}
               onNavigateContact={() => navigate('/contacto')}
+            />
+          ) : currentPath === '/usuarios' || currentPath === '/comentaristas' || currentPath === '/bots' ? (
+            /* Route: Cross-Chat Commentators & Bot Analysis */
+            <CrossChatUsersPage
+              onNavigateChannel={(handle) => navigate(`/channel/${handle}`)}
             />
           ) : currentPath.startsWith('/face-off') ? (
             /* Route: Face-Off (Head-to-head comparison) */
@@ -495,15 +503,25 @@ export default function App({ initialData }: AppProps) {
                     </p>
                   </div>
                 ) : (
-                  streams.map((stream, idx) => (
-                    <RankingStreamCard
-                      key={stream.video_id}
-                      stream={stream}
-                      index={idx}
-                      onNavigateChannel={(channel) => navigate(`/channel/${channel}`)}
-                      onOpenComments={(s) => setSelectedCommentsStream(s)}
-                    />
-                  ))
+                  <>
+                    {streams.slice(0, 10).map((stream, idx) => (
+                      <RankingStreamCard
+                        key={stream.video_id}
+                        stream={stream}
+                        index={idx}
+                        onNavigateChannel={(channel) => navigate(`/channel/${channel}`)}
+                        onOpenComments={(s) => setSelectedCommentsStream(s)}
+                      />
+                    ))}
+                    <div className="pt-2 flex justify-center">
+                      <button
+                        onClick={() => navigate('/contacto')}
+                        className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-sm transition-colors cursor-pointer"
+                      >
+                        Ver más
+                      </button>
+                    </div>
+                  </>
                 )}
               </div>
 

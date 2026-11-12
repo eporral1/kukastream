@@ -168,6 +168,7 @@ export async function generateSitemapXml(baseUrl: string): Promise<string> {
     { path: '/channels', changefreq: 'hourly', priority: '0.9' },
     { path: '/streams', changefreq: 'hourly', priority: '0.9' },
     { path: '/superchats', changefreq: 'hourly', priority: '0.8' },
+    { path: '/usuarios', changefreq: 'hourly', priority: '0.8' },
     { path: '/face-off', changefreq: 'daily', priority: '0.8' },
     { path: '/contacto', changefreq: 'monthly', priority: '0.6' },
   ];

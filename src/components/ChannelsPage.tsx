@@ -9,6 +9,7 @@ import { trackEvent } from '../utils/analytics';
 interface ChannelsPageProps {
   channels: Channel[];
   onNavigateChannel: (channelId: string) => void;
+  onNavigateContact?: () => void;
 }
 
 type ChannelSortOption = 'viewers' | 'likes' | 'comments';
@@ -16,6 +17,7 @@ type ChannelSortOption = 'viewers' | 'likes' | 'comments';
 export const ChannelsPage: React.FC<ChannelsPageProps> = ({
   channels,
   onNavigateChannel,
+  onNavigateContact,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>('all');
@@ -160,7 +162,8 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
             No se encontraron canales para los filtros seleccionados.
           </div>
         ) : (
-          filteredChannels.map((channel, index) => {
+          <>
+            {filteredChannels.slice(0, 10).map((channel, index) => {
             const hasSuperchats = (channel.superchats_count && channel.superchats_count > 0) ||
               (channel.comments_sample && channel.comments_sample.some(c => c.is_superchat));
 
@@ -370,7 +373,16 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
                 </div>
               </div>
             );
-          })
+          })}
+          <div className="pt-2 flex justify-center">
+            <button
+              onClick={() => onNavigateContact?.()}
+              className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-sm transition-colors cursor-pointer"
+            >
+              Ver más
+            </button>
+          </div>
+          </>
         )}
       </div>
 
