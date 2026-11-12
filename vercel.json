@@ -5,11 +5,11 @@
   "rewrites": [
     {
       "source": "/sitemap.xml",
-      "destination": "/api/sitemap"
+      "destination": "/api/status?type=sitemap"
     },
     {
       "source": "/robots.txt",
-      "destination": "/api/robots"
+      "destination": "/api/status?type=robots"
     },
     {
       "source": "/api/channel/:id",

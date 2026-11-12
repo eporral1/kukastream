@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getPool, executeQuery } from '../src/utils/serverDb.ts';
+import { generateSitemapXml, generateRobotsTxt, resolveBaseUrl } from '../src/utils/sitemap.ts';
 
 function getDiagnosticPool() {
   return getPool();
@@ -12,6 +13,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
+  }
+
+  const reqType = String(req.query?.type || '').toLowerCase();
+  if (reqType === 'sitemap') {
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400');
+    try {
+      const baseUrl = resolveBaseUrl(req.headers as Record<string, string | string[] | undefined>);
+      const xml = await generateSitemapXml(baseUrl);
+      return res.status(200).send(xml);
+    } catch (err: any) {
+      console.error('[api/status?type=sitemap] Error:', err);
+      return res.status(500).send('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>');
+    }
+  }
+
+  if (reqType === 'robots') {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
+    const baseUrl = resolveBaseUrl(req.headers as Record<string, string | string[] | undefined>);
+    return res.status(200).send(generateRobotsTxt(baseUrl));
   }
 
   const connectionString =
