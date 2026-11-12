@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 import { isStreamTitleBlocked } from './src/config/streamFilters.ts';
 import { getPool, executeQuery } from './src/utils/serverDb.ts';
+import { generateSitemapXml, generateRobotsTxt, resolveBaseUrl } from './src/utils/sitemap.ts';
 
 dotenv.config();
 
@@ -3445,6 +3446,28 @@ app.post('/api/contact', async (req: Request, res: Response) => {
       error: 'Ocurrió un error al procesar tu mensaje. Intentá nuevamente.',
     });
   }
+});
+
+// GET /sitemap.xml and /api/sitemap - Dynamic XML Sitemap with all sections and active channels
+app.get(['/sitemap.xml', '/api/sitemap'], async (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400');
+  try {
+    const baseUrl = resolveBaseUrl(req.headers as Record<string, string | string[] | undefined>);
+    const xml = await generateSitemapXml(baseUrl);
+    res.status(200).send(xml);
+  } catch (err: any) {
+    console.error('[sitemap] Error generating sitemap:', err);
+    res.status(500).send('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>');
+  }
+});
+
+// GET /robots.txt and /api/robots - Dynamic robots.txt pointing to /sitemap.xml
+app.get(['/robots.txt', '/api/robots'], (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
+  const baseUrl = resolveBaseUrl(req.headers as Record<string, string | string[] | undefined>);
+  res.status(200).send(generateRobotsTxt(baseUrl));
 });
 
 // In development, mount Vite middleware. In production, serve static dist files.

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useContext, createContext } from 'react';
 import { SuperchatChannelRanking, SuperchatVideoRanking } from '../types';
 import { formatNumber } from '../data/mockData';
 import { formatArgentinaDateTime } from '../utils/dateFilter';
@@ -18,18 +18,47 @@ import {
   BarChart3,
   Calendar,
   Award,
+  Eye,
 } from 'lucide-react';
 
 interface SuperchatsRankingPageProps {
   onNavigateChannel: (channelHandle: string) => void;
   onOpenStreamComments?: (streamStub: any) => void;
+  onNavigateContact?: () => void;
 }
 
 type RankingTab = 'channels' | 'videos';
 
+const UnblurContext = createContext<boolean>(false);
+
+const BlurredAmount: React.FC<{ value: number; size?: 'sm' | 'md' | 'lg' }> = ({
+  value,
+  size = 'lg',
+}) => {
+  const isUnblurred = useContext(UnblurContext);
+  const formatted = formatNumber(value);
+  const blurClass = isUnblurred
+    ? 'blur-none'
+    : size === 'sm'
+    ? 'blur-[3.5px]'
+    : size === 'md'
+    ? 'blur-[5px]'
+    : 'blur-[3.6px]';
+
+  return (
+    <span
+      className={`inline-block tabular-nums select-none pointer-events-none transition-all duration-300 ${blurClass}`}
+      aria-label="Importe oculto"
+    >
+      {formatted}
+    </span>
+  );
+};
+
 export const SuperchatsRankingPage: React.FC<SuperchatsRankingPageProps> = ({
   onNavigateChannel,
   onOpenStreamComments,
+  onNavigateContact,
 }) => {
   const [activeTab, setActiveTab] = useState<RankingTab>('channels');
   const [channels, setChannels] = useState<SuperchatChannelRanking[]>([]);
@@ -39,9 +68,16 @@ export const SuperchatsRankingPage: React.FC<SuperchatsRankingPageProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [isUnblurred, setIsUnblurred] = useState<boolean>(false);
+  const unlockTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     document.title = `${SITE_NAME} - Superchats`;
+    return () => {
+      if (unlockTimeoutRef.current) {
+        window.clearTimeout(unlockTimeoutRef.current);
+      }
+    };
   }, []);
 
   const fetchRanking = async () => {
@@ -107,6 +143,7 @@ export const SuperchatsRankingPage: React.FC<SuperchatsRankingPageProps> = ({
   };
 
   return (
+    <UnblurContext.Provider value={isUnblurred}>
     <div className="space-y-8 animate-in fade-in duration-300 pb-16">
       {/* Header Banner */}
       <div className="bg-gradient-to-br from-amber-500 via-amber-600 to-yellow-600 rounded-3xl p-6 sm:p-10 text-white shadow-lg relative overflow-hidden">
@@ -136,9 +173,32 @@ export const SuperchatsRankingPage: React.FC<SuperchatsRankingPageProps> = ({
               <RefreshCw className={`w-4 h-4 text-amber-700 ${isLoading ? 'animate-spin' : ''}`} />
               <span>Actualizar Ranking</span>
             </button>
-            <div className="text-xs text-amber-100/90 font-medium">
-             
-            </div>
+
+            <a
+              href="/contacto"
+              onClick={(e) => {
+                e.preventDefault();
+                trackEvent('superchats_unlock_click', {
+                  event_category: 'engagement',
+                  event_label: 'Ver Ganancias Completas',
+                });
+                setIsUnblurred(true);
+                if (unlockTimeoutRef.current) {
+                  window.clearTimeout(unlockTimeoutRef.current);
+                }
+                unlockTimeoutRef.current = window.setTimeout(() => {
+                  if (onNavigateContact) {
+                    onNavigateContact();
+                  } else {
+                    window.location.href = '/contacto';
+                  }
+                }, 3000);
+              }}
+              className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all cursor-pointer active:scale-95 border border-white/15"
+            >
+              <Eye className="w-4 h-4 text-amber-400" />
+              <span>Ver Ganancias Completas</span>
+            </a>
           </div>
         </div>
       </div>
@@ -154,7 +214,7 @@ export const SuperchatsRankingPage: React.FC<SuperchatsRankingPageProps> = ({
             <div className="h-8 sm:h-9 w-24 sm:w-28 bg-gray-200 rounded-lg animate-pulse mx-auto mb-1"></div>
           ) : (
             <div className="text-2xl sm:text-3xl font-black text-amber-600 mb-1">
-              ${formatNumber(totalArs)}
+              $<BlurredAmount value={totalArs} size="lg" />
             </div>
           )}
           <div className="text-xs sm:text-sm text-gray-500 font-medium">Total Recaudado (ARS)</div>
@@ -201,7 +261,13 @@ export const SuperchatsRankingPage: React.FC<SuperchatsRankingPageProps> = ({
             <div className="h-8 sm:h-9 w-24 sm:w-28 bg-gray-200 rounded-lg animate-pulse mx-auto mb-1"></div>
           ) : (
             <div className="text-lg sm:text-xl font-black text-purple-600 mb-1 truncate px-2">
-              {videos.length > 0 ? `$${formatNumber(videos[0].total_ars)}` : '-'}
+              {videos.length > 0 ? (
+                <>
+                  $<BlurredAmount value={videos[0].total_ars} size="md" />
+                </>
+              ) : (
+                '-'
+              )}
             </div>
           )}
           <div className="text-xs sm:text-sm text-gray-500 font-medium">
@@ -299,7 +365,7 @@ export const SuperchatsRankingPage: React.FC<SuperchatsRankingPageProps> = ({
                     <div className="mt-3 bg-white border border-slate-200 rounded-xl py-2 px-3 inline-block">
                       <div className="text-xs text-gray-400 font-semibold">Total ARS</div>
                       <div className="text-xl font-black text-amber-600">
-                        ${formatNumber(channels[1].total_ars)}
+                        $<BlurredAmount value={channels[1].total_ars} size="md" />
                       </div>
                     </div>
                     <div className="text-xs text-gray-500 mt-2">
@@ -330,7 +396,7 @@ export const SuperchatsRankingPage: React.FC<SuperchatsRankingPageProps> = ({
                     <div className="mt-3 bg-white border-2 border-amber-200 rounded-xl py-2 px-4 inline-block shadow-xs">
                       <div className="text-xs text-amber-800 font-bold">Total Recaudado ARS</div>
                       <div className="text-2xl font-black text-amber-600">
-                        ${formatNumber(channels[0].total_ars)}
+                        $<BlurredAmount value={channels[0].total_ars} size="lg" />
                       </div>
                     </div>
                     <div className="text-xs text-gray-600 font-semibold mt-2">
@@ -360,7 +426,7 @@ export const SuperchatsRankingPage: React.FC<SuperchatsRankingPageProps> = ({
                     <div className="mt-3 bg-white border border-amber-200 rounded-xl py-2 px-3 inline-block">
                       <div className="text-xs text-gray-400 font-semibold">Total ARS</div>
                       <div className="text-xl font-black text-amber-600">
-                        ${formatNumber(channels[2].total_ars)}
+                        $<BlurredAmount value={channels[2].total_ars} size="md" />
                       </div>
                     </div>
                     <div className="text-xs text-gray-500 mt-2">
@@ -459,7 +525,9 @@ export const SuperchatsRankingPage: React.FC<SuperchatsRankingPageProps> = ({
                             {channelItem.avg_per_superchat ? (
                               <>
                                 <span>•</span>
-                                <span>Promedio: ${formatNumber(channelItem.avg_per_superchat)} ARS</span>
+                                <span>
+                                  Promedio: $<BlurredAmount value={channelItem.avg_per_superchat} size="sm" /> ARS
+                                </span>
                               </>
                             ) : null}
                           </div>
@@ -473,7 +541,7 @@ export const SuperchatsRankingPage: React.FC<SuperchatsRankingPageProps> = ({
                             Total Ganado
                           </div>
                           <div className="text-xl sm:text-2xl font-black text-amber-600">
-                            ${formatNumber(channelItem.total_ars)}{' '}
+                            $<BlurredAmount value={channelItem.total_ars} size="lg" />{' '}
                             <span className="text-xs text-amber-800 font-bold">ARS</span>
                           </div>
                         </div>
@@ -625,12 +693,12 @@ export const SuperchatsRankingPage: React.FC<SuperchatsRankingPageProps> = ({
                             {videoItem.superchats_count} superchats
                           </div>
                           <div className="text-xl sm:text-2xl font-black text-amber-600">
-                            ${formatNumber(videoItem.total_ars)}{' '}
+                            $<BlurredAmount value={videoItem.total_ars} size="lg" />{' '}
                             <span className="text-xs text-amber-800 font-bold">ARS</span>
                           </div>
                           {videoItem.avg_per_superchat ? (
                             <div className="text-[10px] text-gray-400 font-medium">
-                              Promedio: ${formatNumber(videoItem.avg_per_superchat)}
+                              Promedio: $<BlurredAmount value={videoItem.avg_per_superchat} size="sm" />
                             </div>
                           ) : null}
                         </div>
@@ -663,5 +731,6 @@ export const SuperchatsRankingPage: React.FC<SuperchatsRankingPageProps> = ({
         )}
       </div>
     </div>
+    </UnblurContext.Provider>
   );
 };

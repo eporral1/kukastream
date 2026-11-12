@@ -390,6 +390,7 @@ export default function App({ initialData }: AppProps) {
             <SuperchatsRankingPage
               onNavigateChannel={(handle) => navigate(`/channel/${handle}`)}
               onOpenStreamComments={(streamStub) => setSelectedCommentsStream(streamStub as any)}
+              onNavigateContact={() => navigate('/contacto')}
             />
           ) : currentPath.startsWith('/face-off') ? (
             /* Route: Face-Off (Head-to-head comparison) */
