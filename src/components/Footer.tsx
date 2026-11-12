@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, ExternalLink, Heart } from 'lucide-react';
+import { ChevronDown, ChevronUp, ExternalLink, Heart, Mail } from 'lucide-react';
 import { SITE_NAME } from '../config/site';
 
-export const Footer: React.FC = () => {
+interface FooterProps {
+  onNavigate?: (path: string) => void;
+}
+
+export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const faqs = [
@@ -24,8 +28,15 @@ export const Footer: React.FC = () => {
     },
   ];
 
+  const handleContactClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (onNavigate) {
+      e.preventDefault();
+      onNavigate('/contacto');
+    }
+  };
+
   return (
-    <footer className="mt-16 pt-12 pb-16 border-t border-gray-200 text-center">
+    <footer className="mt-16 pt-10 pb-0 border-t border-gray-200 text-center">
       {/* FAQ section */}
       {/*<div className="max-w-2xl mx-auto text-left mb-12 px-4">
         <h3 className="text-xl font-bold text-gray-900 mb-6 text-center">
@@ -61,7 +72,18 @@ export const Footer: React.FC = () => {
         </div>
       </div>*/}
 
-      <div className="max-w-7xl mx-auto px-4 text-xs sm:text-sm text-gray-500 space-y-3">
+      <div className="max-w-7xl mx-auto px-4 text-xs sm:text-sm text-gray-500 space-y-4">
+        <div className="flex items-center justify-center">
+          <a
+            href="/contacto"
+            onClick={handleContactClick}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white hover:bg-gray-50 text-gray-700 hover:text-blue-600 font-semibold border border-gray-200/90 shadow-2xs hover:shadow-xs transition-all cursor-pointer"
+          >
+            <Mail className="w-4 h-4 text-blue-600" />
+            <span>Contacto</span>
+          </a>
+        </div>
+
         {/*<p className="font-medium text-gray-600">
           {SITE_NAME} &bull; 
         </p>*/}

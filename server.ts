@@ -4,7 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 import { isStreamTitleBlocked } from './src/config/streamFilters.ts';
-import { getPool } from './src/utils/serverDb.ts';
+import { getPool, executeQuery } from './src/utils/serverDb.ts';
 
 dotenv.config();
 
@@ -3311,6 +3311,139 @@ Desglose cronológico detallado de todos los bloques temáticos de la transmisi�
   } catch (err: any) {
     console.error('Error generating captions:', err);
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/contact - Contact form submission (stores in PostgreSQL + Resend / Webhook if configured)
+app.post('/api/contact', async (req: Request, res: Response) => {
+  try {
+    const body = req.body || {};
+    const name = String(body.name || '').trim();
+    const email = String(body.email || '').trim();
+    const subject = String(body.subject || 'Consulta desde la web').trim();
+    const message = String(body.message || '').trim();
+    const honeypot = String(body.website || body._gotcha || '').trim();
+
+    if (honeypot) {
+      res.status(200).json({ ok: true, success: true });
+      return;
+    }
+
+    if (!name || !email || !message) {
+      res.status(400).json({
+        ok: false,
+        error: 'Por favor completá tu nombre, email y mensaje.',
+      });
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      res.status(400).json({
+        ok: false,
+        error: 'Por favor ingresá una dirección de correo electrónico válida.',
+      });
+      return;
+    }
+
+    let savedToDb = false;
+    let sentEmail = false;
+
+    const p = getPool();
+    if (p) {
+      try {
+        await executeQuery(`
+          CREATE TABLE IF NOT EXISTS public.contacts (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL,
+            subject TEXT,
+            message TEXT NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+          );
+        `);
+        await executeQuery(
+          `INSERT INTO public.contacts (name, email, subject, message, created_at)
+           VALUES ($1, $2, $3, $4, NOW())`,
+          [name.slice(0, 200), email.slice(0, 200), subject.slice(0, 300), message.slice(0, 5000)]
+        );
+        savedToDb = true;
+      } catch (dbErr: any) {
+        console.warn('[api/contact] Error guardando en PostgreSQL:', dbErr?.message);
+      }
+    }
+
+    const resendApiKey = process.env.RESEND_API_KEY;
+    const recipientEmail =
+      process.env.CONTACT_EMAIL ||
+      process.env.MAIL_TO ||
+      process.env.ADMIN_EMAIL ||
+      'estebanporral@gmail.com';
+    const fromEmail =
+      process.env.RESEND_FROM ||
+      process.env.MAIL_FROM_ADDRESS ||
+      'Contacto Web <onboarding@resend.dev>';
+
+    if (resendApiKey) {
+      try {
+        const resendRes = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${resendApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: fromEmail,
+            to: [recipientEmail],
+            reply_to: email,
+            subject: `[Contacto Web] ${subject} - ${name}`,
+            text: `Nuevo mensaje de contacto:\n\nNombre: ${name}\nEmail: ${email}\nMotivo: ${subject}\n\nMensaje:\n${message}`,
+          }),
+        });
+        if (resendRes.ok) {
+          sentEmail = true;
+        }
+      } catch (emailErr: any) {
+        console.warn('[api/contact] Resend error:', emailErr?.message);
+      }
+    }
+
+    const webhookUrl = process.env.CONTACT_WEBHOOK_URL || process.env.FORMSPREE_URL;
+    if (webhookUrl) {
+      try {
+        const whRes = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            name,
+            email,
+            subject,
+            message,
+            source: process.env.SITE_NAME || 'StreamData',
+            created_at: new Date().toISOString(),
+          }),
+        });
+        if (whRes.ok) {
+          sentEmail = true;
+        }
+      } catch (whErr: any) {
+        console.warn('[api/contact] Webhook error:', whErr?.message);
+      }
+    }
+
+    res.status(200).json({
+      ok: true,
+      success: true,
+      savedToDb,
+      sentEmail,
+      message: 'Tu mensaje fue enviado correctamente.',
+    });
+  } catch (err: any) {
+    console.error('[api/contact] Error:', err);
+    res.status(500).json({
+      ok: false,
+      error: 'Ocurrió un error al procesar tu mensaje. Intentá nuevamente.',
+    });
   }
 });
 

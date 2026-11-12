@@ -79,6 +79,9 @@ export function getSectionTitle(pathname: string, channelName?: string): { title
   if (cleanPath.startsWith('/face-off')) {
     return { title: `${SITE_NAME} - Face-Off`, section: 'Face-Off' };
   }
+  if (cleanPath === '/contacto' || cleanPath === '/contact') {
+    return { title: `${SITE_NAME} - Contacto`, section: 'Contacto' };
+  }
   if (cleanPath.startsWith('/channel/')) {
     const fallbackHandle = decodeURIComponent(cleanPath.replace('/channel/', ''));
     const label = channelName || fallbackHandle || 'Canal';

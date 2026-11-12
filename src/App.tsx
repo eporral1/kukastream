@@ -10,6 +10,7 @@ import { SuperchatsRankingPage } from './components/SuperchatsRankingPage';
 import { FaceOffPage } from './components/FaceOffPage';
 import { DevSocialModal } from './components/DevSocialModal';
 import { StreamCommentsModal } from './components/StreamCommentsModal';
+import { ContactPage } from './components/ContactPage';
 import { Footer } from './components/Footer';
 import { CategoryTag, Stream, Channel } from './types';
 import { isOctober2026OrLater, formatArgentinaTime } from './utils/dateFilter';
@@ -396,6 +397,9 @@ export default function App({ initialData }: AppProps) {
               channelsList={channelsList}
               onNavigateChannel={(handle) => navigate(`/channel/${handle}`)}
             />
+          ) : currentPath === '/contacto' || currentPath === '/contact' ? (
+            /* Route: Contact Page */
+            <ContactPage onBack={() => navigate('/')} />
           ) : isChannelDetail && currentChannel ? (
             /* Route: Channel Detail */
             <ChannelDetailPage
@@ -705,7 +709,7 @@ export default function App({ initialData }: AppProps) {
           )}
 
           {/* Footer Component */}
-          <Footer />
+          <Footer onNavigate={navigate} />
         </main>
       </div>
 

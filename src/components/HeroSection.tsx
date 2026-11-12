@@ -45,7 +45,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
       {/* Subtitle for SEO & Users */}
       <p className="text-sm sm:text-base text-gray-600 max-w-2xl mx-auto mb-8 leading-relaxed">
-        Ranking en vivo, métricas de audiencia en tiempo real, superchats y estadísticas de canales de streaming en Argentina.
+        Ranking en vivo, métricas de audiencia en tiempo real, superchats y estadísticas de canales de streaming <b>políticos</b> de Argentina.
       </p>
 
       {/* CTA Buttons */}
