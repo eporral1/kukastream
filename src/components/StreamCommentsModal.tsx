@@ -3,6 +3,8 @@ import { Stream, DbComment, DbSuperchat } from '../types';
 import { formatNumber } from '../data/mockData';
 import { isOctober2026OrLater } from '../utils/dateFilter';
 import { TopCommentatorsList } from './TopCommentatorsList';
+import { PoliticalCompassView } from './PoliticalCompassView';
+import { PoliticalAnalysisResult } from '../utils/politicalAnalysis';
 import { trackEvent } from '../utils/analytics';
 import {
   MessageSquare,
@@ -22,6 +24,7 @@ import {
   Copy,
   Crown,
   Filter,
+  Compass,
 } from 'lucide-react';
 
 // Variable booleana para ocultar/comentar temporalmente la consulta con IA
@@ -65,14 +68,30 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
     }
   }, [isOpen, stream]);
 
-  // Captions state
-  const [captions, setCaptions] = useState<string | null>(stream.captions || null);
+  // Political Tendency & Compass state (Análisis de publicidad comentado)
+  const [politicalAnalysis, setPoliticalAnalysis] = useState<PoliticalAnalysisResult | null>(() => {
+    if (!stream.political_analysis) return null;
+    try {
+      const parsed =
+        typeof stream.political_analysis === 'string'
+          ? JSON.parse(stream.political_analysis)
+          : stream.political_analysis;
+      if (parsed && parsed.compass && Array.isArray(parsed.sectors)) {
+        return parsed as PoliticalAnalysisResult;
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  });
+  const [politicalCached, setPoliticalCached] = useState<boolean>(Boolean(stream.political_analysis));
+  // const [captions, setCaptions] = useState<string | null>(stream.captions || null);
   const [captionsLoading, setCaptionsLoading] = useState(false);
   const [captionsError, setCaptionsError] = useState<string | null>(null);
 
-  const handleGenerateCaptions = async (force = false) => {
+  const handleGeneratePoliticalAnalysis = useCallback(async (force = false) => {
     if (!stream.video_id || captionsLoading) return;
-    trackEvent('generate_stream_captions', {
+    trackEvent('generate_political_analysis', {
       video_id: stream.video_id,
       channel: stream.channel,
       force,
@@ -86,17 +105,18 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
         body: JSON.stringify({ video_id: stream.video_id, force }),
       });
       const data = await res.json();
-      if (data.success) {
-        setCaptions(data.captions);
+      if (data.success && data.political_analysis) {
+        setPoliticalAnalysis(data.political_analysis);
+        setPoliticalCached(Boolean(data.cached));
       } else {
-        setCaptionsError(data.error || 'Error al obtener la transcripción.');
+        setCaptionsError(data.error || 'Error al obtener el análisis de tendencia política.');
       }
     } catch (err: any) {
       setCaptionsError(err.message || 'Error de conexión.');
     } finally {
       setCaptionsLoading(false);
     }
-  };
+  }, [stream.video_id, stream.channel, captionsLoading]);
 
   // AI Query state
   const [aiQuestion, setAiQuestion] = useState('');
@@ -382,6 +402,7 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
             </span>
           </button>
 
+          {/* Botón de Análisis de Publicidad comentado por pedido del usuario:
           <button
             onClick={() => setActiveTab('captions')}
             className={`py-3 px-3.5 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
@@ -392,6 +413,24 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
           >
             <Youtube className="w-4 h-4 text-purple-600" />
             <span>Transcripción & Anuncios</span>
+          </button>
+          */}
+
+          <button
+            onClick={() => {
+              setActiveTab('captions');
+              if (!politicalAnalysis && !captionsLoading) {
+                handleGeneratePoliticalAnalysis(false);
+              }
+            }}
+            className={`py-3 px-3.5 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'captions'
+                ? 'border-indigo-600 text-indigo-700 bg-white shadow-2xs rounded-t-lg -mb-px'
+                : 'border-transparent text-gray-600 hover:text-indigo-700 hover:bg-indigo-50/40'
+            }`}
+          >
+            <Compass className="w-4 h-4 text-indigo-600" />
+            <span>Tendencia Política & Compás</span>
           </button>
 
           {/* Consulta con IA comentada temporalmente por pedido del usuario */}
@@ -797,115 +836,27 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
           </div>
         )}
 
-        {/* Tab 4: Transcripción & Anuncios */}
+        {/* Tab 4: Análisis de Tendencia Política y Compás (Análisis de publicidad comentado) */}
         {activeTab === 'captions' && (
+          <PoliticalCompassView
+            analysis={politicalAnalysis}
+            cached={politicalCached}
+            loading={captionsLoading}
+            error={captionsError}
+            onAnalyze={(force) => handleGeneratePoliticalAnalysis(Boolean(force))}
+          />
+        )}
+
+        {/*
+        // =====================================================================
+        // COMENTADO: Tab de Transcripción y Detección Exhaustiva de Publicidad
+        // =====================================================================
+        {activeTab === 'captions_ads_disabled' && (
           <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-purple-50/70 p-4 rounded-xl border border-purple-200 shadow-2xs">
-              <div className="space-y-1">
-                <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                  <Youtube className="w-4 h-4 text-purple-600" />
-                  Transcripción y Detección Exhaustiva de Publicidad
-                </h4>
-                <p className="text-xs text-gray-600">
-                  Detecta todos los PNTs hablados, banners, cupones, códigos de descuento y tandas comerciales de la transmisión, sincronizando el reloj en pantalla con las mediciones oficiales.
-                </p>
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-100/80 text-purple-900 rounded-md text-[11px] font-semibold border border-purple-200 mt-1">
-                  <Clock className="w-3.5 h-3.5 text-purple-700" />
-                  <span>Sincronización dual: <strong>[HH:MM:SS de video | HH:MM hs en pantalla]</strong></span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => handleGenerateCaptions(Boolean(captions))}
-                  disabled={captionsLoading}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  {captionsLoading ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Sincronizando y procesando...</span>
-                    </>
-                  ) : captions ? (
-                    <>
-                      <RefreshCw className="w-4 h-4" />
-                      <span>Reanalizar y Sincronizar Reloj</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" />
-                      <span>Obtener transcripción y analizar anuncios</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {captionsError && (
-              <div className="p-3 bg-red-50 text-red-700 rounded-xl text-xs border border-red-200">
-                {captionsError}
-              </div>
-            )}
-
-            {captionsLoading && (
-              <div className="p-6 bg-white rounded-xl border border-purple-100 shadow-xs flex items-center space-x-3.5 animate-pulse">
-                <RefreshCw className="w-6 h-6 text-purple-600 animate-spin shrink-0" />
-                <div className="space-y-1 text-xs">
-                  <p className="font-bold text-gray-900 text-sm">Analizando transmisión y sincronizando hora en pantalla con Gemini...</p>
-                  <p className="text-gray-500">
-                    Procesando diálogo de los conductores, transiciones discursivas, PNTs, banners en pantalla, cupones de descuento y tandas comerciales.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {captions && !captionsLoading ? (
-              <div className="bg-white p-4 sm:p-5 rounded-xl border border-gray-200 shadow-xs space-y-3">
-                <div className="flex items-center justify-between border-b border-gray-100 pb-3 flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                      Transcripción y Anuncios (Guardado en Tabla Live)
-                    </span>
-                    <span className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">
-                      Sincronizado con mediciones
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleGenerateCaptions(true)}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-purple-700 hover:text-purple-800 bg-purple-50 hover:bg-purple-100 px-2.5 py-1 rounded-lg border border-purple-200 transition-colors cursor-pointer"
-                      title="Volver a analizar y sobrescribir con reloj sincronizado"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Reanalizar</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(captions);
-                        setCopied(true);
-                        setTimeout(() => setCopied(false), 2000);
-                      }}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600 hover:text-purple-600 transition-colors cursor-pointer bg-gray-50 hover:bg-purple-50 px-2.5 py-1 rounded-lg border border-gray-200"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>{copied ? '¡Copiado!' : 'Copiar texto'}</span>
-                    </button>
-                  </div>
-                </div>
-                <div className="text-xs sm:text-sm text-gray-800 leading-relaxed font-normal whitespace-pre-wrap select-text bg-gray-50 p-4 rounded-xl border border-gray-100 max-h-[480px] overflow-y-auto font-sans">
-                  {captions}
-                </div>
-              </div>
-            ) : (
-              !captionsLoading && (
-                <div className="text-center py-12 text-gray-400 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
-                  <Youtube className="w-10 h-10 mx-auto mb-2 text-gray-300" />
-                  <p className="text-xs font-medium">Aún no se ha generado la transcripción para este video.</p>
-                  <p className="text-[11px] text-gray-400 mt-1">Haz clic en el botón superior para sincronizar las marcas de tiempo con el reloj en pantalla y detectar todos los anuncios.</p>
-                </div>
-              )
-            )}
+            ...
           </div>
         )}
+        */}
 
         {/* Modal Footer */}
         <div className="p-3.5 border-t border-gray-100 bg-gray-50 flex items-center justify-between text-xs text-gray-500 shrink-0">

@@ -175,7 +175,16 @@ async function enrichEternalChannels(channels: any[]) {
 
   try {
     const titleGroupsRes: any = await executeQuery(
-      `SELECT channel_id,
+      `WITH last_7_business_days AS (
+         SELECT DISTINCT scrape_date::date AS bday
+         FROM public.live
+         WHERE scrape_date >= '${OCT_2026_CUTOFF}'
+           AND concurrent_viewers > 0
+           AND EXTRACT(ISODOW FROM scrape_date) BETWEEN 1 AND 5
+         ORDER BY bday DESC
+         LIMIT 7
+       )
+       SELECT channel_id,
               video_title,
               video_id,
               MIN(scrape_date) AS start_time,
@@ -189,7 +198,8 @@ async function enrichEternalChannels(channels: any[]) {
               COUNT(*) AS point_count
        FROM public.minute
        WHERE channel_id = ANY($1)
-         AND scrape_date >= '${OCT_2026_CUTOFF}'
+         AND scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
+         AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
          AND video_title IS NOT NULL AND video_title <> ''
        GROUP BY channel_id, video_title, video_id
        ORDER BY MAX(scrape_date) DESC`,
@@ -203,7 +213,7 @@ async function enrichEternalChannels(channels: any[]) {
         byChannel.set(chId, []);
       }
       const list = byChannel.get(chId)!;
-      if (list.length >= 25) continue;
+      if (list.length >= 100) continue;
 
       const maxLikes = Number(row.max_likes || 0);
       const minLikes = Number(row.min_likes || 0);
@@ -308,7 +318,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  const cacheKey = 'api:channels:all';
+  const cacheKey = 'api:channels:v2:7bdays';
   const cached = getCachedResponse(cacheKey);
   if (cached) {
     res.setHeader('Cache-Control', 'public, s-maxage=20, stale-while-revalidate=40');
@@ -317,7 +327,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     let query = `
-      WITH video_stats AS (
+      WITH last_7_business_days AS (
+        SELECT DISTINCT scrape_date::date AS bday
+        FROM public.live
+        WHERE scrape_date >= '${OCT_2026_CUTOFF}'
+          AND concurrent_viewers > 0
+          AND EXTRACT(ISODOW FROM scrape_date) BETWEEN 1 AND 5
+        ORDER BY bday DESC
+        LIMIT 7
+      ),
+      video_stats AS (
         SELECT 
           m.channel_id,
           m.video_id,
@@ -325,7 +344,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           MAX(m.likes) AS max_likes,
           MAX(m.comments_count) AS max_comments
         FROM public.minute m
-        WHERE m.scrape_date >= '${OCT_2026_CUTOFF}'
+        WHERE m.scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
+          AND m.scrape_date::date IN (SELECT bday FROM last_7_business_days)
         GROUP BY m.channel_id, m.video_id
         HAVING MAX(m.concurrent_viewers) > 0
       ),
@@ -336,7 +356,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           SELECT video_id, channel_id,
                  MAX(concurrent_viewers) AS max_viewers
           FROM public.live
-          WHERE scrape_date >= '${OCT_2026_CUTOFF}' AND concurrent_viewers > 0
+          WHERE scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
+            AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
+            AND concurrent_viewers > 0
           GROUP BY video_id, channel_id
         ) sub
         GROUP BY channel_id
@@ -370,14 +392,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       result = await executeQuery(query);
     } catch {
       query = `
-        WITH live_stats AS (
+        WITH last_7_business_days AS (
+          SELECT DISTINCT scrape_date::date AS bday
+          FROM public.live
+          WHERE scrape_date >= '${OCT_2026_CUTOFF}'
+            AND concurrent_viewers > 0
+            AND EXTRACT(ISODOW FROM scrape_date) BETWEEN 1 AND 5
+          ORDER BY bday DESC
+          LIMIT 7
+        ),
+        live_stats AS (
           SELECT 
             channel_id,
             video_id,
             MAX(concurrent_viewers) AS max_viewers,
             MAX(current_likes) AS max_likes
           FROM public.live
-          WHERE scrape_date >= '${OCT_2026_CUTOFF}' AND concurrent_viewers > 0
+          WHERE scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
+            AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
+            AND concurrent_viewers > 0
           GROUP BY channel_id, video_id
         ),
         channel_ratios AS (

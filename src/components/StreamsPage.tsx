@@ -219,7 +219,7 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
             <span>
               {cleanSearchTerm
                 ? `Resultados de búsqueda: ${filteredStreams.length} videos`
-                : `Top ${filteredStreams.length} streams`}
+                : 'Últimos 7 días hábiles'}
             </span>
             {isLoading && <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />}
           </div>

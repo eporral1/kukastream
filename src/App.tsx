@@ -85,6 +85,37 @@ export default function App({ initialData }: AppProps) {
         setStreams(liveList);
         setRecentStreams(recentList);
 
+        const missingIds = Array.from(
+          new Set(
+            [...liveList, ...recentList]
+              .filter((s: Stream) => s.video_id && !s.unique_commentators)
+              .map((s: Stream) => s.video_id)
+          )
+        );
+        if (missingIds.length > 0) {
+          fetch(`/api/unique-commentators?video_ids=${encodeURIComponent(missingIds.join(','))}`)
+            .then((r) => r.json())
+            .then((ucData) => {
+              if (ucData?.success && ucData.counts) {
+                setStreams((prev) =>
+                  prev.map((s) =>
+                    s.video_id && ucData.counts[s.video_id] !== undefined
+                      ? { ...s, unique_commentators: Number(ucData.counts[s.video_id] || 0) }
+                      : s
+                  )
+                );
+                setRecentStreams((prev) =>
+                  prev.map((s) =>
+                    s.video_id && ucData.counts[s.video_id] !== undefined
+                      ? { ...s, unique_commentators: Number(ucData.counts[s.video_id] || 0) }
+                      : s
+                  )
+                );
+              }
+            })
+            .catch(() => {});
+        }
+
         // Find the most recent scrape_date among all retrieved streams
         const allDates = [...liveList, ...recentList]
           .map((s: any) => s.scrape_date)
@@ -330,7 +361,7 @@ export default function App({ initialData }: AppProps) {
         />
 
         {/* Main Content Area */}
-        <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full">
+        <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full">
           {/* DB error banner if any */}
           {dbError && !isDbErrorDismissed && (
             <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex flex-col gap-2.5 text-amber-900 text-sm shadow-sm relative animate-in fade-in duration-200">
@@ -547,8 +578,10 @@ export default function App({ initialData }: AppProps) {
                       const rPeak = stream.max_viewers || stream.max_users || stream.concurrent_viewers || stream.avg_viewers || 0;
                       const rLikes = Number(stream.current_likes || 0);
                       const rComments = Number(stream.comments_count || 0);
+                      const rUniqueUsers = Number(stream.unique_commentators || 0);
                       const rLikesRatio = rPeak > 0 ? (rLikes / rPeak) : 0;
                       const rCommentsRatio = rPeak > 0 ? (rComments / rPeak) : 0;
+                      const rUniqueRatio = rPeak > 0 ? (rUniqueUsers / rPeak) : 0;
 
                       return (
                         <div
@@ -624,7 +657,7 @@ export default function App({ initialData }: AppProps) {
                             </div>
                           </div>
 
-                          <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-6 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 flex-wrap sm:flex-nowrap">
+                          <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 flex-wrap sm:flex-nowrap">
                             <div className="text-right min-w-[70px]">
                               <div className="text-[11px] text-gray-400 font-semibold">ESPECTADORES</div>
                               <div className="text-base sm:text-lg font-extrabold text-gray-900">
@@ -633,7 +666,7 @@ export default function App({ initialData }: AppProps) {
                               <div className="text-[10px] text-gray-400">PICO</div>
                             </div>
 
-                            <div className="text-right min-w-[75px]">
+                            <div className="text-right min-w-[70px]">
                               <div className="text-[11px] text-gray-400 font-semibold">LIKES</div>
                               <div className="text-base sm:text-lg font-extrabold text-rose-500">
                                 {new Intl.NumberFormat('es-AR').format(rLikes)}
@@ -643,13 +676,23 @@ export default function App({ initialData }: AppProps) {
                               </div>
                             </div>
 
-                            <div className="text-right min-w-[75px]">
+                            <div className="text-right min-w-[70px]">
                               <div className="text-[11px] text-gray-400 font-semibold">MENSAJES</div>
                               <div className="text-base sm:text-lg font-extrabold text-amber-500">
                                 {new Intl.NumberFormat('es-AR').format(rComments)}
                               </div>
                               <div className="text-[10px] text-gray-500 font-medium" title="Mensajes por espectador pico del episodio">
                                 {rCommentsRatio > 0 ? rCommentsRatio.toFixed(2) : '0.00'} / esp
+                              </div>
+                            </div>
+
+                            <div className="text-right min-w-[85px]">
+                              <div className="text-[11px] text-gray-400 font-semibold">USUARIOS CHAT</div>
+                              <div className="text-base sm:text-lg font-extrabold text-indigo-600">
+                                {new Intl.NumberFormat('es-AR').format(rUniqueUsers)}
+                              </div>
+                              <div className="text-[10px] text-gray-500 font-medium" title="Usuarios únicos en el chat por espectador pico">
+                                {rUniqueRatio > 0 ? `${rUniqueRatio.toFixed(2)} / esp` : 'ÚNICOS'}
                               </div>
                             </div>
 

@@ -331,7 +331,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     tag = tagParam.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
 
-  const cacheKey = `api:live:${tag || 'all'}`;
+  const cacheKey = `api:live:v2:${tag || 'all'}`;
   const cached = getCachedResponse(cacheKey);
   if (cached) {
     res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
@@ -541,6 +541,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       } catch (e) {
         console.error('Error fetching peak viewers for streams:', e);
+      }
+
+      try {
+        const uniqRes: any = await executeQuery(
+          `SELECT video_id, COUNT(DISTINCT author_id)::int AS unique_commentators
+           FROM public.comments
+           WHERE video_id = ANY($1)
+             AND created_at >= '2026-10-01 00:00:00'
+             AND author_id IS NOT NULL
+             AND TRIM(author_id) != ''
+           GROUP BY video_id`,
+          [allVideoIds]
+        );
+        const uniqMap = new Map<string, number>();
+        for (const row of uniqRes.rows || []) {
+          uniqMap.set(row.video_id, Number(row.unique_commentators || 0));
+        }
+        for (const stream of liveResult.rows) {
+          stream.unique_commentators = uniqMap.get(stream.video_id) || 0;
+        }
+        for (const stream of recentResult.rows) {
+          stream.unique_commentators = uniqMap.get(stream.video_id) || 0;
+        }
+      } catch (e) {
+        console.error('Error fetching unique commentators for streams:', e);
       }
     }
 

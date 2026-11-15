@@ -8,7 +8,7 @@ import { HeatmapTable } from './HeatmapTable';
 import { StreamLineChart } from './StreamLineChart';
 import { StreamCommentsModal } from './StreamCommentsModal';
 import { isOctober2026OrLater, formatArgentinaDateTime } from '../utils/dateFilter';
-import { ArrowLeft, ExternalLink, Calendar, Heart, Eye, MessageSquare, Radio, RefreshCw, AlertCircle, Swords } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Calendar, Heart, Eye, MessageSquare, Users, Radio, RefreshCw, AlertCircle, Swords } from 'lucide-react';
 import { SITE_NAME } from '../config/site';
 import { trackEvent } from '../utils/analytics';
 
@@ -108,11 +108,43 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
             });
           }
           const liveData = data.live;
-          setLiveStream(liveData?.live === 'live' && (isOctober2026OrLater(liveData.scrape_date) || isOctober2026OrLater(liveData.start_date)) ? liveData : undefined);
-          const streamList = data.streams || data.history || [];
-          setPastStreams(streamList.filter((s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)));
+          const activeLive = liveData?.live === 'live' && (isOctober2026OrLater(liveData.scrape_date) || isOctober2026OrLater(liveData.start_date)) ? liveData : undefined;
+          const streamList: Stream[] = (data.streams || data.history || []).filter(
+            (s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)
+          );
+          setLiveStream(activeLive);
+          setPastStreams(streamList);
           setHeatmapData(data.hour_day_data || []);
           setAvgData(data.avg_data || []);
+
+          // Ensure unique_commentators (author_id count from public.comments) is populated even if response was cached
+          const videoIdsToCheck = Array.from(
+            new Set([
+              ...(activeLive?.video_id && !activeLive.unique_commentators ? [activeLive.video_id] : []),
+              ...streamList.filter((s) => s.video_id && !s.unique_commentators).map((s) => s.video_id),
+            ])
+          );
+          if (videoIdsToCheck.length > 0) {
+            fetch(`/api/unique-commentators?video_ids=${encodeURIComponent(videoIdsToCheck.join(','))}`)
+              .then((r) => r.json())
+              .then((ucData) => {
+                if (ucData?.success && ucData.counts) {
+                  if (activeLive?.video_id && ucData.counts[activeLive.video_id] !== undefined) {
+                    setLiveStream((prev) =>
+                      prev ? { ...prev, unique_commentators: Number(ucData.counts[activeLive.video_id] || 0) } : prev
+                    );
+                  }
+                  setPastStreams((prev) =>
+                    prev.map((s) =>
+                      s.video_id && ucData.counts[s.video_id] !== undefined
+                        ? { ...s, unique_commentators: Number(ucData.counts[s.video_id] || 0) }
+                        : s
+                    )
+                  );
+                }
+              })
+              .catch(() => {});
+          }
         } else {
           setChannelError(data?.error || data?.message || `Canal '${channelIdentifier}' no encontrado`);
           setPastStreams([]); setHeatmapData([]); setAvgData([]);
@@ -313,68 +345,79 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
           </div>
 
           <div className="bg-white rounded-xl shadow-xs border border-gray-100 p-6 space-y-6">
-            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 pb-6 border-b border-gray-100">
-              <div className="space-y-2">
-                <h4 className="text-lg font-bold text-gray-900">
-                  {liveStream.video_title || `${channel.channel_name} Transmitiendo En Vivo`}
-                </h4>
-                <div className="flex items-center gap-3 text-sm text-gray-500 flex-wrap">
-                  <span className="flex items-center gap-1.5 text-red-600 font-bold bg-red-50 px-2.5 py-0.5 rounded-md border border-red-100">
-                    <span className="w-2 h-2 rounded-full bg-red-600 animate-ping"></span>
-                    En Directo
-                  </span>
-                  <span>•</span>
-                  <span>Iniciado: {formatArgentinaDateTime(liveStream.start_date) || 'Hoy'}</span>
-                  {liveStream.superchats && liveStream.superchats.length > 0 && (
-                    <>
-                      <span>•</span>
-                      <span className="inline-flex items-center gap-1 bg-amber-500 text-white px-2.5 py-0.5 rounded-full text-xs font-extrabold shadow-xs">
-                        <span>💰 Superchats:</span>
-                        <span>
-                          {liveStream.superchats
-                            .map((sc) => `$${formatNumber(sc.total_amount || 0)} ${sc.currency}`)
-                            .join(', ')}
+            <div className="space-y-4 pb-6 border-b border-gray-100">
+              <h4 className="text-lg sm:text-xl font-bold text-gray-900 w-full">
+                {liveStream.video_title || `${channel.channel_name} Transmitiendo En Vivo`}
+              </h4>
+
+              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                <div className="space-y-2.5">
+                  <div className="flex items-center gap-3 text-sm text-gray-500 flex-wrap">
+                    <span className="flex items-center gap-1.5 text-red-600 font-bold bg-red-50 px-2.5 py-0.5 rounded-md border border-red-100">
+                      <span className="w-2 h-2 rounded-full bg-red-600 animate-ping"></span>
+                      En Directo
+                    </span>
+                    <span>•</span>
+                    <span>Iniciado: {formatArgentinaDateTime(liveStream.start_date) || 'Hoy'}</span>
+                    {liveStream.superchats && liveStream.superchats.length > 0 && (
+                      <>
+                        <span>•</span>
+                        <span className="inline-flex items-center gap-1 bg-amber-500 text-white px-2.5 py-0.5 rounded-full text-xs font-extrabold shadow-xs">
+                          <span>💰 Superchats:</span>
+                          <span>
+                            {liveStream.superchats
+                              .map((sc) => `$${formatNumber(sc.total_amount || 0)} ${sc.currency}`)
+                              .join(', ')}
+                          </span>
                         </span>
-                      </span>
-                    </>
-                  )}
-                </div>
-
-                {/* Button Ver Comments for live stream */}
-                <div className="pt-2">
-                  <button
-                    onClick={() => setSelectedStreamForComments(liveStream)}
-                    className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Mensajes & Superchats</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-6">
-                <div className="text-center">
-                  <div className="text-xs text-gray-400 font-semibold mb-0.5">ESPECTADORES</div>
-                  <div className="text-3xl font-black text-gray-900">
-                    {formatNumber(liveStream.concurrent_viewers)}
+                      </>
+                    )}
                   </div>
-                  <div className="text-[10px] text-gray-500">ACTUALES</div>
+
+                  {/* Button Ver Comments for live stream */}
+                  <div>
+                    <button
+                      onClick={() => setSelectedStreamForComments(liveStream)}
+                      className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Mensajes & Superchats</span>
+                    </button>
+                  </div>
                 </div>
 
-                <div className="text-center">
-                  <div className="text-xs text-gray-400 font-semibold mb-0.5">LIKES</div>
-                  <div className="text-3xl font-black text-rose-500">
-                    {formatNumber(liveStream.current_likes)}
+                <div className="flex items-center gap-6 shrink-0">
+                  <div className="text-center">
+                    <div className="text-xs text-gray-400 font-semibold mb-0.5 whitespace-nowrap">ESPECTADORES</div>
+                    <div className="text-3xl font-black text-gray-900">
+                      {formatNumber(liveStream.concurrent_viewers)}
+                    </div>
+                    <div className="text-[10px] text-gray-500">ACTUALES</div>
                   </div>
-                  <div className="text-[10px] text-gray-500">TOTALES</div>
-                </div>
 
-                <div className="text-center">
-                  <div className="text-xs text-gray-400 font-semibold mb-0.5">MENSAJES</div>
-                  <div className="text-3xl font-black text-amber-500">
-                    {formatNumber(liveStream.comments_count || 0)}
+                  <div className="text-center">
+                    <div className="text-xs text-gray-400 font-semibold mb-0.5 whitespace-nowrap">LIKES</div>
+                    <div className="text-3xl font-black text-rose-500">
+                      {formatNumber(liveStream.current_likes)}
+                    </div>
+                    <div className="text-[10px] text-gray-500">TOTALES</div>
                   </div>
-                  <div className="text-[10px] text-gray-500">TOTALES</div>
+
+                  <div className="text-center">
+                    <div className="text-xs text-gray-400 font-semibold mb-0.5 whitespace-nowrap">MENSAJES</div>
+                    <div className="text-3xl font-black text-amber-500">
+                      {formatNumber(liveStream.comments_count || 0)}
+                    </div>
+                    <div className="text-[10px] text-gray-500">TOTALES</div>
+                  </div>
+
+                  <div className="text-center">
+                    <div className="text-xs text-gray-400 font-semibold mb-0.5 whitespace-nowrap">USUARIOS CHAT</div>
+                    <div className="text-3xl font-black text-indigo-600">
+                      {formatNumber(liveStream.unique_commentators || 0)}
+                    </div>
+                    <div className="text-[10px] text-gray-500">ÚNICOS</div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -475,80 +518,94 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                 key={`${pastStream.video_id}_${pastStream.start_date || pastStream.scrape_date || index}`}
                 className="bg-white rounded-xl shadow-xs border border-gray-100 p-6 space-y-5"
               >
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
-                  <div>
-                    <h4 className="text-base sm:text-lg font-bold text-gray-900">
-                      {pastStream.video_title}
-                    </h4>
-                    <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
-                      {/*<span className="font-mono text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
-                        video_id: {pastStream.video_id}
-                      </span>*/}
-                      <span>•</span>
-                      <Calendar className="w-3.5 h-3.5" />
-                      <span>
-                        Fecha de emisión:{' '}
-                        {formatArgentinaDateTime(pastStream.start_date || pastStream.scrape_date)}
-                      </span>
-                      {pastStream.superchats && pastStream.superchats.length > 0 && (
-                        <>
-                          <span>•</span>
-                          <span className="inline-flex items-center gap-1 bg-amber-500 text-white px-2.5 py-0.5 rounded-full text-xs font-bold shadow-xs">
-                            <span>💰 Superchats:</span>
-                            <span>
-                              {pastStream.superchats
-                                .map((sc) => `$${formatNumber(sc.total_amount || 0)} ${sc.currency}`)
-                                .join(', ')}
+                <div className="space-y-3 pb-4 border-b border-gray-100">
+                  <h4 className="text-base sm:text-lg font-bold text-gray-900 w-full">
+                    {pastStream.video_title}
+                  </h4>
+
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+                        {/*<span className="font-mono text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
+                          video_id: {pastStream.video_id}
+                        </span>*/}
+                        <span>•</span>
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>
+                          Fecha de emisión:{' '}
+                          {formatArgentinaDateTime(pastStream.start_date || pastStream.scrape_date)}
+                        </span>
+                        {pastStream.superchats && pastStream.superchats.length > 0 && (
+                          <>
+                            <span>•</span>
+                            <span className="inline-flex items-center gap-1 bg-amber-500 text-white px-2.5 py-0.5 rounded-full text-xs font-bold shadow-xs">
+                              <span>💰 Superchats:</span>
+                              <span>
+                                {pastStream.superchats
+                                  .map((sc) => `$${formatNumber(sc.total_amount || 0)} ${sc.currency}`)
+                                  .join(', ')}
+                              </span>
                             </span>
-                          </span>
-                        </>
-                      )}
+                          </>
+                        )}
+                      </div>
+
+                      {/* Button Ver Comments for this past video_id item */}
+                      <div className="mt-2.5 flex items-center gap-2">
+                        <button
+                          onClick={() => setSelectedStreamForComments(pastStream)}
+                          className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Mensajes & Superchats</span>
+                        </button>
+                      </div>
                     </div>
 
-                    {/* Button Ver Comments for this past video_id item */}
-                    <div className="mt-3 flex items-center gap-2">
-                      <button
-                        onClick={() => setSelectedStreamForComments(pastStream)}
-                        className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Mensajes & Superchats</span>
-                      </button>
-                    </div>
-                  </div>
+                    <div className="flex items-center gap-6 shrink-0">
+                      <div className="text-center">
+                        <div className="text-xs text-gray-400 font-medium mb-0.5 flex items-center gap-1 justify-center whitespace-nowrap">
+                          <Eye className="w-3 h-3 text-blue-500" />
+                          <span>Espectadores</span>
+                        </div>
+                        <div className="text-xl font-black text-gray-900">
+                          {formatNumber(pastStream.max_users || pastStream.concurrent_viewers)}
+                        </div>
+                        <div className="text-xs text-gray-500 whitespace-nowrap">Pico Máximo</div>
+                      </div>
 
-                  <div className="flex items-center gap-6 shrink-0">
-                    <div className="text-center">
-                      <div className="text-xs text-gray-400 font-medium mb-0.5 flex items-center gap-1 justify-center">
-                        <Eye className="w-3 h-3 text-blue-500" />
-                        <span>Espectadores</span>
+                      <div className="text-center">
+                        <div className="text-xs text-gray-400 font-medium mb-0.5 flex items-center gap-1 justify-center whitespace-nowrap">
+                          <Heart className="w-3 h-3 text-rose-500" />
+                          <span>Likes</span>
+                        </div>
+                        <div className="text-xl font-black text-gray-900">
+                          {formatNumber(pastStream.max_likes || pastStream.current_likes)}
+                        </div>
+                        <div className="text-xs text-gray-500 whitespace-nowrap">total emisión</div>
                       </div>
-                      <div className="text-xl font-black text-gray-900">
-                        {formatNumber(pastStream.max_users || pastStream.concurrent_viewers)}
-                      </div>
-                      <div className="text-xs text-gray-500">Pico Máximo</div>
-                    </div>
 
-                    <div className="text-center">
-                      <div className="text-xs text-gray-400 font-medium mb-0.5 flex items-center gap-1 justify-center">
-                        <Heart className="w-3 h-3 text-rose-500" />
-                        <span>Likes</span>
+                      <div className="text-center">
+                        <div className="text-xs text-gray-400 font-medium mb-0.5 flex items-center gap-1 justify-center whitespace-nowrap">
+                          <MessageSquare className="w-3 h-3 text-amber-500" />
+                          <span>Mensajes</span>
+                        </div>
+                        <div className="text-xl font-black text-amber-600">
+                          {formatNumber(pastStream.comments_count || 0)}
+                        </div>
+                        <div className="text-xs text-gray-500 whitespace-nowrap">total emisión</div>
                       </div>
-                      <div className="text-xl font-black text-gray-900">
-                        {formatNumber(pastStream.max_likes || pastStream.current_likes)}
-                      </div>
-                      <div className="text-xs text-gray-500">total emisión</div>
-                    </div>
 
-                    <div className="text-center">
-                      <div className="text-xs text-gray-400 font-medium mb-0.5 flex items-center gap-1 justify-center">
-                        <MessageSquare className="w-3 h-3 text-amber-500" />
-                        <span>Comments</span>
+                      <div className="text-center">
+                        <div className="text-xs text-gray-400 font-medium mb-0.5 flex items-center gap-1 justify-center whitespace-nowrap">
+                          <Users className="w-3 h-3 text-indigo-500" />
+                          <span>Usuarios Chat</span>
+                        </div>
+                        <div className="text-xl font-black text-indigo-600">
+                          {formatNumber(pastStream.unique_commentators || 0)}
+                        </div>
+                        <div className="text-xs text-gray-500 whitespace-nowrap">únicos en chat</div>
                       </div>
-                      <div className="text-xl font-black text-amber-600">
-                        {formatNumber(pastStream.comments_count || 0)}
-                      </div>
-                      <div className="text-xs text-gray-500">total emisión</div>
                     </div>
                   </div>
                 </div>

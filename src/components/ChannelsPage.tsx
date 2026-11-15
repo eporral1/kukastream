@@ -134,7 +134,7 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
       {/* Channels List */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-sm text-gray-500 px-1">
-          <span>Mostrando {filteredChannels.length} canales</span>
+          <span>{/*Mostrando {filteredChannels.length} canales*/} Últimos 7 días hábiles</span>
 
           <div className="flex items-center gap-2">
             <label htmlFor="channels-sort-select" className="text-xs font-semibold text-gray-600 shrink-0">

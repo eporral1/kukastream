@@ -31,12 +31,14 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
   const thumbUrl = stream.thumb || `https://i.ytimg.com/vi/${stream.video_id}/hqdefault.jpg`;
   const superchatsTotal = Number(stream.superchats_total || 0);
   const commentsCount = Number(stream.comments_count || 0);
+  const uniqueCommentators = Number(stream.unique_commentators || 0);
   const currentLikes = Number(stream.current_likes || 0);
   const isLive = stream.live === 'live';
   const viewers = (isLive ? stream.concurrent_viewers : (stream.avg_viewers || stream.concurrent_viewers)) || 0;
   const peakViewers = (stream.max_viewers || stream.max_users || (isLive ? stream.concurrent_viewers : (stream.avg_viewers || stream.concurrent_viewers))) || 0;
   const likesRatio = peakViewers > 0 ? (currentLikes / peakViewers) : 0;
   const commentsRatio = peakViewers > 0 ? (commentsCount / peakViewers) : 0;
+  const uniqueRatio = peakViewers > 0 ? (uniqueCommentators / peakViewers) : 0;
 
   return (
     <div
@@ -141,9 +143,9 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
           </div>
 
           {/* Statistics */}
-          <div className="flex items-center space-x-6 shrink-0 pl-2">
+          <div className="flex items-center space-x-5 lg:space-x-6 shrink-0 pl-2">
             {/* Live Viewers */}
-            <div className="text-center min-w-[90px]">
+            <div className="text-center min-w-[85px]">
               <div className="text-xs text-gray-400 font-semibold mb-0.5">ESPECTADORES</div>
               <div className="font-extrabold text-2xl text-gray-900">
                 {formatNumber(viewers)}
@@ -154,7 +156,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
             </div>
 
             {/* Likes Count */}
-            <div className="text-center min-w-[85px]">
+            <div className="text-center min-w-[80px]">
               <div className="text-xs text-gray-400 font-semibold mb-0.5">LIKES</div>
               <div className="font-extrabold text-2xl text-rose-500">
                 {formatNumber(currentLikes)}
@@ -165,13 +167,24 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
             </div>
 
             {/* Comments Count */}
-            <div className="text-center min-w-[85px]">
+            <div className="text-center min-w-[80px]">
               <div className="text-xs text-gray-400 font-semibold mb-0.5">MENSAJES</div>
               <div className="font-extrabold text-2xl text-amber-500">
                 {formatNumber(commentsCount)}
               </div>
               <div className="text-[10px] text-gray-500 font-medium" title="Mensajes por espectador pico del episodio">
                 {commentsRatio > 0 ? commentsRatio.toFixed(2) : '0.00'} / esp
+              </div>
+            </div>
+
+            {/* Unique Chat Users Count */}
+            <div className="text-center min-w-[95px]">
+              <div className="text-xs text-gray-400 font-semibold mb-0.5">USUARIOS CHAT</div>
+              <div className="font-extrabold text-2xl text-indigo-600">
+                {formatNumber(uniqueCommentators)}
+              </div>
+              <div className="text-[10px] text-gray-500 font-medium" title="Usuarios únicos en el chat sobre espectador pico">
+                {uniqueRatio > 0 ? `${uniqueRatio.toFixed(2)} / esp` : 'ÚNICOS'}
               </div>
             </div>
           </div>
@@ -248,6 +261,14 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                   <span>💬</span>
                   <span>{formatNumber(commentsCount)}</span>
                   <span className="text-[10px] text-gray-500 font-normal">({commentsRatio > 0 ? commentsRatio.toFixed(2) : '0.00'}/esp)</span>
+                </div>
+
+                <div
+                  className="flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md text-xs font-semibold border border-indigo-200/60"
+                  title="Usuarios únicos que comentaron en el chat"
+                >
+                  <span>👥</span>
+                  <span>{formatNumber(uniqueCommentators)} usuarios chat</span>
                 </div>
 
                 {onOpenComments && (

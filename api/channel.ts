@@ -442,7 +442,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const cleanParam = channelParam.startsWith('@') ? channelParam.substring(1) : channelParam;
   const withAtParam = channelParam.startsWith('@') ? channelParam : `@${channelParam}`;
 
-  const cacheKey = `api:channel:${cleanParam.toLowerCase()}`;
+  const cacheKey = `api:channel:v2:${cleanParam.toLowerCase()}`;
   const cached = getCachedResponse(cacheKey);
   if (cached) {
     res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
@@ -722,6 +722,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           current_likes: liveFinalLikes,
           max_likes: liveFinalLikes,
           comments_count: liveFinalComments,
+          unique_commentators: 0,
           start_date: topLiveGroup.start_time,
           scrape_date: topLiveGroup.end_time,
           data: liveMinutePoints,
@@ -831,6 +832,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           current_likes: finalStreamLikes,
           max_likes: finalStreamLikes,
           comments_count: finalStreamComments,
+          unique_commentators: 0,
           start_date: group.start_time,
           scrape_date: group.end_time,
           data: streamPoints,
@@ -838,6 +840,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           superchats_total: showScTotal,
           superchats_count: showScCount,
         });
+      }
+
+      // Batch query unique commentators by video_id (matching /api/top-commentators)
+      try {
+        const eternalVideoIds = Array.from(
+          new Set([
+            ...(liveStreamObj?.video_id ? [liveStreamObj.video_id] : []),
+            ...finishedStreamsList.map((s) => s.video_id).filter(Boolean),
+          ])
+        );
+        if (eternalVideoIds.length > 0) {
+          const ucRes = await executeQuery(
+            `SELECT video_id, COUNT(DISTINCT author_id)::int AS unique_commentators
+             FROM public.comments
+             WHERE video_id = ANY($1)
+               AND created_at >= '2026-10-01 00:00:00'
+               AND author_id IS NOT NULL
+               AND TRIM(author_id) != ''
+             GROUP BY video_id`,
+            [eternalVideoIds]
+          );
+          const ucMap = new Map<string, number>();
+          for (const row of ucRes.rows || []) {
+            ucMap.set(row.video_id, Number(row.unique_commentators || 0));
+          }
+          if (liveStreamObj && liveStreamObj.video_id) {
+            liveStreamObj.unique_commentators = ucMap.get(liveStreamObj.video_id) || 0;
+          }
+          for (const s of finishedStreamsList) {
+            s.unique_commentators = ucMap.get(s.video_id) || 0;
+          }
+        }
+      } catch {
+        // ignore
       }
 
       // Update channel-level stats using corrected cumulative values
@@ -1241,6 +1277,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     } catch {
       finishedStreams = [];
+    }
+
+    // Batch query unique commentators for live and finishedStreams
+    try {
+      const allChannelVideoIds = Array.from(
+        new Set([
+          ...(live?.video_id ? [live.video_id] : []),
+          ...finishedStreams.map((s) => s.video_id).filter(Boolean),
+        ])
+      );
+      if (allChannelVideoIds.length > 0) {
+        const ucRes = await executeQuery(
+          `SELECT video_id, COUNT(DISTINCT author_id)::int AS unique_commentators
+           FROM public.comments
+           WHERE video_id = ANY($1)
+             AND created_at >= '2026-10-01 00:00:00'
+             AND author_id IS NOT NULL
+             AND TRIM(author_id) != ''
+           GROUP BY video_id`,
+          [allChannelVideoIds]
+        );
+        const ucMap = new Map<string, number>();
+        for (const row of ucRes.rows || []) {
+          ucMap.set(row.video_id, Number(row.unique_commentators || 0));
+        }
+        if (live && live.video_id) {
+          live.unique_commentators = ucMap.get(live.video_id) || 0;
+        }
+        for (const stream of finishedStreams) {
+          stream.unique_commentators = ucMap.get(stream.video_id) || 0;
+        }
+      }
+    } catch {
+      // ignore if comments table is unavailable
     }
 
     // Heatmap data (desactivado temporalmente ya que no se muestra en la UI)

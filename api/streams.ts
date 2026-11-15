@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { isStreamTitleBlocked } from '../src/config/streamFilters.ts';
 import { getPool, executeQuery, getCachedResponse, setCachedResponse } from '../src/utils/serverDb.ts';
 
-const OCT_2026_CUTOFF = '2026-10-31 23:59:59';
+const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
 
 function cleanEternalTitle(s: string): string {
   return s
@@ -323,18 +323,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const searchParam = rawSearch.replace(/^["'«»“”„]+|["'«»“”„]+$/g, '').trim();
   const sortParamReq = (((req.query.sort || '') as string) || 'viewers').toLowerCase();
 
-  const cached = getCachedResponse(`api:streams:${tag || 'all'}:${searchParam}:${sortParamReq}`);
+  const cached = getCachedResponse(`api:streams:v2:7bdays:${tag || 'all'}:${searchParam}:${sortParamReq}`);
   if (cached) {
     res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
     return res.status(200).json(cached);
   }
 
   try {
-    // 1. Standard channels: Query individual streams from public.live
+    // 1. Standard channels: Query individual streams from public.live (last 7 business days)
     const standardParams: any[] = [];
     let paramIndex = 1;
 
     let standardQuery = `
+      WITH last_7_business_days AS (
+        SELECT DISTINCT scrape_date::date AS bday
+        FROM public.live
+        WHERE scrape_date >= '${OCT_2026_CUTOFF}'
+          AND concurrent_viewers > 0
+          AND EXTRACT(ISODOW FROM scrape_date) BETWEEN 1 AND 5
+        ORDER BY bday DESC
+        LIMIT 7
+      )
       SELECT 
         sub.video_id, sub.channel_id, 
         GREATEST(sub.concurrent_viewers, sub.old_viewers, 0)::int AS concurrent_viewers,
@@ -352,7 +361,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           current_likes, old_likes, scrape_date, start_date, live,
           COALESCE(video_title, '') AS video_title
         FROM public.live
-        WHERE (scrape_date >= '${OCT_2026_CUTOFF}' OR start_date >= '${OCT_2026_CUTOFF}')
+        WHERE scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
+          AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
         ${!searchParam ? 'AND concurrent_viewers > 0' : ''}
         ORDER BY video_id, (CASE WHEN video_title IS NOT NULL AND video_title <> '' THEN 1 ELSE 0 END) DESC, concurrent_viewers DESC
       ) sub
@@ -450,12 +460,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         let titleGroupsQuery = `
-          WITH m_filtered AS (
+          WITH last_7_business_days AS (
+            SELECT DISTINCT scrape_date::date AS bday
+            FROM public.live
+            WHERE scrape_date >= '${OCT_2026_CUTOFF}'
+              AND concurrent_viewers > 0
+              AND EXTRACT(ISODOW FROM scrape_date) BETWEEN 1 AND 5
+            ORDER BY bday DESC
+            LIMIT 7
+          ),
+          m_filtered AS (
             SELECT video_title, video_id, channel_id, scrape_date, concurrent_viewers, likes, comments_count,
                    MAX(concurrent_viewers) OVER (PARTITION BY video_title, video_id, channel_id) AS peak_v
             FROM public.minute
             WHERE channel_id = ANY($1) 
-              AND scrape_date >= '${OCT_2026_CUTOFF}'
+              AND scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
+              AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
               AND video_title IS NOT NULL AND video_title <> ''
         `;
 
@@ -678,7 +698,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       total_found: filtered.length,
       is_search: Boolean(searchParam),
     };
-    setCachedResponse(`api:streams:${tag || 'all'}:${searchParam}:${sortParam}`, payload, 12000);
+    setCachedResponse(`api:streams:v2:7bdays:${tag || 'all'}:${searchParam}:${sortParam}`, payload, 12000);
     res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
     return res.status(200).json(payload);
   } catch (err: any) {

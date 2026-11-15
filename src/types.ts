@@ -119,6 +119,7 @@ export interface Stream {
   type?: string;
   avg_viewers?: number;
   captions?: string;
+  political_analysis?: any;
 }
 
 export interface Channel {

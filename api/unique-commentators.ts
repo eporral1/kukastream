@@ -27,7 +27,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const result: any = await executeQuery(
       `SELECT video_id, COUNT(DISTINCT author_id)::int AS unique_count
        FROM public.comments
-       WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'
+       WHERE video_id = ANY($1)
+         AND created_at >= '${OCT_2026_CUTOFF}'
+         AND author_id IS NOT NULL
+         AND TRIM(author_id) != ''
        GROUP BY video_id`,
       [videoIds]
     );
