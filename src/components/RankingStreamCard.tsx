@@ -147,7 +147,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
             {/* Live Viewers */}
             <div className="text-center min-w-[85px]">
               <div className="text-xs text-gray-400 font-semibold mb-0.5">ESPECTADORES</div>
-              <div className="font-extrabold text-2xl text-gray-900">
+              <div className="font-extrabold text-2xl text-blue-600">
                 {formatNumber(viewers)}
               </div>
               <div className="text-[10px] text-gray-500 font-medium">
@@ -180,7 +180,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
             {/* Unique Chat Users Count */}
             <div className="text-center min-w-[95px]">
               <div className="text-xs text-gray-400 font-semibold mb-0.5">USUARIOS CHAT</div>
-              <div className="font-extrabold text-2xl text-indigo-600">
+              <div className="font-extrabold text-2xl text-emerald-600">
                 {formatNumber(uniqueCommentators)}
               </div>
               <div className="text-[10px] text-gray-500 font-medium" title="Usuarios únicos en el chat sobre espectador pico">
@@ -229,8 +229,8 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
 
               {/* Mobile Stats */}
               <div className="flex items-center space-x-2 mt-3 flex-wrap gap-y-1.5">
-                <div className="flex items-center space-x-1.5 bg-red-50 text-red-600 px-2 py-0.5 rounded-md">
-                  <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div>
+                <div className="flex items-center space-x-1.5 bg-blue-50 text-blue-600 px-2 py-0.5 rounded-md border border-blue-200/60">
+                  <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></div>
                   <span className="text-xs font-bold">
                     {formatNumber(viewers)}
                   </span>
@@ -264,7 +264,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                 </div>
 
                 <div
-                  className="flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md text-xs font-semibold border border-indigo-200/60"
+                  className="flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md text-xs font-semibold border border-emerald-200/60"
                   title="Usuarios únicos que comentaron en el chat"
                 >
                   <span>👥</span>

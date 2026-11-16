@@ -526,6 +526,34 @@ async function enrichEternalChannels(channels: any[], p: any) {
       });
     }
 
+    const allEternalVideoIds = Array.from(
+      new Set(
+        (titleGroupsRes.rows || [])
+          .map((r: any) => r.video_id)
+          .filter(Boolean)
+      )
+    );
+    const ucEternalMap = new Map<string, number>();
+    if (allEternalVideoIds.length > 0) {
+      try {
+        const ucRes = await p.query(
+          `SELECT video_id, COUNT(DISTINCT author_id)::int AS unique_commentators
+           FROM public.comments
+           WHERE video_id = ANY($1)
+             AND created_at >= '2026-10-01 00:00:00'
+             AND author_id IS NOT NULL
+             AND TRIM(author_id) != ''
+           GROUP BY video_id`,
+          [allEternalVideoIds]
+        );
+        for (const r of ucRes.rows || []) {
+          ucEternalMap.set(r.video_id, Number(r.unique_commentators || 0));
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     for (const channel of eternalChannels) {
       let titleGroups = byChannel.get(channel.channel_id) || [];
       titleGroups = clusterEternalTitleGroups(titleGroups);
@@ -540,6 +568,18 @@ async function enrichEternalChannels(channels: any[], p: any) {
 
         const totalComments = titleGroups.reduce((acc: number, g: any) => acc + g.comm_delta, 0);
         channel.avg_comments = Math.round(totalComments / titleGroups.length);
+
+        const distinctVideoIds = Array.from(new Set(titleGroups.map((g: any) => g.video_id).filter(Boolean)));
+        if (distinctVideoIds.length > 0) {
+          const totalUniqueChat = distinctVideoIds.reduce(
+            (acc: number, vid: any) => acc + (ucEternalMap.get(vid) || 0),
+            0
+          );
+          const computedAvgUc = Math.round(totalUniqueChat / distinctVideoIds.length);
+          if (computedAvgUc > 0) {
+            channel.avg_unique_commentators = computedAvgUc;
+          }
+        }
 
         const validGroups = titleGroups.filter((g: any) => (g.max_viewers || 0) > 0);
         if (validGroups.length > 0) {
@@ -833,19 +873,31 @@ app.get('/api/channels', async (req: Request, res: Response) => {
         GROUP BY m.channel_id, m.video_id
         HAVING MAX(m.concurrent_viewers) > 0
       ),
+      recent_videos AS (
+        SELECT video_id, channel_id,
+               MAX(concurrent_viewers) AS max_viewers
+        FROM public.live
+        WHERE scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
+          AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
+          AND concurrent_viewers > 0
+        GROUP BY video_id, channel_id
+      ),
+      video_unique_users AS (
+        SELECT c.video_id, COUNT(DISTINCT c.author_id)::int AS unique_commentators
+        FROM public.comments c
+        WHERE c.video_id IN (SELECT video_id FROM recent_videos)
+          AND c.created_at >= '2026-10-01 00:00:00'
+          AND c.author_id IS NOT NULL
+          AND TRIM(c.author_id) != ''
+        GROUP BY c.video_id
+      ),
       viewer_stats AS (
-        SELECT channel_id,
-               COALESCE(ROUND(AVG(max_viewers)), 0)::int AS avg_viewers
-        FROM (
-          SELECT video_id, channel_id,
-                 MAX(concurrent_viewers) AS max_viewers
-          FROM public.live
-          WHERE scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
-            AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
-            AND concurrent_viewers > 0
-          GROUP BY video_id, channel_id
-        ) sub
-        GROUP BY channel_id
+        SELECT rv.channel_id,
+               COALESCE(ROUND(AVG(rv.max_viewers)), 0)::int AS avg_viewers,
+               COALESCE(ROUND(AVG(COALESCE(vuu.unique_commentators, 0))), 0)::int AS avg_unique_commentators
+        FROM recent_videos rv
+        LEFT JOIN video_unique_users vuu ON vuu.video_id = rv.video_id
+        GROUP BY rv.channel_id
       ),
       ratio_stats AS (
         SELECT 
@@ -863,6 +915,7 @@ app.get('/api/channels', async (req: Request, res: Response) => {
         COALESCE(vs.avg_viewers, rs.minute_avg_viewers, 0)::int AS avg_viewers,
         COALESCE(rs.avg_likes, 0)::int AS avg_likes,
         COALESCE(rs.avg_comments, 0)::int AS avg_comments,
+        COALESCE(vs.avg_unique_commentators, 0)::int AS avg_unique_commentators,
         COALESCE(rs.likes_per_viewer, 0)::numeric AS likes_per_viewer,
         COALESCE(rs.comments_per_viewer, 0)::numeric AS comments_per_viewer
       FROM public.channels c
@@ -912,6 +965,7 @@ app.get('/api/channels', async (req: Request, res: Response) => {
           COALESCE(cr.avg_viewers, 0)::int AS avg_viewers,
           COALESCE(cr.avg_likes, 0)::int AS avg_likes,
           0::int AS avg_comments,
+          0::int AS avg_unique_commentators,
           COALESCE(cr.likes_per_viewer, 0)::numeric AS likes_per_viewer,
           COALESCE(cr.comments_per_viewer, 0)::numeric AS comments_per_viewer
         FROM public.channels c
@@ -1834,6 +1888,10 @@ const channelHandler = async (req: Request, res: Response) => {
           for (const s of finishedStreamsList) {
             s.unique_commentators = ucMap.get(s.video_id) || 0;
           }
+          if (eternalVideoIds.length > 0) {
+            const totalUc = eternalVideoIds.reduce((acc, vid) => acc + (ucMap.get(vid) || 0), 0);
+            channel.avg_unique_commentators = Math.round(totalUc / eternalVideoIds.length);
+          }
         }
       } catch {
         // ignore
@@ -1886,6 +1944,18 @@ const channelHandler = async (req: Request, res: Response) => {
              AND scrape_date >= '${OCT_2026_CUTOFF}' 
              AND concurrent_viewers > 0
            GROUP BY video_id
+         ),
+         chat_u_stats AS (
+           SELECT
+             lvs.video_id,
+             COUNT(DISTINCT c.author_id)::int AS unique_commentators
+           FROM live_v_stats lvs
+           LEFT JOIN public.comments c
+             ON c.video_id = lvs.video_id
+            AND c.created_at >= '2026-10-01 00:00:00'
+            AND c.author_id IS NOT NULL
+            AND TRIM(c.author_id) != ''
+           GROUP BY lvs.video_id
          )
          SELECT 
            COALESCE(
@@ -1904,7 +1974,8 @@ const channelHandler = async (req: Request, res: Response) => {
            ) AS avg_likes,
            COALESCE((SELECT ROUND(AVG(max_comments))::int FROM video_stats), 0) AS avg_comments,
            COALESCE((SELECT MAX(max_comments)::int FROM video_stats), 0) AS peak_comments,
-           COALESCE((SELECT SUM(max_comments)::int FROM video_stats), 0) AS total_comments`,
+           COALESCE((SELECT SUM(max_comments)::int FROM video_stats), 0) AS total_comments,
+           COALESCE((SELECT ROUND(AVG(unique_commentators))::int FROM chat_u_stats), 0) AS avg_unique_commentators`,
         [channelId]
       );
       if (statsRes.rows && statsRes.rows.length > 0) {
@@ -1918,6 +1989,7 @@ const channelHandler = async (req: Request, res: Response) => {
         channel.avg_comments = Number(row.avg_comments || 0);
         channel.peak_comments = Number(row.peak_comments || 0);
         channel.total_comments = Number(row.total_comments || 0);
+        channel.avg_unique_commentators = Number(row.avg_unique_commentators || 0);
       }
 
       // Superchats totals in ARS (matching /api/superchats-ranking exactly)
@@ -1940,6 +2012,7 @@ const channelHandler = async (req: Request, res: Response) => {
       channel.avg_viewers = channel.avg_viewers || 0;
       channel.avg_likes = channel.avg_likes || 0;
       channel.avg_comments = channel.avg_comments || 0;
+      channel.avg_unique_commentators = channel.avg_unique_commentators || 0;
     }
 
     // Current live stream (matching Laravel: l.live='live', concurrent_viewers > 0, >= Oct 2026)

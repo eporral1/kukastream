@@ -442,7 +442,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const cleanParam = channelParam.startsWith('@') ? channelParam.substring(1) : channelParam;
   const withAtParam = channelParam.startsWith('@') ? channelParam : `@${channelParam}`;
 
-  const cacheKey = `api:channel:v2:${cleanParam.toLowerCase()}`;
+  const cacheKey = `api:channel:v3:${cleanParam.toLowerCase()}`;
   const cached = getCachedResponse(cacheKey);
   if (cached) {
     res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
@@ -871,6 +871,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           for (const s of finishedStreamsList) {
             s.unique_commentators = ucMap.get(s.video_id) || 0;
           }
+          if (eternalVideoIds.length > 0) {
+            const totalUc = eternalVideoIds.reduce((acc, vid) => acc + (ucMap.get(vid) || 0), 0);
+            channel.avg_unique_commentators = Math.round(totalUc / eternalVideoIds.length);
+          }
         }
       } catch {
         // ignore
@@ -923,6 +927,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
              AND scrape_date >= '${OCT_2026_CUTOFF}' 
              AND concurrent_viewers > 0
            GROUP BY video_id
+         ),
+         chat_u_stats AS (
+           SELECT
+             lvs.video_id,
+             COUNT(DISTINCT c.author_id)::int AS unique_commentators
+           FROM live_v_stats lvs
+           LEFT JOIN public.comments c
+             ON c.video_id = lvs.video_id
+            AND c.created_at >= '2026-10-01 00:00:00'
+            AND c.author_id IS NOT NULL
+            AND TRIM(c.author_id) != ''
+           GROUP BY lvs.video_id
          )
          SELECT 
            COALESCE(
@@ -941,7 +957,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
            ) AS avg_likes,
            COALESCE((SELECT ROUND(AVG(max_comments))::int FROM video_stats), 0) AS avg_comments,
            COALESCE((SELECT MAX(max_comments)::int FROM video_stats), 0) AS peak_comments,
-           COALESCE((SELECT SUM(max_comments)::int FROM video_stats), 0) AS total_comments`,
+           COALESCE((SELECT SUM(max_comments)::int FROM video_stats), 0) AS total_comments,
+           COALESCE((SELECT ROUND(AVG(unique_commentators))::int FROM chat_u_stats), 0) AS avg_unique_commentators`,
         [channelId]
       );
       if (statsRes.rows && statsRes.rows.length > 0) {
@@ -955,6 +972,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         channel.avg_comments = Number(row.avg_comments || 0);
         channel.peak_comments = Number(row.peak_comments || 0);
         channel.total_comments = Number(row.total_comments || 0);
+        channel.avg_unique_commentators = Number(row.avg_unique_commentators || 0);
       }
 
       // Superchats totals in ARS (matching /api/superchats-ranking exactly)
@@ -977,6 +995,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       channel.avg_viewers = channel.avg_viewers || 0;
       channel.avg_likes = channel.avg_likes || 0;
       channel.avg_comments = channel.avg_comments || 0;
+      channel.avg_unique_commentators = channel.avg_unique_commentators || 0;
     }
 
     // Check active live stream for this channel (strictly live = 'live' and October 2026 onwards)
@@ -1307,6 +1326,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         for (const stream of finishedStreams) {
           stream.unique_commentators = ucMap.get(stream.video_id) || 0;
+        }
+        if (!channel.avg_unique_commentators && allChannelVideoIds.length > 0) {
+          const totalUc = allChannelVideoIds.reduce((acc, vid) => acc + (ucMap.get(vid) || 0), 0);
+          channel.avg_unique_commentators = Math.round(totalUc / allChannelVideoIds.length);
         }
       }
     } catch {

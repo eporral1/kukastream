@@ -414,8 +414,8 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
 
                     {/* PROMEDIO DE ESPECTADORES */}
                     <div className="text-center min-w-[95px]">
-                      <div className="text-xs text-blue-600 font-bold mb-0.5">PROMEDIO</div>
-                      <div className="font-extrabold text-2xl text-gray-900">
+                      <div className="text-xs text-gray-400 font-semibold mb-0.5">PROMEDIO</div>
+                      <div className="font-extrabold text-2xl text-blue-600">
                         {formatNumber(stream.avg_viewers ?? stream.old_viewers ?? stream.concurrent_viewers)}
                       </div>
                       <div className="text-[10px] text-gray-500 uppercase font-medium">

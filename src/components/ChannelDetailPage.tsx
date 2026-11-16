@@ -192,6 +192,16 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
   const avgViewers = effectiveAvgData.map((d) => d.avg_viewers);
   const avgLikes = effectiveAvgData.map((d) => d.avg_likes);
 
+  const avgUniqueCommentators = useMemo(() => {
+    if (channel.avg_unique_commentators && channel.avg_unique_commentators > 0) {
+      return channel.avg_unique_commentators;
+    }
+    const allStreams = [...(liveStream ? [liveStream] : []), ...pastStreams];
+    if (allStreams.length === 0) return 0;
+    const sum = allStreams.reduce((acc, s) => acc + (Number(s.unique_commentators) || 0), 0);
+    return Math.round(sum / allStreams.length);
+  }, [channel.avg_unique_commentators, liveStream, pastStreams]);
+
   return (
     <div className="space-y-8 pb-12">
       {/* Back button & status indicator */}
@@ -292,14 +302,14 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
             {/* Overall averages */}
             {isLoadingChannel ? (
               <div className="flex flex-wrap md:flex-col sm:flex-row gap-4 border-t md:border-t-0 md:border-l border-gray-100 pt-4 md:pt-0 md:pl-8 w-full md:w-auto animate-pulse">
-                {[1, 2, 3].map(i => (
+                {[1, 2, 3, 4].map(i => (
                   <div key={i} className="text-left md:text-right space-y-1">
                     <div className="h-3 w-20 bg-gray-200 rounded"></div>
                     <div className="h-6 w-16 bg-gray-200 rounded"></div>
                   </div>
                 ))}
               </div>
-            ) : Boolean(channel.avg_viewers || channel.avg_likes || channel.avg_comments) && (
+            ) : Boolean(channel.avg_viewers || channel.avg_likes || channel.avg_comments || avgUniqueCommentators) && (
               <div className="flex flex-wrap md:flex-col sm:flex-row gap-4 border-t md:border-t-0 md:border-l border-gray-100 pt-4 md:pt-0 md:pl-8 w-full md:w-auto">
                 <div className="text-left md:text-right">
                   <div className="text-xs text-gray-500 uppercase tracking-wider font-semibold">
@@ -323,6 +333,14 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                   </div>
                   <div className="text-xl sm:text-2xl font-black text-amber-500">
                     {formatNumber(Math.max(0, channel.avg_comments || 0))}
+                  </div>
+                </div>
+                <div className="text-left md:text-right">
+                  <div className="text-xs text-gray-500 uppercase tracking-wider font-semibold">
+                    Usuarios chat por emisión
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black text-emerald-600">
+                    {formatNumber(Math.max(0, avgUniqueCommentators))}
                   </div>
                 </div>
               </div>
@@ -389,7 +407,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                 <div className="flex items-center gap-6 shrink-0">
                   <div className="text-center">
                     <div className="text-xs text-gray-400 font-semibold mb-0.5 whitespace-nowrap">ESPECTADORES</div>
-                    <div className="text-3xl font-black text-gray-900">
+                    <div className="text-3xl font-black text-blue-600">
                       {formatNumber(liveStream.concurrent_viewers)}
                     </div>
                     <div className="text-[10px] text-gray-500">ACTUALES</div>
@@ -413,7 +431,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
 
                   <div className="text-center">
                     <div className="text-xs text-gray-400 font-semibold mb-0.5 whitespace-nowrap">USUARIOS CHAT</div>
-                    <div className="text-3xl font-black text-indigo-600">
+                    <div className="text-3xl font-black text-emerald-600">
                       {formatNumber(liveStream.unique_commentators || 0)}
                     </div>
                     <div className="text-[10px] text-gray-500">ÚNICOS</div>
@@ -568,7 +586,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                           <Eye className="w-3 h-3 text-blue-500" />
                           <span>Espectadores</span>
                         </div>
-                        <div className="text-xl font-black text-gray-900">
+                        <div className="text-xl font-black text-blue-600">
                           {formatNumber(pastStream.max_users || pastStream.concurrent_viewers)}
                         </div>
                         <div className="text-xs text-gray-500 whitespace-nowrap">Pico Máximo</div>
@@ -579,7 +597,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                           <Heart className="w-3 h-3 text-rose-500" />
                           <span>Likes</span>
                         </div>
-                        <div className="text-xl font-black text-gray-900">
+                        <div className="text-xl font-black text-rose-500">
                           {formatNumber(pastStream.max_likes || pastStream.current_likes)}
                         </div>
                         <div className="text-xs text-gray-500 whitespace-nowrap">total emisión</div>
@@ -590,7 +608,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                           <MessageSquare className="w-3 h-3 text-amber-500" />
                           <span>Mensajes</span>
                         </div>
-                        <div className="text-xl font-black text-amber-600">
+                        <div className="text-xl font-black text-amber-500">
                           {formatNumber(pastStream.comments_count || 0)}
                         </div>
                         <div className="text-xs text-gray-500 whitespace-nowrap">total emisión</div>
@@ -598,10 +616,10 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
 
                       <div className="text-center">
                         <div className="text-xs text-gray-400 font-medium mb-0.5 flex items-center gap-1 justify-center whitespace-nowrap">
-                          <Users className="w-3 h-3 text-indigo-500" />
+                          <Users className="w-3 h-3 text-emerald-500" />
                           <span>Usuarios Chat</span>
                         </div>
-                        <div className="text-xl font-black text-indigo-600">
+                        <div className="text-xl font-black text-emerald-600">
                           {formatNumber(pastStream.unique_commentators || 0)}
                         </div>
                         <div className="text-xs text-gray-500 whitespace-nowrap">únicos en chat</div>

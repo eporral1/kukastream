@@ -134,6 +134,7 @@ export interface Channel {
   avg_viewers: number;
   avg_likes: number;
   avg_comments?: number;
+  avg_unique_commentators?: number;
   likes_per_viewer?: number;
   comments_per_viewer?: number;
   type?: string;

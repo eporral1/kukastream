@@ -237,6 +237,34 @@ async function enrichEternalChannels(channels: any[]) {
       });
     }
 
+    const allEternalVideoIds = Array.from(
+      new Set(
+        (titleGroupsRes.rows || [])
+          .map((r: any) => r.video_id)
+          .filter(Boolean)
+      )
+    );
+    const ucEternalMap = new Map<string, number>();
+    if (allEternalVideoIds.length > 0) {
+      try {
+        const ucRes: any = await executeQuery(
+          `SELECT video_id, COUNT(DISTINCT author_id)::int AS unique_commentators
+           FROM public.comments
+           WHERE video_id = ANY($1)
+             AND created_at >= '2026-10-01 00:00:00'
+             AND author_id IS NOT NULL
+             AND TRIM(author_id) != ''
+           GROUP BY video_id`,
+          [allEternalVideoIds]
+        );
+        for (const r of ucRes.rows || []) {
+          ucEternalMap.set(r.video_id, Number(r.unique_commentators || 0));
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     for (const channel of eternalChannels) {
       let titleGroups = byChannel.get(channel.channel_id) || [];
       titleGroups = clusterEternalTitleGroups(titleGroups);
@@ -251,6 +279,18 @@ async function enrichEternalChannels(channels: any[]) {
 
         const totalComments = titleGroups.reduce((acc: number, g: any) => acc + g.comm_delta, 0);
         channel.avg_comments = Math.round(totalComments / titleGroups.length);
+
+        const distinctVideoIds = Array.from(new Set(titleGroups.map((g: any) => g.video_id).filter(Boolean)));
+        if (distinctVideoIds.length > 0) {
+          const totalUniqueChat = distinctVideoIds.reduce(
+            (acc: number, vid: any) => acc + (ucEternalMap.get(vid) || 0),
+            0
+          );
+          const computedAvgUc = Math.round(totalUniqueChat / distinctVideoIds.length);
+          if (computedAvgUc > 0) {
+            channel.avg_unique_commentators = computedAvgUc;
+          }
+        }
 
         const validGroups = titleGroups.filter((g: any) => (g.max_viewers || 0) > 0);
         if (validGroups.length > 0) {
@@ -318,7 +358,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  const cacheKey = 'api:channels:v2:7bdays';
+  const cacheKey = 'api:channels:v3:7bdays';
   const cached = getCachedResponse(cacheKey);
   if (cached) {
     res.setHeader('Cache-Control', 'public, s-maxage=20, stale-while-revalidate=40');
@@ -349,19 +389,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         GROUP BY m.channel_id, m.video_id
         HAVING MAX(m.concurrent_viewers) > 0
       ),
+      recent_videos AS (
+        SELECT video_id, channel_id,
+               MAX(concurrent_viewers) AS max_viewers
+        FROM public.live
+        WHERE scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
+          AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
+          AND concurrent_viewers > 0
+        GROUP BY video_id, channel_id
+      ),
+      video_unique_users AS (
+        SELECT c.video_id, COUNT(DISTINCT c.author_id)::int AS unique_commentators
+        FROM public.comments c
+        WHERE c.video_id IN (SELECT video_id FROM recent_videos)
+          AND c.created_at >= '2026-10-01 00:00:00'
+          AND c.author_id IS NOT NULL
+          AND TRIM(c.author_id) != ''
+        GROUP BY c.video_id
+      ),
       viewer_stats AS (
-        SELECT channel_id,
-               COALESCE(ROUND(AVG(max_viewers)), 0)::int AS avg_viewers
-        FROM (
-          SELECT video_id, channel_id,
-                 MAX(concurrent_viewers) AS max_viewers
-          FROM public.live
-          WHERE scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
-            AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
-            AND concurrent_viewers > 0
-          GROUP BY video_id, channel_id
-        ) sub
-        GROUP BY channel_id
+        SELECT rv.channel_id,
+               COALESCE(ROUND(AVG(rv.max_viewers)), 0)::int AS avg_viewers,
+               COALESCE(ROUND(AVG(COALESCE(vuu.unique_commentators, 0))), 0)::int AS avg_unique_commentators
+        FROM recent_videos rv
+        LEFT JOIN video_unique_users vuu ON vuu.video_id = rv.video_id
+        GROUP BY rv.channel_id
       ),
       ratio_stats AS (
         SELECT 
@@ -379,6 +431,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         COALESCE(vs.avg_viewers, rs.minute_avg_viewers, 0)::int AS avg_viewers,
         COALESCE(rs.avg_likes, 0)::int AS avg_likes,
         COALESCE(rs.avg_comments, 0)::int AS avg_comments,
+        COALESCE(vs.avg_unique_commentators, 0)::int AS avg_unique_commentators,
         COALESCE(rs.likes_per_viewer, 0)::numeric AS likes_per_viewer,
         COALESCE(rs.comments_per_viewer, 0)::numeric AS comments_per_viewer
       FROM public.channels c
@@ -428,6 +481,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           COALESCE(cr.avg_viewers, 0)::int AS avg_viewers,
           COALESCE(cr.avg_likes, 0)::int AS avg_likes,
           0::int AS avg_comments,
+          0::int AS avg_unique_commentators,
           COALESCE(cr.likes_per_viewer, 0)::numeric AS likes_per_viewer,
           COALESCE(cr.comments_per_viewer, 0)::numeric AS comments_per_viewer
         FROM public.channels c
