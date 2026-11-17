@@ -162,7 +162,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                 {formatNumber(currentLikes)}
               </div>
               <div className="text-[10px] text-gray-500 font-medium" title="Likes por espectador pico del episodio">
-                {likesRatio > 0 ? likesRatio.toFixed(2) : '0.00'} / esp
+                {likesRatio > 0 ? (likesRatio*100).toFixed(2) : '0.00'}% esp.
               </div>
             </div>
 
@@ -173,7 +173,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                 {formatNumber(commentsCount)}
               </div>
               <div className="text-[10px] text-gray-500 font-medium" title="Mensajes por espectador pico del episodio">
-                {commentsRatio > 0 ? commentsRatio.toFixed(2) : '0.00'} / esp
+                {commentsRatio > 0 ? commentsRatio.toFixed(2) : '0.00'} / esp.
               </div>
             </div>
 
@@ -184,7 +184,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                 {formatNumber(uniqueCommentators)}
               </div>
               <div className="text-[10px] text-gray-500 font-medium" title="Usuarios únicos en el chat sobre espectador pico">
-                {uniqueRatio > 0 ? `${uniqueRatio.toFixed(2)} / esp` : 'ÚNICOS'}
+                {uniqueRatio > 0 ? `${(uniqueRatio*100).toFixed(2)}` : '0'}% esp.
               </div>
             </div>
           </div>
@@ -251,7 +251,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                 >
                   <span>❤️</span>
                   <span>{formatNumber(currentLikes)}</span>
-                  <span className="text-[10px] text-gray-500 font-normal">({likesRatio > 0 ? likesRatio.toFixed(2) : '0.00'}/esp)</span>
+                  <span className="text-[10px] text-gray-500 font-normal">({likesRatio > 0 ? (likesRatio*100).toFixed(2) : '0.00'}% esp.)</span>
                 </div>
 
                 <div
@@ -260,7 +260,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                 >
                   <span>💬</span>
                   <span>{formatNumber(commentsCount)}</span>
-                  <span className="text-[10px] text-gray-500 font-normal">({commentsRatio > 0 ? commentsRatio.toFixed(2) : '0.00'}/esp)</span>
+                  <span className="text-[10px] text-gray-500 font-normal">({commentsRatio > 0 ? commentsRatio.toFixed(2) : '0.00'}/esp.)</span>
                 </div>
 
                 <div

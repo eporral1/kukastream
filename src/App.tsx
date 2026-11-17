@@ -491,7 +491,7 @@ export default function App({ initialData }: AppProps) {
                       )}
                     </div>
                     <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-                      Canales ordenados por audiencia concurrente real extraída de la base de datos
+                      Canales ordenados por audiencia actual
                     </p>
                   </div>
                   {/*<div className="flex items-center gap-2 self-start sm:self-auto">
@@ -672,7 +672,7 @@ export default function App({ initialData }: AppProps) {
                                 {new Intl.NumberFormat('es-AR').format(rLikes)}
                               </div>
                               <div className="text-[10px] text-gray-500 font-medium" title="Likes por espectador pico del episodio">
-                                {rLikesRatio > 0 ? rLikesRatio.toFixed(2) : '0.00'} / esp
+                                {rLikesRatio > 0 ? (rLikesRatio*100).toFixed(2) : '0.00'}% esp.
                               </div>
                             </div>
 
@@ -692,7 +692,7 @@ export default function App({ initialData }: AppProps) {
                                 {new Intl.NumberFormat('es-AR').format(rUniqueUsers)}
                               </div>
                               <div className="text-[10px] text-gray-500 font-medium" title="Usuarios únicos en el chat por espectador pico">
-                                {rUniqueRatio > 0 ? `${rUniqueRatio.toFixed(2)} / esp` : 'ÚNICOS'}
+                                {rUniqueRatio > 0 ? `${(rUniqueRatio*100).toFixed(2)} % esp.` : '0%'}
                               </div>
                             </div>
 
