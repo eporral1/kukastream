@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Channel } from '../types';
 import { formatNumber, formatSubs } from '../data/mockData';
 import { ChannelCommentsModal } from './ChannelCommentsModal';
@@ -7,7 +7,8 @@ import { SITE_NAME } from '../config/site';
 import { trackEvent, updateSeoMeta } from '../utils/analytics';
 
 interface ChannelsPageProps {
-  channels: Channel[];
+  channels?: Channel[];
+  onChannelsLoaded?: (channels: Channel[]) => void;
   onNavigateChannel: (channelId: string) => void;
   onNavigateContact?: () => void;
 }
@@ -15,15 +16,59 @@ interface ChannelsPageProps {
 type ChannelSortOption = 'viewers' | 'likes' | 'comments' | 'chat_users';
 
 export const ChannelsPage: React.FC<ChannelsPageProps> = ({
-  channels,
+  channels: initialChannels,
+  onChannelsLoaded,
   onNavigateChannel,
   onNavigateContact,
 }) => {
+  const [channels, setChannels] = useState<Channel[]>(() =>
+    Array.isArray(initialChannels) && initialChannels.length > 0 ? initialChannels : []
+  );
+  const [isLoading, setIsLoading] = useState<boolean>(
+    () => !Array.isArray(initialChannels) || initialChannels.length === 0
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>('all');
   const [selectedCommentsChannel, setSelectedCommentsChannel] = useState<Channel | null>(null);
   const [filterSuperchatsOnly, setFilterSuperchatsOnly] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<ChannelSortOption>('viewers');
+
+  const fetchChannels = useCallback(
+    async (sort: ChannelSortOption) => {
+      setIsLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (sort) {
+          params.append('sort', sort);
+        }
+        const queryString = params.toString();
+        const url = queryString ? `/api/channels?${queryString}` : '/api/channels';
+        const res = await fetch(url, {
+          headers: {
+            'X-App-Client': 'kukastream-web',
+          },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.channels)) {
+            setChannels(data.channels);
+            onChannelsLoaded?.(data.channels);
+          } else {
+            setChannels([]);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching channels:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [onChannelsLoaded]
+  );
+
+  useEffect(() => {
+    fetchChannels(sortBy);
+  }, [fetchChannels, sortBy]);
 
   const filteredChannels = useMemo(() => {
     if (!Array.isArray(channels)) return [];
@@ -75,20 +120,20 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
   }, [channels, searchQuery, selectedTag, filterSuperchatsOnly, sortBy]);
 
   useEffect(() => {
-    const visibleChannels = filteredChannels.slice(0, 10);
-    const channelNames = visibleChannels
-      .map((c) => (c.channel_name || c.channel || '').trim())
-      .filter(Boolean);
-    const description =
-      channelNames.length > 0
-        ? `${SITE_NAME} - Canales de streaming: ${channelNames.join(', ')}.`
-        : `${SITE_NAME} - Ranking y estadísticas de canales de streaming en Argentina.`;
+    const sourceList = filteredChannels.length > 0 ? filteredChannels : channels;
+    const channelNames = Array.from(
+      new Set(
+        sourceList
+          .map((c) => (c.channel_name || c.channel || '').trim())
+          .filter(Boolean)
+      )
+    );
 
     updateSeoMeta({
       title: `${SITE_NAME} - Canales`,
-      description,
+      ...(channelNames.length > 0 ? { description: channelNames.join(', ') } : {}),
     });
-  }, [filteredChannels]);
+  }, [filteredChannels, channels]);
 
   return (
     <div className="space-y-6">
@@ -173,7 +218,23 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
           </div>
         </div>
 
-        {filteredChannels.length === 0 ? (
+        {isLoading && filteredChannels.length === 0 ? (
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="bg-white rounded-xl p-6 border border-gray-100 animate-pulse flex items-center space-x-4"
+              >
+                <div className="w-8 h-6 rounded bg-gray-200"></div>
+                <div className="w-16 h-16 rounded-full bg-gray-200"></div>
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-gray-200 rounded w-1/3"></div>
+                  <div className="h-3 bg-gray-100 rounded w-2/3"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : filteredChannels.length === 0 ? (
           <div className="bg-white rounded-xl p-12 text-center border border-gray-200 text-gray-500">
             No se encontraron canales para los filtros seleccionados.
           </div>

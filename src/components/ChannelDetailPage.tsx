@@ -80,10 +80,10 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
 
   useEffect(() => {
     const label = channel?.channel_name || channel?.channel || 'Canal';
-    const desc = (channel?.description || '').trim();
+    const desc = (channel?.description || '').replace(/\s+/g, ' ').trim();
     updateSeoMeta({
       title: `${SITE_NAME} - ${label}`,
-      description: desc || `${SITE_NAME} - ${label}`,
+      ...(desc ? { description: desc } : {}),
     });
   }, [channel?.channel_name, channel?.channel, channel?.description]);
 
@@ -105,6 +105,12 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
         if (res.ok && data?.success) {
           if (data.channel) {
             setChannel(data.channel);
+            const label = data.channel.channel_name || data.channel.channel || 'Canal';
+            const desc = (data.channel.description || '').replace(/\s+/g, ' ').trim();
+            updateSeoMeta({
+              title: `${SITE_NAME} - ${label}`,
+              ...(desc ? { description: desc } : {}),
+            });
             trackEvent('view_channel_detail', {
               channel: data.channel.channel,
               channel_name: data.channel.channel_name,
@@ -163,8 +169,21 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
   }, []);
 
   useEffect(() => {
-    setChannel(initialChannel);
     const channelIdentifier = initialChannel.channel || initialChannel.channel_id;
+    setChannel((prev) => {
+      const prevHandle = (prev?.channel || '').toLowerCase();
+      const nextHandle = (initialChannel.channel || '').toLowerCase();
+      const prevId = (prev?.channel_id || '').toLowerCase();
+      const nextId = (initialChannel.channel_id || '').toLowerCase();
+      const isSameChannel =
+        Boolean(prev) &&
+        ((prevHandle && nextHandle && prevHandle === nextHandle) ||
+          (prevId && nextId && prevId === nextId));
+      if (isSameChannel && prev?.description) {
+        return prev;
+      }
+      return initialChannel;
+    });
     if (channelIdentifier) {
       tryFetchChannel(channelIdentifier);
     }

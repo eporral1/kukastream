@@ -208,33 +208,47 @@ export default function App({ initialData }: AppProps) {
     initAnalytics();
   }, []);
 
-  // Initial fetch on mount & category change
+  // Initial fetch on Home ('/') & category change
   useEffect(() => {
-    fetchLiveData(Boolean(resolvedInitialData?.isPrerendered));
-  }, [fetchLiveData, resolvedInitialData]);
+    const cleanPath = (currentPath || '/').split('?')[0];
+    if (cleanPath === '/') {
+      fetchLiveData(Boolean(resolvedInitialData?.isPrerendered));
+    }
+  }, [currentPath, fetchLiveData, resolvedInitialData]);
 
+  // Only fetch channels in App.tsx if user opens /face-off directly and channelsList is empty
   useEffect(() => {
-    fetchChannelsData();
-  }, [fetchChannelsData]);
+    const cleanPath = (currentPath || '/').split('?')[0];
+    if (cleanPath.startsWith('/face-off') && channelsList.length === 0) {
+      fetchChannelsData();
+    }
+  }, [currentPath, channelsList.length, fetchChannelsData]);
 
-  // Real Database Polling every 30 seconds
+  // Real Database Polling on Home every 5 minutes
   useEffect(() => {
-    if (!autoRefresh) return;
+    const cleanPath = (currentPath || '/').split('?')[0];
+    if (!autoRefresh || cleanPath !== '/') return;
 
     const interval = setInterval(() => {
       fetchLiveData(true); // background silent update
     }, 300000);
 
     return () => clearInterval(interval);
-  }, [autoRefresh, fetchLiveData]);
+  }, [autoRefresh, currentPath, fetchLiveData]);
 
   // Manual refresh button
   const handleManualRefresh = () => {
     trackEvent('manual_refresh', { page_path: currentPath });
     setIsRefreshing(true);
     setIsDbErrorDismissed(false);
-    fetchLiveData(false);
-    fetchChannelsData();
+    const cleanPath = (currentPath || '/').split('?')[0];
+    if (cleanPath === '/') {
+      fetchLiveData(false);
+    } else if (cleanPath === '/channels' || cleanPath.startsWith('/face-off')) {
+      fetchChannelsData().finally(() => setIsRefreshing(false));
+    } else {
+      setIsRefreshing(false);
+    }
   };
 
   // Share Top 3 to Twitter with image capture
@@ -358,12 +372,30 @@ export default function App({ initialData }: AppProps) {
 
   // Dynamically set document.title ("SITE_NAME - SECCION") and fire GA4 page_view on route change
   useEffect(() => {
+    const cleanPath = (currentPath || '/').split('?')[0];
+    let routeDesc: string | undefined = undefined;
+
+    if (cleanPath === '/channels' && channelsList.length > 0) {
+      const names = Array.from(
+        new Set(
+          channelsList
+            .map((c) => (c.channel_name || c.channel || '').trim())
+            .filter(Boolean)
+        )
+      );
+      if (names.length > 0) {
+        routeDesc = names.join(', ');
+      }
+    } else if (isChannelDetail && currentChannel?.description) {
+      routeDesc = currentChannel.description.replace(/\s+/g, ' ').trim();
+    }
+
     trackPageView(
       currentPath,
-      currentChannel?.channel_name,
-      isChannelDetail && currentChannel?.description ? currentChannel.description : undefined
+      isChannelDetail && !currentChannel?.description ? undefined : currentChannel?.channel_name,
+      routeDesc
     );
-  }, [currentPath, currentChannel?.channel_name, currentChannel?.description, isChannelDetail]);
+  }, [currentPath, currentChannel?.channel_name, currentChannel?.description, isChannelDetail, channelsList]);
 
   // Update Home meta description with visible channel names and broadcast titles
   useEffect(() => {
@@ -384,12 +416,13 @@ export default function App({ initialData }: AppProps) {
 
     const visibleChannelNames = Array.from(
       new Set(
-        [
-          ...visibleStreams.map((s) => (s.channel_name || s.channel || '').trim()),
-          ...channelsList.slice(0, 16).map((c) => (c.channel_name || c.channel || '').trim()),
-        ].filter(Boolean)
+        visibleStreams
+          .map((s) => (s.channel_name || s.channel || '').trim())
+          .filter(Boolean)
       )
     );
+
+    if (streamLabels.length === 0 && visibleChannelNames.length === 0) return;
 
     let description = `${SITE_NAME} - Ranking en vivo, métricas en tiempo real, superchats y estadísticas de canales de streaming en Argentina.`;
     if (streamLabels.length > 0) {
@@ -397,14 +430,14 @@ export default function App({ initialData }: AppProps) {
         visibleChannelNames.length > 0 ? `. Canales: ${visibleChannelNames.join(', ')}` : ''
       }.`;
     } else if (visibleChannelNames.length > 0) {
-      description = `${SITE_NAME} - Canales de streaming en Argentina: ${visibleChannelNames.join(', ')}.`;
+      description = visibleChannelNames.join(', ');
     }
 
     updateSeoMeta({
       title: `${SITE_NAME} - Ranking en vivo de streamings`,
       description,
     });
-  }, [currentPath, sortedLiveStreams, recentStreams, channelsList]);
+  }, [currentPath, sortedLiveStreams, recentStreams]);
 
   const currentChannelLiveStream = useMemo(() => {
     if (!currentChannel) return undefined;
@@ -494,6 +527,7 @@ export default function App({ initialData }: AppProps) {
             /* Route: Canales Directory */
             <ChannelsPage
               channels={channelsList}
+              onChannelsLoaded={setChannelsList}
               onNavigateChannel={(handle) => navigate(`/channel/${handle}`)}
               onNavigateContact={() => navigate('/contacto')}
             />

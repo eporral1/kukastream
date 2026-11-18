@@ -102,12 +102,12 @@ async function fetchPrerenderData(): Promise<InitialPrerenderData> {
       const recentStreams = (recentRes.rows || []).filter(
         (s: any) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)
       );
-      const channelsList = chRes.rows && chRes.rows.length > 0 ? chRes.rows : CHANNELS;
+      const channelsList = chRes.rows && chRes.rows.length > 0 ? chRes.rows : [];
 
       const allDates = [...streams, ...recentStreams].map((s: any) => s.scrape_date).filter(Boolean);
       const lastUpdate = allDates.length > 0 ? formatArgentinaTime(allDates.sort().reverse()[0]) : 'En vivo';
 
-      if (streams.length > 0 || recentStreams.length > 0 || (chRes.rows && chRes.rows.length > 0)) {
+      if (streams.length > 0 || recentStreams.length > 0 || channelsList.length > 0) {
         console.log(`[prerender] Loaded ${streams.length} live streams, ${recentStreams.length} recent streams, ${channelsList.length} channels from PostgreSQL.`);
         return {
           streams,
@@ -126,7 +126,7 @@ async function fetchPrerenderData(): Promise<InitialPrerenderData> {
   // 2. Try local running server on port 3000 if available
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const timeout = setTimeout(() => controller.abort(), 30000);
     const [liveRes, chRes] = await Promise.all([
       fetch('http://localhost:3000/api/live?tag=all', {
         headers: { 'X-App-Client': 'kukastream-web' },
@@ -139,12 +139,12 @@ async function fetchPrerenderData(): Promise<InitialPrerenderData> {
     ]);
     clearTimeout(timeout);
 
-    if (liveRes.ok) {
-      const liveData: any = await liveRes.json();
+    if (liveRes.ok || chRes.ok) {
+      const liveData: any = liveRes.ok ? await liveRes.json() : null;
       const chData: any = chRes.ok ? await chRes.json() : null;
       const streams = Array.isArray(liveData?.streams) ? liveData.streams : [];
       const recentStreams = Array.isArray(liveData?.recent_streams) ? liveData.recent_streams : [];
-      const channelsList = Array.isArray(chData?.channels) && chData.channels.length > 0 ? chData.channels : CHANNELS;
+      const channelsList = Array.isArray(chData?.channels) && chData.channels.length > 0 ? chData.channels : [];
       const allDates = [...streams, ...recentStreams].map((s: any) => s.scrape_date).filter(Boolean);
       const lastUpdate = allDates.length > 0 ? formatArgentinaTime(allDates.sort().reverse()[0]) : 'En vivo';
 
@@ -158,16 +158,16 @@ async function fetchPrerenderData(): Promise<InitialPrerenderData> {
       };
     }
   } catch {
-    // Local API not running during isolated build, fallback to static channels metadata
+    // Local API not running during isolated build
   }
 
-  console.log('[prerender] Using static channel directory fallback for prerender.');
+  console.log('[prerender] Using empty initial state fallback for prerender.');
   return {
     streams: [],
     recentStreams: [],
-    channelsList: CHANNELS,
+    channelsList: [],
     lastUpdate: 'En vivo',
-    isPrerendered: true,
+    isPrerendered: false,
   };
 }
 
@@ -195,7 +195,7 @@ function buildJsonLd(data: InitialPrerenderData): string {
       {
         '@type': 'ItemList',
         name: 'Canales de Streaming Monitoreados en Argentina',
-        itemListElement: channels.slice(0, 20).map((ch, idx) => ({
+        itemListElement: channels.slice(0, 25).map((ch, idx) => ({
           '@type': 'ListItem',
           position: idx + 1,
           name: ch.channel_name,
@@ -220,7 +220,7 @@ function buildHomeMetaDescription(data: InitialPrerenderData): string {
   const visibleLive = (data.streams || []).slice(0, 10);
   const visibleRecent = data.recentStreams || [];
   const visibleStreams = [...visibleLive, ...visibleRecent];
-  const channelsList = data.channelsList && data.channelsList.length > 0 ? data.channelsList : CHANNELS;
+  const channelsList = data.channelsList && data.channelsList.length > 0 ? data.channelsList : [];
 
   const streamLabels = visibleStreams
     .map((s) => {
@@ -234,7 +234,7 @@ function buildHomeMetaDescription(data: InitialPrerenderData): string {
     new Set(
       [
         ...visibleStreams.map((s) => (s.channel_name || s.channel || '').trim()),
-        ...channelsList.slice(0, 16).map((c) => (c.channel_name || c.channel || '').trim()),
+        ...channelsList.map((c) => (c.channel_name || c.channel || '').trim()),
       ].filter(Boolean)
     )
   );
@@ -245,7 +245,7 @@ function buildHomeMetaDescription(data: InitialPrerenderData): string {
     }.`;
   }
   if (visibleChannelNames.length > 0) {
-    return `${SITE_NAME} - Canales de streaming en Argentina: ${visibleChannelNames.join(', ')}.`;
+    return visibleChannelNames.join(', ');
   }
   return `${SITE_NAME} - Ranking en vivo, métricas en tiempo real, superchats y estadísticas de canales de streaming en Argentina.`;
 }
