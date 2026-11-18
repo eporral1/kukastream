@@ -144,6 +144,9 @@ function clusterEternalTitleGroups(rawGroups: any[]): any[] {
           cluster.min_comments = Math.min(cluster.min_comments, group.min_comments);
           cluster.max_comments = Math.max(cluster.max_comments, group.max_comments);
           cluster.comm_delta = Math.max(0, cluster.max_comments - cluster.min_comments);
+          cluster.min_authors = Math.min(cluster.min_authors ?? 0, group.min_authors ?? 0);
+          cluster.max_authors = Math.max(cluster.max_authors ?? 0, group.max_authors ?? 0);
+          cluster.authors_delta = Math.max(0, cluster.max_authors - cluster.min_authors);
           cluster.point_count += group.point_count;
 
           // Pick the longer / more complete title as the display video_title
@@ -171,11 +174,7 @@ function clusterEternalTitleGroups(rawGroups: any[]): any[] {
 }
 
 /**
- * Chains cumulative metrics (likes and comments) across sequential shows within each video_id.
- * For the first show of a video_id: baseline is the first measurement of that video_id.
- * For any subsequent show i >= 1: baseline is the LAST measurement of the previous show (L_end,i-1).
- * Telescoping sum property:
- * Sum(Likes_delta_i) = Sum(L_end,i - L_end,i-1) = Max likes for that video_id.
+ * Chains cumulative metrics (likes, comments, authors) across sequential shows within each video_id.
  */
 function chainEternalTitleDeltas(groups: any[]): any[] {
   if (!groups || groups.length === 0) return groups;
@@ -198,6 +197,7 @@ function chainEternalTitleDeltas(groups: any[]): any[] {
 
     let prevLastLikes: number | null = null;
     let prevLastComments: number | null = null;
+    let prevLastAuthors: number | null = null;
 
     for (let i = 0; i < videoGroups.length; i++) {
       const g = videoGroups[i];
@@ -205,10 +205,9 @@ function chainEternalTitleDeltas(groups: any[]): any[] {
       const curMinLikes = Number(g.min_likes || 0);
       const curMaxComm = Number(g.max_comments || 0);
       const curMinComm = Number(g.min_comments || 0);
+      const curMaxAuth = Number(g.max_authors || 0);
+      const curMinAuth = Number(g.min_authors || 0);
 
-      // Baseline for likes:
-      // Show 0: the first measurement of that video_id (curMinLikes)
-      // Show i >= 1: the last measurement of the previous title (prevLastLikes)
       let baselineLikes: number;
       if (i === 0 || prevLastLikes === null) {
         baselineLikes = curMinLikes;
@@ -216,7 +215,6 @@ function chainEternalTitleDeltas(groups: any[]): any[] {
         baselineLikes = curMaxLikes >= prevLastLikes ? prevLastLikes : curMinLikes;
       }
 
-      // Baseline for comments:
       let baselineComments: number;
       if (i === 0 || prevLastComments === null) {
         baselineComments = curMinComm;
@@ -224,14 +222,23 @@ function chainEternalTitleDeltas(groups: any[]): any[] {
         baselineComments = curMaxComm >= prevLastComments ? prevLastComments : curMinComm;
       }
 
+      let baselineAuthors: number;
+      if (i === 0 || prevLastAuthors === null) {
+        baselineAuthors = curMinAuth;
+      } else {
+        baselineAuthors = curMaxAuth >= prevLastAuthors ? prevLastAuthors : curMinAuth;
+      }
+
       g.baseline_likes = baselineLikes;
       g.baseline_comments = baselineComments;
+      g.baseline_authors = baselineAuthors;
       g.likes_delta = Math.max(0, curMaxLikes - baselineLikes);
       g.comm_delta = Math.max(0, curMaxComm - baselineComments);
+      g.authors_delta = Math.max(0, curMaxAuth - baselineAuthors);
 
-      // Save this title's last measurement for the next title in the same video_id
       prevLastLikes = curMaxLikes;
       prevLastComments = curMaxComm;
+      prevLastAuthors = curMaxAuth;
     }
   }
 
@@ -359,6 +366,8 @@ async function enrichEternalStreams(streams: any[], p: any) {
               MAX(likes) AS max_likes,
               MIN(comments_count) AS min_comments,
               MAX(comments_count) AS max_comments,
+              MIN(COALESCE(authors_count, 0)) AS min_authors,
+              MAX(COALESCE(authors_count, 0)) AS max_authors,
               COUNT(*) AS point_count
        FROM public.minute
        WHERE channel_id = ANY($1) 
@@ -378,6 +387,8 @@ async function enrichEternalStreams(streams: any[], p: any) {
       const minLikes = Number(row.min_likes || 0);
       const maxComm = Number(row.max_comments || 0);
       const minComm = Number(row.min_comments || 0);
+      const maxAuth = Number(row.max_authors || 0);
+      const minAuth = Number(row.min_authors || 0);
 
       channelRawMap.get(row.channel_id)!.push({
         video_title: row.video_title,
@@ -393,6 +404,9 @@ async function enrichEternalStreams(streams: any[], p: any) {
         min_comments: minComm,
         max_comments: maxComm,
         comm_delta: Math.max(0, maxComm - minComm),
+        min_authors: minAuth,
+        max_authors: maxAuth,
+        authors_delta: Math.max(0, maxAuth - minAuth),
         point_count: Number(row.point_count || 0),
       });
     }
@@ -414,6 +428,7 @@ async function enrichEternalStreams(streams: any[], p: any) {
           const currentSession = sessions[0];
           stream.current_likes = currentSession.likes_delta;
           stream.comments_count = currentSession.comm_delta;
+          stream.unique_commentators = currentSession.authors_delta;
           if (currentSession.avg_viewers) {
             stream.avg_viewers = currentSession.avg_viewers;
           }
@@ -434,6 +449,7 @@ async function enrichEternalStreams(streams: any[], p: any) {
           if (matched) {
             stream.current_likes = matched.likes_delta;
             stream.comments_count = matched.comm_delta;
+            stream.unique_commentators = matched.authors_delta;
             if (matched.avg_viewers) {
               stream.avg_viewers = matched.avg_viewers;
             }
@@ -486,6 +502,8 @@ async function enrichEternalChannels(channels: any[], p: any) {
               MAX(likes) AS max_likes,
               MIN(comments_count) AS min_comments,
               MAX(comments_count) AS max_comments,
+              MIN(COALESCE(authors_count, 0)) AS min_authors,
+              MAX(COALESCE(authors_count, 0)) AS max_authors,
               COUNT(*) AS point_count
        FROM public.minute
        WHERE channel_id = ANY($1)
@@ -509,6 +527,8 @@ async function enrichEternalChannels(channels: any[], p: any) {
       const minLikes = Number(row.min_likes || 0);
       const maxComm = Number(row.max_comments || 0);
       const minComm = Number(row.min_comments || 0);
+      const maxAuth = Number(row.max_authors || 0);
+      const minAuth = Number(row.min_authors || 0);
 
       list.push({
         video_title: row.video_title,
@@ -523,36 +543,11 @@ async function enrichEternalChannels(channels: any[], p: any) {
         min_comments: minComm,
         max_comments: maxComm,
         comm_delta: Math.max(0, maxComm - minComm),
+        min_authors: minAuth,
+        max_authors: maxAuth,
+        authors_delta: Math.max(0, maxAuth - minAuth),
         point_count: Number(row.point_count || 0),
       });
-    }
-
-    const allEternalVideoIds = Array.from(
-      new Set(
-        (titleGroupsRes.rows || [])
-          .map((r: any) => r.video_id)
-          .filter(Boolean)
-      )
-    );
-    const ucEternalMap = new Map<string, number>();
-    if (allEternalVideoIds.length > 0) {
-      try {
-        const ucRes = await p.query(
-          `SELECT video_id, COUNT(DISTINCT author_id)::int AS unique_commentators
-           FROM public.comments
-           WHERE video_id = ANY($1)
-             AND created_at >= '2026-10-01 00:00:00'
-             AND author_id IS NOT NULL
-             AND TRIM(author_id) != ''
-           GROUP BY video_id`,
-          [allEternalVideoIds]
-        );
-        for (const r of ucRes.rows || []) {
-          ucEternalMap.set(r.video_id, Number(r.unique_commentators || 0));
-        }
-      } catch {
-        // ignore
-      }
     }
 
     for (const channel of eternalChannels) {
@@ -570,17 +565,8 @@ async function enrichEternalChannels(channels: any[], p: any) {
         const totalComments = titleGroups.reduce((acc: number, g: any) => acc + g.comm_delta, 0);
         channel.avg_comments = Math.round(totalComments / titleGroups.length);
 
-        const distinctVideoIds = Array.from(new Set(titleGroups.map((g: any) => g.video_id).filter(Boolean)));
-        if (distinctVideoIds.length > 0) {
-          const totalUniqueChat = distinctVideoIds.reduce(
-            (acc: number, vid: any) => acc + (ucEternalMap.get(vid) || 0),
-            0
-          );
-          const computedAvgUc = Math.round(totalUniqueChat / distinctVideoIds.length);
-          if (computedAvgUc > 0) {
-            channel.avg_unique_commentators = computedAvgUc;
-          }
-        }
+        const totalAuthors = titleGroups.reduce((acc: number, g: any) => acc + (g.authors_delta || 0), 0);
+        channel.avg_unique_commentators = Math.round(totalAuthors / titleGroups.length);
 
         const validGroups = titleGroups.filter((g: any) => (g.max_viewers || 0) > 0);
         if (validGroups.length > 0) {
@@ -657,12 +643,13 @@ app.get('/api/live', async (req: Request, res: Response) => {
         0::numeric as superchats_total,
         0::int as superchats_count,
         COALESCE(comm.comments_count, 0)::int as comments_count,
-        0::int as unique_commentators,
+        COALESCE(comm.authors_count, 0)::int as unique_commentators,
         l.current_likes
       FROM public.live l
       JOIN public.channels c ON l.channel_id = c.channel_id
       LEFT JOIN LATERAL (
-        SELECT COALESCE(m.comments_count, 0) as comments_count
+        SELECT COALESCE(m.comments_count, 0) as comments_count,
+               COALESCE(m.authors_count, 0) as authors_count
         FROM public.minute m 
         WHERE m.video_id = l.video_id 
         ORDER BY m.scrape_date DESC, m.id DESC 
@@ -689,15 +676,16 @@ app.get('/api/live', async (req: Request, res: Response) => {
         l.video_id, l.channel_id, l.concurrent_viewers, l.old_viewers,
         l.current_likes, l.old_likes, l.scrape_date, l.start_date, l.live,
         COALESCE(l.video_title, '') AS video_title,
-        c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter,
+        c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter, c.type,
         0::numeric as superchats_total,
         0::int as superchats_count,
         COALESCE(comm.comments_count, 0)::int as comments_count,
-        0::int as unique_commentators
+        COALESCE(comm.authors_count, 0)::int as unique_commentators
       FROM public.live l
       JOIN public.channels c ON l.channel_id = c.channel_id
       LEFT JOIN LATERAL (
-        SELECT COALESCE(m.comments_count, 0) as comments_count
+        SELECT COALESCE(m.comments_count, 0) as comments_count,
+               COALESCE(m.authors_count, 0) as authors_count
         FROM public.minute m 
         WHERE m.video_id = l.video_id 
         ORDER BY m.scrape_date DESC, m.id DESC 
@@ -785,31 +773,6 @@ app.get('/api/live', async (req: Request, res: Response) => {
       } catch (e) {
         console.error('Error fetching peak viewers for streams in server.ts:', e);
       }
-
-      try {
-        const uniqRes = await p.query(
-          `SELECT video_id, COUNT(DISTINCT author_id)::int AS unique_commentators
-           FROM public.comments
-           WHERE video_id = ANY($1)
-             AND created_at >= '2026-10-01 00:00:00'
-             AND author_id IS NOT NULL
-             AND TRIM(author_id) != ''
-           GROUP BY video_id`,
-          [allVideoIds]
-        );
-        const uniqMap = new Map<string, number>();
-        for (const row of uniqRes.rows || []) {
-          uniqMap.set(row.video_id, Number(row.unique_commentators || 0));
-        }
-        for (const stream of liveResult.rows) {
-          stream.unique_commentators = uniqMap.get(stream.video_id) || 0;
-        }
-        for (const stream of recentResult.rows) {
-          stream.unique_commentators = uniqMap.get(stream.video_id) || 0;
-        }
-      } catch (e) {
-        console.error('Error fetching unique commentators for streams in server.ts:', e);
-      }
     }
 
     // Enrich eternal channels with current program session likes and comments
@@ -875,7 +838,8 @@ app.get('/api/channels', async (req: Request, res: Response) => {
           m.video_id,
           MAX(m.concurrent_viewers) AS max_viewers,
           MAX(m.likes) AS max_likes,
-          MAX(m.comments_count) AS max_comments
+          MAX(m.comments_count) AS max_comments,
+          COALESCE((ARRAY_AGG(m.authors_count ORDER BY m.scrape_date DESC, m.id DESC) FILTER (WHERE m.authors_count IS NOT NULL))[1], 0)::int AS last_authors_count
         FROM public.minute m
         WHERE m.scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
           AND m.scrape_date::date IN (SELECT bday FROM last_7_business_days)
@@ -898,32 +862,22 @@ app.get('/api/channels', async (req: Request, res: Response) => {
           COALESCE(rv.video_id, vs.video_id) AS video_id,
           GREATEST(COALESCE(rv.max_viewers, 0), COALESCE(vs.max_viewers, 0)) AS max_viewers,
           GREATEST(COALESCE(vs.max_likes, 0), COALESCE(rv.max_likes, 0)) AS max_likes,
-          COALESCE(vs.max_comments, 0) AS max_comments
+          COALESCE(vs.max_comments, 0) AS max_comments,
+          COALESCE(vs.last_authors_count, 0) AS unique_commentators
         FROM recent_videos rv
         FULL OUTER JOIN video_stats vs
           ON rv.channel_id = vs.channel_id AND rv.video_id = vs.video_id
-      ),
-      video_unique_users AS (
-        SELECT
-          c.video_id,
-          COUNT(DISTINCT CASE WHEN c.author_id IS NOT NULL AND TRIM(c.author_id) != '' THEN c.author_id END)::int AS unique_commentators,
-          COUNT(c.id)::int AS comments_from_table
-        FROM public.comments c
-        WHERE c.video_id IN (SELECT video_id FROM all_channel_videos)
-          AND c.created_at >= '2026-10-01 00:00:00'
-        GROUP BY c.video_id
       ),
       channel_stats AS (
         SELECT 
           acv.channel_id,
           COALESCE(ROUND(AVG(acv.max_viewers)), 0)::int AS avg_viewers,
           COALESCE(ROUND(AVG(acv.max_likes)), 0)::int AS avg_likes,
-          COALESCE(ROUND(AVG(GREATEST(acv.max_comments, COALESCE(vuu.comments_from_table, 0)))), 0)::int AS avg_comments,
-          COALESCE(ROUND(AVG(COALESCE(vuu.unique_commentators, 0))), 0)::int AS avg_unique_commentators,
+          COALESCE(ROUND(AVG(acv.max_comments)), 0)::int AS avg_comments,
+          COALESCE(ROUND(AVG(acv.unique_commentators)), 0)::int AS avg_unique_commentators,
           COALESCE(ROUND(AVG(CASE WHEN acv.max_viewers > 0 THEN acv.max_likes::numeric / acv.max_viewers ELSE 0 END), 2), 0)::numeric AS likes_per_viewer,
-          COALESCE(ROUND(AVG(CASE WHEN acv.max_viewers > 0 THEN GREATEST(acv.max_comments, COALESCE(vuu.comments_from_table, 0))::numeric / acv.max_viewers ELSE 0 END), 2), 0)::numeric AS comments_per_viewer
+          COALESCE(ROUND(AVG(CASE WHEN acv.max_viewers > 0 THEN acv.max_comments::numeric / acv.max_viewers ELSE 0 END), 2), 0)::numeric AS comments_per_viewer
         FROM all_channel_videos acv
-        LEFT JOIN video_unique_users vuu ON vuu.video_id = acv.video_id
         GROUP BY acv.channel_id
       )
       SELECT 
@@ -1402,7 +1356,7 @@ app.get('/api/streams', async (req: Request, res: Response) => {
   }
 });
 
-function synthesizeTimeline(peak: number, likesPeak: number, startDateStr?: string, endDateStr?: string) {
+function synthesizeTimeline(peak: number, likesPeak: number, startDateStr?: string, endDateStr?: string, commentsPeak?: number) {
   const points: any[] = [];
   const pointsCount = 14;
 
@@ -1434,12 +1388,14 @@ function synthesizeTimeline(peak: number, likesPeak: number, startDateStr?: stri
     const viewers = Math.max(50, Math.round(peak * factor));
     const likesFactor = 0.2 + 0.8 * progress;
     const likes = i === pointsCount - 1 ? likesPeak : Math.round(likesPeak * likesFactor);
+    const commTarget = commentsPeak !== undefined ? commentsPeak : Math.round(viewers * 0.1);
+    const comm = i === pointsCount - 1 ? commTarget : Math.round(commTarget * likesFactor);
 
     points.push({
       scrape_date: timeStr,
       concurrent_viewers: viewers,
       likes,
-      comments_count: Math.round(viewers * 0.1),
+      comments_count: comm,
     });
   }
 
@@ -1570,6 +1526,8 @@ const channelHandler = async (req: Request, res: Response) => {
                   MAX(likes) AS max_likes,
                   MIN(comments_count) AS min_comments,
                   MAX(comments_count) AS max_comments,
+                  MIN(COALESCE(authors_count, 0)) AS min_authors,
+                  MAX(COALESCE(authors_count, 0)) AS max_authors,
                   COUNT(*) AS point_count
            FROM public.minute
            WHERE channel_id = $1 
@@ -1586,6 +1544,8 @@ const channelHandler = async (req: Request, res: Response) => {
           const minLikes = Number(row.min_likes || 0);
           const maxComm = Number(row.max_comments || 0);
           const minComm = Number(row.min_comments || 0);
+          const maxAuth = Number(row.max_authors || 0);
+          const minAuth = Number(row.min_authors || 0);
 
           return {
             video_title: row.video_title,
@@ -1600,6 +1560,9 @@ const channelHandler = async (req: Request, res: Response) => {
             min_comments: minComm,
             max_comments: maxComm,
             comm_delta: Math.max(0, maxComm - minComm),
+            min_authors: minAuth,
+            max_authors: maxAuth,
+            authors_delta: Math.max(0, maxAuth - minAuth),
             point_count: Number(row.point_count || 0),
           };
         });
@@ -1631,6 +1594,9 @@ const channelHandler = async (req: Request, res: Response) => {
         channel.total_comments = titleGroups.reduce((acc, g) => acc + g.comm_delta, 0);
         channel.peak_comments = Math.max(...titleGroups.map(g => g.comm_delta));
         channel.avg_comments = Math.round(channel.total_comments / titleGroups.length);
+
+        const totalAuthors = titleGroups.reduce((acc, g) => acc + (g.authors_delta || 0), 0);
+        channel.avg_unique_commentators = Math.round(totalAuthors / titleGroups.length);
       }
 
       // Superchats totals in ARS for the channel
@@ -1711,7 +1677,8 @@ const channelHandler = async (req: Request, res: Response) => {
             liveRow?.concurrent_viewers || topLiveGroup.max_viewers || 100,
             topLiveGroup.likes_delta || 10,
             topLiveGroup.start_time,
-            topLiveGroup.end_time
+            topLiveGroup.end_time,
+            topLiveGroup.comm_delta || 0
           );
         }
 
@@ -1760,7 +1727,7 @@ const channelHandler = async (req: Request, res: Response) => {
           current_likes: liveFinalLikes,
           max_likes: liveFinalLikes,
           comments_count: liveFinalComments,
-          unique_commentators: 0,
+          unique_commentators: Number(topLiveGroup.authors_delta || 0),
           start_date: topLiveGroup.start_time,
           scrape_date: topLiveGroup.end_time,
           data: liveMinutePoints,
@@ -1821,7 +1788,8 @@ const channelHandler = async (req: Request, res: Response) => {
             group.max_viewers || 100,
             group.likes_delta || 10,
             group.start_time,
-            group.end_time
+            group.end_time,
+            group.comm_delta || 0
           );
         }
 
@@ -1870,7 +1838,7 @@ const channelHandler = async (req: Request, res: Response) => {
           current_likes: finalStreamLikes,
           max_likes: finalStreamLikes,
           comments_count: finalStreamComments,
-          unique_commentators: 0,
+          unique_commentators: Number(group.authors_delta || 0),
           start_date: group.start_time,
           scrape_date: group.end_time,
           data: streamPoints,
@@ -1878,44 +1846,6 @@ const channelHandler = async (req: Request, res: Response) => {
           superchats_total: showScTotal,
           superchats_count: showScCount,
         });
-      }
-
-      // Batch query unique commentators by video_id (matching /api/top-commentators)
-      try {
-        const eternalVideoIds = Array.from(
-          new Set([
-            ...(liveStreamObj?.video_id ? [liveStreamObj.video_id] : []),
-            ...finishedStreamsList.map((s) => s.video_id).filter(Boolean),
-          ])
-        );
-        if (eternalVideoIds.length > 0) {
-          const ucRes = await p.query(
-            `SELECT video_id, COUNT(DISTINCT author_id)::int AS unique_commentators
-             FROM public.comments
-             WHERE video_id = ANY($1)
-               AND created_at >= '2026-10-01 00:00:00'
-               AND author_id IS NOT NULL
-               AND TRIM(author_id) != ''
-             GROUP BY video_id`,
-            [eternalVideoIds]
-          );
-          const ucMap = new Map<string, number>();
-          for (const row of ucRes.rows || []) {
-            ucMap.set(row.video_id, Number(row.unique_commentators || 0));
-          }
-          if (liveStreamObj && liveStreamObj.video_id) {
-            liveStreamObj.unique_commentators = ucMap.get(liveStreamObj.video_id) || 0;
-          }
-          for (const s of finishedStreamsList) {
-            s.unique_commentators = ucMap.get(s.video_id) || 0;
-          }
-          if (eternalVideoIds.length > 0) {
-            const totalUc = eternalVideoIds.reduce((acc, vid) => acc + (ucMap.get(vid) || 0), 0);
-            channel.avg_unique_commentators = Math.round(totalUc / eternalVideoIds.length);
-          }
-        }
-      } catch {
-        // ignore
       }
 
       // Update channel-level stats using corrected cumulative values
@@ -1949,7 +1879,8 @@ const channelHandler = async (req: Request, res: Response) => {
              m.video_id,
              MAX(m.concurrent_viewers) AS max_viewers,
              MAX(m.likes) AS max_likes,
-             MAX(m.comments_count) AS max_comments
+             MAX(m.comments_count) AS max_comments,
+             COALESCE((ARRAY_AGG(m.authors_count ORDER BY m.scrape_date DESC, m.id DESC) FILTER (WHERE m.authors_count IS NOT NULL))[1], 0)::int AS last_authors_count
            FROM public.minute m
            WHERE m.channel_id = $1 AND m.scrape_date >= '${OCT_2026_CUTOFF}'
            GROUP BY m.video_id
@@ -1965,18 +1896,6 @@ const channelHandler = async (req: Request, res: Response) => {
              AND scrape_date >= '${OCT_2026_CUTOFF}' 
              AND concurrent_viewers > 0
            GROUP BY video_id
-         ),
-         chat_u_stats AS (
-           SELECT
-             lvs.video_id,
-             COUNT(DISTINCT c.author_id)::int AS unique_commentators
-           FROM live_v_stats lvs
-           LEFT JOIN public.comments c
-             ON c.video_id = lvs.video_id
-            AND c.created_at >= '2026-10-01 00:00:00'
-            AND c.author_id IS NOT NULL
-            AND TRIM(c.author_id) != ''
-           GROUP BY lvs.video_id
          )
          SELECT 
            COALESCE(
@@ -1996,7 +1915,7 @@ const channelHandler = async (req: Request, res: Response) => {
            COALESCE((SELECT ROUND(AVG(max_comments))::int FROM video_stats), 0) AS avg_comments,
            COALESCE((SELECT MAX(max_comments)::int FROM video_stats), 0) AS peak_comments,
            COALESCE((SELECT SUM(max_comments)::int FROM video_stats), 0) AS total_comments,
-           COALESCE((SELECT ROUND(AVG(unique_commentators))::int FROM chat_u_stats), 0) AS avg_unique_commentators`,
+           COALESCE((SELECT ROUND(AVG(last_authors_count))::int FROM video_stats), 0) AS avg_unique_commentators`,
         [channelId]
       );
       if (statsRes.rows && statsRes.rows.length > 0) {
@@ -2363,13 +2282,13 @@ const channelHandler = async (req: Request, res: Response) => {
       );
       if (allChannelVideoIds.length > 0) {
         const ucRes = await p.query(
-          `SELECT video_id, COUNT(DISTINCT author_id)::int AS unique_commentators
-           FROM public.comments
+          `SELECT DISTINCT ON (video_id)
+             video_id,
+             COALESCE(authors_count, 0)::int AS unique_commentators
+           FROM public.minute
            WHERE video_id = ANY($1)
-             AND created_at >= '2026-10-01 00:00:00'
-             AND author_id IS NOT NULL
-             AND TRIM(author_id) != ''
-           GROUP BY video_id`,
+             AND scrape_date >= '${OCT_2026_CUTOFF}'
+           ORDER BY video_id, scrape_date DESC, id DESC`,
           [allChannelVideoIds]
         );
         const ucMap = new Map<string, number>();
@@ -2478,13 +2397,13 @@ app.get('/api/unique-commentators', async (req: Request, res: Response) => {
 
   try {
     const result = await p.query(
-      `SELECT video_id, COUNT(DISTINCT author_id)::int AS unique_count
-       FROM public.comments
+      `SELECT DISTINCT ON (video_id)
+         video_id,
+         COALESCE(authors_count, 0)::int AS unique_count
+       FROM public.minute
        WHERE video_id = ANY($1)
-         AND created_at >= '2026-10-01 00:00:00'
-         AND author_id IS NOT NULL
-         AND TRIM(author_id) != ''
-       GROUP BY video_id`,
+         AND scrape_date >= '${OCT_2026_CUTOFF}'
+       ORDER BY video_id, scrape_date DESC, id DESC`,
       [videoIds]
     );
 
@@ -2659,6 +2578,9 @@ app.get('/api/comments', async (req: Request, res: Response) => {
   const videoId = req.query.video_id as string | undefined;
   const channelIdParam = req.query.channel_id as string | undefined;
   const channelParam = req.query.channel as string | undefined;
+  const startDateParam = req.query.start_date as string | undefined;
+  const endDateParam = req.query.end_date as string | undefined;
+  const isLiveParam = req.query.is_live as string | undefined;
 
   // Strict limit cap between 1 and 50
   const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '20', 10), 1), 50);
@@ -2710,57 +2632,178 @@ app.get('/api/comments', async (req: Request, res: Response) => {
     }
 
     if (resolvedVideoId) {
-      // Total count of comments
-      const countRes = await p.query(
-        `SELECT COUNT(*)::int AS total FROM public.comments WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'`,
-        [resolvedVideoId]
-      );
-      const totalComments = countRes.rows[0]?.total || 0;
+      let resolvedStartDate: string | null = startDateParam || null;
+      let resolvedEndDate: string | null = endDateParam || null;
+      let isEternalEmission = Boolean(resolvedStartDate);
 
-      let commentsRows: any[] = [];
-      if (type !== 'superchats') {
-        const commentsRes = await p.query(
-          `SELECT created_at, video_id, author_id, COALESCE(comment_text, '') AS comment_text 
-           FROM public.comments 
-           WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
-           ORDER BY created_at DESC 
-           LIMIT $2 OFFSET $3`,
-          [resolvedVideoId, limit, offset]
+      if (!isEternalEmission) {
+        const etRes = await p.query(
+          `SELECT m.video_title,
+                  MIN(m.scrape_date) AS start_time,
+                  MAX(m.scrape_date) AS end_time
+           FROM public.minute m
+           JOIN public.channels c ON m.channel_id = c.channel_id
+           WHERE m.video_id = $1
+             AND c.type = 'eternal'
+             AND m.video_title IS NOT NULL AND m.video_title <> ''
+           GROUP BY m.video_title
+           ORDER BY MAX(m.scrape_date) DESC
+           LIMIT 1`,
+          [resolvedVideoId]
         );
-        commentsRows = commentsRes.rows.map((row: any, idx: number) => ({
-          id: `cmt_${row.video_id}_${offset + idx}`,
-          created_at: row.created_at,
-          video_id: row.video_id,
-          author_id: row.author_id,
-          comment_text: row.comment_text,
-        }));
+        if (etRes.rows.length > 0) {
+          isEternalEmission = true;
+          resolvedStartDate = etRes.rows[0].start_time;
+          resolvedEndDate = etRes.rows[0].end_time;
+        }
       }
 
+      let totalComments = 0;
+      let commentsRows: any[] = [];
       let superchatsRows: any[] = [];
       let totalSuperchats = 0;
-      if (type !== 'comments' || offset === 0) {
-        const scCountRes = await p.query(
-          `SELECT COUNT(*)::int AS total FROM public.superchats WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'`,
-          [resolvedVideoId]
-        );
-        totalSuperchats = scCountRes.rows[0]?.total || 0;
 
-        const superchatsRes = await p.query(
-          `SELECT created_at, amount, currency, video_id, COALESCE(superchat_text, '') AS superchat_text 
-           FROM public.superchats 
-           WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
-           ORDER BY created_at DESC 
-           LIMIT 50`,
+      if (isEternalEmission && resolvedStartDate) {
+        const effectiveEndDate = isLiveParam === '1' ? null : resolvedEndDate;
+        const countRes = await p.query(
+          `SELECT 
+             COALESCE((
+               SELECT MAX(comments_count)
+               FROM public.minute
+               WHERE video_id = $1
+                 AND scrape_date >= $2::timestamptz
+                 AND ($3::timestamptz IS NULL OR scrape_date <= $3::timestamptz)
+             ), 0)::int AS max_c,
+             COALESCE((
+               SELECT comments_count
+               FROM public.minute
+               WHERE video_id = $1
+                 AND scrape_date < $2::timestamptz
+               ORDER BY scrape_date DESC, id DESC
+               LIMIT 1
+             ), 0)::int AS prev_c,
+             COALESCE((
+               SELECT MIN(comments_count)
+               FROM public.minute
+               WHERE video_id = $1
+                 AND scrape_date >= $2::timestamptz
+                 AND ($3::timestamptz IS NULL OR scrape_date <= $3::timestamptz)
+             ), 0)::int AS min_c,
+             EXISTS(
+               SELECT 1 FROM public.minute WHERE video_id = $1 AND scrape_date < $2::timestamptz
+             ) AS has_prev`,
+          [resolvedVideoId, resolvedStartDate, effectiveEndDate]
+        );
+        const row = countRes.rows[0] || {};
+        const maxC = Number(row.max_c || 0);
+        const minC = Number(row.min_c || 0);
+        const prevC = Number(row.prev_c || 0);
+        const baselineC = row.has_prev && maxC >= prevC ? prevC : minC;
+        totalComments = Math.max(0, maxC - baselineC);
+
+        if (type !== 'superchats') {
+          const commentsRes = await p.query(
+            `SELECT created_at, video_id, author_id, COALESCE(comment_text, '') AS comment_text 
+             FROM public.comments 
+             WHERE video_id = $1
+               AND created_at >= ($2::timestamptz - INTERVAL '5 minutes')
+               AND ($3::timestamptz IS NULL OR created_at <= ($3::timestamptz + INTERVAL '5 minutes'))
+             ORDER BY created_at DESC 
+             LIMIT $4 OFFSET $5`,
+            [resolvedVideoId, resolvedStartDate, effectiveEndDate, limit, offset]
+          );
+          commentsRows = commentsRes.rows.map((r: any, idx: number) => ({
+            id: `cmt_${r.video_id}_${offset + idx}`,
+            created_at: r.created_at,
+            video_id: r.video_id,
+            author_id: r.author_id,
+            comment_text: r.comment_text,
+          }));
+        }
+
+        if (type !== 'comments' || offset === 0) {
+          const scCountRes = await p.query(
+            `SELECT COUNT(*)::int AS total
+             FROM public.superchats
+             WHERE video_id = $1
+               AND created_at >= ($2::timestamptz - INTERVAL '5 minutes')
+               AND ($3::timestamptz IS NULL OR created_at <= ($3::timestamptz + INTERVAL '5 minutes'))`,
+            [resolvedVideoId, resolvedStartDate, effectiveEndDate]
+          );
+          totalSuperchats = scCountRes.rows[0]?.total || 0;
+
+          const superchatsRes = await p.query(
+            `SELECT created_at, amount, currency, video_id, COALESCE(superchat_text, '') AS superchat_text 
+             FROM public.superchats 
+             WHERE video_id = $1
+               AND created_at >= ($2::timestamptz - INTERVAL '5 minutes')
+               AND ($3::timestamptz IS NULL OR created_at <= ($3::timestamptz + INTERVAL '5 minutes'))
+             ORDER BY created_at DESC 
+             LIMIT 50`,
+            [resolvedVideoId, resolvedStartDate, effectiveEndDate]
+          );
+          superchatsRows = superchatsRes.rows.map((r: any, idx: number) => ({
+            id: `sc_${r.video_id}_${idx}`,
+            created_at: r.created_at,
+            amount: Number(r.amount || 0),
+            currency: r.currency,
+            video_id: r.video_id,
+            superchat_text: r.superchat_text,
+          }));
+        }
+      } else {
+        const countRes = await p.query(
+          `SELECT COALESCE(comments_count, 0)::int AS total
+           FROM public.minute
+           WHERE video_id = $1
+           ORDER BY scrape_date DESC, id DESC
+           LIMIT 1`,
           [resolvedVideoId]
         );
-        superchatsRows = superchatsRes.rows.map((row: any, idx: number) => ({
-          id: `sc_${row.video_id}_${idx}`,
-          created_at: row.created_at,
-          amount: Number(row.amount || 0),
-          currency: row.currency,
-          video_id: row.video_id,
-          superchat_text: row.superchat_text,
-        }));
+        totalComments = countRes.rows[0]?.total || 0;
+
+        if (type !== 'superchats') {
+          const commentsRes = await p.query(
+            `SELECT created_at, video_id, author_id, COALESCE(comment_text, '') AS comment_text 
+             FROM public.comments 
+             WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
+             ORDER BY created_at DESC 
+             LIMIT $2 OFFSET $3`,
+            [resolvedVideoId, limit, offset]
+          );
+          commentsRows = commentsRes.rows.map((row: any, idx: number) => ({
+            id: `cmt_${row.video_id}_${offset + idx}`,
+            created_at: row.created_at,
+            video_id: row.video_id,
+            author_id: row.author_id,
+            comment_text: row.comment_text,
+          }));
+        }
+
+        if (type !== 'comments' || offset === 0) {
+          const scCountRes = await p.query(
+            `SELECT COUNT(*)::int AS total FROM public.superchats WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'`,
+            [resolvedVideoId]
+          );
+          totalSuperchats = scCountRes.rows[0]?.total || 0;
+
+          const superchatsRes = await p.query(
+            `SELECT created_at, amount, currency, video_id, COALESCE(superchat_text, '') AS superchat_text 
+             FROM public.superchats 
+             WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
+             ORDER BY created_at DESC 
+             LIMIT 50`,
+            [resolvedVideoId]
+          );
+          superchatsRows = superchatsRes.rows.map((row: any, idx: number) => ({
+            id: `sc_${row.video_id}_${idx}`,
+            created_at: row.created_at,
+            amount: Number(row.amount || 0),
+            currency: row.currency,
+            video_id: row.video_id,
+            superchat_text: row.superchat_text,
+          }));
+        }
       }
 
       const hasMore = offset + commentsRows.length < totalComments;
@@ -2781,10 +2824,15 @@ app.get('/api/comments', async (req: Request, res: Response) => {
 
     if (resolvedChannelId) {
       const countRes = await p.query(
-        `SELECT COUNT(c.id)::int AS total
-         FROM public.comments c
-         JOIN public.live l ON c.video_id = l.video_id
-         WHERE l.channel_id = $1 AND c.created_at >= '${OCT_2026_CUTOFF}'`,
+        `WITH latest_minute AS (
+           SELECT DISTINCT ON (m.video_id)
+             COALESCE(m.comments_count, 0)::int AS comments_count
+           FROM public.minute m
+           JOIN public.live l ON m.video_id = l.video_id
+           WHERE l.channel_id = $1 AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+           ORDER BY m.video_id, m.scrape_date DESC, m.id DESC
+         )
+         SELECT COALESCE(SUM(comments_count), 0)::int AS total FROM latest_minute`,
         [resolvedChannelId]
       );
       const totalComments = countRes.rows[0]?.total || 0;
@@ -2869,6 +2917,9 @@ app.get('/api/top-commentators', async (req: Request, res: Response) => {
   const videoId = req.query.video_id as string | undefined;
   const channelIdParam = req.query.channel_id as string | undefined;
   const channelParam = req.query.channel as string | undefined;
+  const startDateParam = req.query.start_date as string | undefined;
+  const endDateParam = req.query.end_date as string | undefined;
+  const isLiveParam = req.query.is_live as string | undefined;
   const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '50', 10), 1), 100);
 
   const p = getPool();
@@ -2898,43 +2949,175 @@ app.get('/api/top-commentators', async (req: Request, res: Response) => {
     }
 
     if (resolvedVideoId) {
-      const countRes = await p.query(
-        `SELECT COUNT(*)::int AS total_comments, COUNT(DISTINCT author_id)::int AS unique_commentators 
-         FROM public.comments 
-         WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}' AND author_id IS NOT NULL AND TRIM(author_id) != ''`,
-        [resolvedVideoId]
-      );
-      const totalComments = countRes.rows[0]?.total_comments || 0;
-      const uniqueCommentators = countRes.rows[0]?.unique_commentators || 0;
+      let resolvedStartDate: string | null = startDateParam || null;
+      let resolvedEndDate: string | null = endDateParam || null;
+      let isEternalEmission = Boolean(resolvedStartDate);
 
-      const topRes = await p.query(
-        `WITH top_authors AS (
+      if (!isEternalEmission) {
+        const etRes = await p.query(
+          `SELECT m.video_title,
+                  MIN(m.scrape_date) AS start_time,
+                  MAX(m.scrape_date) AS end_time
+           FROM public.minute m
+           JOIN public.channels c ON m.channel_id = c.channel_id
+           WHERE m.video_id = $1
+             AND c.type = 'eternal'
+             AND m.video_title IS NOT NULL AND m.video_title <> ''
+           GROUP BY m.video_title
+           ORDER BY MAX(m.scrape_date) DESC
+           LIMIT 1`,
+          [resolvedVideoId]
+        );
+        if (etRes.rows.length > 0) {
+          isEternalEmission = true;
+          resolvedStartDate = etRes.rows[0].start_time;
+          resolvedEndDate = etRes.rows[0].end_time;
+        }
+      }
+
+      let totalComments = 0;
+      let uniqueCommentators = 0;
+      let topRes: any;
+
+      if (isEternalEmission && resolvedStartDate) {
+        const effectiveEndDate = isLiveParam === '1' ? null : resolvedEndDate;
+        const countRes = await p.query(
+          `SELECT 
+             COALESCE((
+               SELECT MAX(comments_count)
+               FROM public.minute
+               WHERE video_id = $1
+                 AND scrape_date >= $2::timestamptz
+                 AND ($3::timestamptz IS NULL OR scrape_date <= $3::timestamptz)
+             ), 0)::int AS max_c,
+             COALESCE((
+               SELECT comments_count
+               FROM public.minute
+               WHERE video_id = $1
+                 AND scrape_date < $2::timestamptz
+               ORDER BY scrape_date DESC, id DESC
+               LIMIT 1
+             ), 0)::int AS prev_c,
+             COALESCE((
+               SELECT MIN(comments_count)
+               FROM public.minute
+               WHERE video_id = $1
+                 AND scrape_date >= $2::timestamptz
+                 AND ($3::timestamptz IS NULL OR scrape_date <= $3::timestamptz)
+             ), 0)::int AS min_c,
+             COALESCE((
+               SELECT MAX(authors_count)
+               FROM public.minute
+               WHERE video_id = $1
+                 AND scrape_date >= $2::timestamptz
+                 AND ($3::timestamptz IS NULL OR scrape_date <= $3::timestamptz)
+             ), 0)::int AS max_a,
+             COALESCE((
+               SELECT authors_count
+               FROM public.minute
+               WHERE video_id = $1
+                 AND scrape_date < $2::timestamptz
+               ORDER BY scrape_date DESC, id DESC
+               LIMIT 1
+             ), 0)::int AS prev_a,
+             COALESCE((
+               SELECT MIN(authors_count)
+               FROM public.minute
+               WHERE video_id = $1
+                 AND scrape_date >= $2::timestamptz
+                 AND ($3::timestamptz IS NULL OR scrape_date <= $3::timestamptz)
+             ), 0)::int AS min_a,
+             EXISTS(
+               SELECT 1 FROM public.minute WHERE video_id = $1 AND scrape_date < $2::timestamptz
+             ) AS has_prev`,
+          [resolvedVideoId, resolvedStartDate, effectiveEndDate]
+        );
+        const row = countRes.rows[0] || {};
+        const maxC = Number(row.max_c || 0);
+        const minC = Number(row.min_c || 0);
+        const prevC = Number(row.prev_c || 0);
+        const baselineC = row.has_prev && maxC >= prevC ? prevC : minC;
+        totalComments = Math.max(0, maxC - baselineC);
+
+        const maxA = Number(row.max_a || 0);
+        const minA = Number(row.min_a || 0);
+        const prevA = Number(row.prev_a || 0);
+        const baselineA = row.has_prev && maxA >= prevA ? prevA : minA;
+        uniqueCommentators = Math.max(0, maxA - baselineA);
+
+        topRes = await p.query(
+          `WITH top_authors AS (
+             SELECT 
+               c.author_id,
+               COUNT(c.id)::int AS comment_count,
+               MIN(c.created_at) AS first_comment_at,
+               MAX(c.created_at) AS last_comment_at
+             FROM public.comments c
+             WHERE c.video_id = $1 
+               AND c.created_at >= ($2::timestamptz - INTERVAL '5 minutes')
+               AND ($3::timestamptz IS NULL OR c.created_at <= ($3::timestamptz + INTERVAL '5 minutes'))
+               AND c.author_id IS NOT NULL 
+               AND TRIM(c.author_id) != ''
+             GROUP BY c.author_id
+             ORDER BY comment_count DESC
+             LIMIT $4
+           )
            SELECT 
-             c.author_id,
-             COUNT(c.id)::int AS comment_count,
-             MIN(c.created_at) AS first_comment_at,
-             MAX(c.created_at) AS last_comment_at
-           FROM public.comments c
-           WHERE c.video_id = $1 
-             AND c.created_at >= '${OCT_2026_CUTOFF}'
-             AND c.author_id IS NOT NULL 
-             AND TRIM(c.author_id) != ''
-           GROUP BY c.author_id
-           ORDER BY comment_count DESC
-           LIMIT $2
-         )
-         SELECT 
-           ta.*,
-           (
-             SELECT comment_text 
-             FROM public.comments 
-             WHERE video_id = $1 AND author_id = ta.author_id AND created_at >= '${OCT_2026_CUTOFF}'
-             ORDER BY created_at DESC 
-             LIMIT 1
-           ) AS latest_comment
-         FROM top_authors ta;`,
-        [resolvedVideoId, limit]
-      );
+             ta.*,
+             (
+               SELECT comment_text 
+               FROM public.comments 
+               WHERE video_id = $1 
+                 AND author_id = ta.author_id 
+                 AND created_at >= ($2::timestamptz - INTERVAL '5 minutes')
+                 AND ($3::timestamptz IS NULL OR created_at <= ($3::timestamptz + INTERVAL '5 minutes'))
+               ORDER BY created_at DESC 
+               LIMIT 1
+             ) AS latest_comment
+           FROM top_authors ta;`,
+          [resolvedVideoId, resolvedStartDate, effectiveEndDate, limit]
+        );
+      } else {
+        const countRes = await p.query(
+          `SELECT COALESCE(comments_count, 0)::int AS total_comments, COALESCE(authors_count, 0)::int AS unique_commentators 
+           FROM public.minute 
+           WHERE video_id = $1
+           ORDER BY scrape_date DESC, id DESC
+           LIMIT 1`,
+          [resolvedVideoId]
+        );
+        totalComments = countRes.rows[0]?.total_comments || 0;
+        uniqueCommentators = countRes.rows[0]?.unique_commentators || 0;
+
+        topRes = await p.query(
+          `WITH top_authors AS (
+             SELECT 
+               c.author_id,
+               COUNT(c.id)::int AS comment_count,
+               MIN(c.created_at) AS first_comment_at,
+               MAX(c.created_at) AS last_comment_at
+             FROM public.comments c
+             WHERE c.video_id = $1 
+               AND c.created_at >= '${OCT_2026_CUTOFF}'
+               AND c.author_id IS NOT NULL 
+               AND TRIM(c.author_id) != ''
+             GROUP BY c.author_id
+             ORDER BY comment_count DESC
+             LIMIT $2
+           )
+           SELECT 
+             ta.*,
+             (
+               SELECT comment_text 
+               FROM public.comments 
+               WHERE video_id = $1 AND author_id = ta.author_id AND created_at >= '${OCT_2026_CUTOFF}'
+               ORDER BY created_at DESC 
+               LIMIT 1
+             ) AS latest_comment
+           FROM top_authors ta;`,
+          [resolvedVideoId, limit]
+        );
+      }
 
       const commentators = topRes.rows.map((row: any, idx: number) => ({
         rank: idx + 1,
@@ -2958,10 +3141,19 @@ app.get('/api/top-commentators', async (req: Request, res: Response) => {
 
     if (resolvedChannelId) {
       const countRes = await p.query(
-        `SELECT COUNT(c.id)::int AS total_comments, COUNT(DISTINCT c.author_id)::int AS unique_commentators 
-         FROM public.comments c
-         JOIN public.live l ON c.video_id = l.video_id
-         WHERE l.channel_id = $1 AND c.created_at >= '${OCT_2026_CUTOFF}' AND c.author_id IS NOT NULL AND TRIM(c.author_id) != ''`,
+        `WITH latest_minute AS (
+           SELECT DISTINCT ON (m.video_id)
+             COALESCE(m.comments_count, 0)::int AS comments_count,
+             COALESCE(m.authors_count, 0)::int AS authors_count
+           FROM public.minute m
+           JOIN public.live l ON m.video_id = l.video_id
+           WHERE l.channel_id = $1 AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+           ORDER BY m.video_id, m.scrape_date DESC, m.id DESC
+         )
+         SELECT 
+           COALESCE(SUM(comments_count), 0)::int AS total_comments,
+           COALESCE(SUM(authors_count), 0)::int AS unique_commentators
+         FROM latest_minute`,
         [resolvedChannelId]
       );
       const totalComments = countRes.rows[0]?.total_comments || 0;

@@ -21,6 +21,9 @@ interface TopCommentatorsListProps {
   channelId?: string;
   channelHandle?: string;
   scopeTitle?: string;
+  startDate?: string;
+  endDate?: string;
+  isLive?: boolean;
   onSelectAuthor?: (authorId: string) => void;
 }
 
@@ -29,6 +32,9 @@ export const TopCommentatorsList: React.FC<TopCommentatorsListProps> = ({
   channelId,
   channelHandle,
   scopeTitle,
+  startDate,
+  endDate,
+  isLive,
   onSelectAuthor,
 }) => {
   const [commentators, setCommentators] = useState<TopCommentator[]>([]);
@@ -52,6 +58,9 @@ export const TopCommentatorsList: React.FC<TopCommentatorsListProps> = ({
       if (videoId) params.append('video_id', videoId);
       if (channelId) params.append('channel_id', channelId);
       if (channelHandle) params.append('channel', channelHandle);
+      if (startDate) params.append('start_date', startDate);
+      if (endDate) params.append('end_date', endDate);
+      if (isLive) params.append('is_live', '1');
       params.append('limit', '50');
 
       const res = await fetch(`/api/top-commentators?${params.toString()}`);
@@ -72,7 +81,7 @@ export const TopCommentatorsList: React.FC<TopCommentatorsListProps> = ({
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [videoId, channelId, channelHandle]);
+  }, [videoId, channelId, channelHandle, startDate, endDate, isLive]);
 
   useEffect(() => {
     fetchTopCommentators();

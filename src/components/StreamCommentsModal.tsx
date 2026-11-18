@@ -128,6 +128,24 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
+  // Build query parameters scoping eternal streams to the current emission window
+  const buildEmissionParams = useCallback(
+    (extraParams: Record<string, string | number>) => {
+      const params = new URLSearchParams();
+      if (stream.video_id) params.set('video_id', stream.video_id);
+      if (stream.type === 'eternal') {
+        if (stream.start_date) params.set('start_date', String(stream.start_date));
+        if (stream.scrape_date) params.set('end_date', String(stream.scrape_date));
+        if (stream.live === 'live') params.set('is_live', '1');
+      }
+      for (const [k, v] of Object.entries(extraParams)) {
+        params.set(k, String(v));
+      }
+      return params.toString();
+    },
+    [stream.video_id, stream.type, stream.start_date, stream.scrape_date, stream.live]
+  );
+
   // Initial fetch: first 20 comments + superchats + total counts
   const fetchInitialData = useCallback(async (isRefresh = false) => {
     if (!stream.video_id) return;
@@ -139,9 +157,7 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
     setError(null);
 
     try {
-      const res = await fetch(
-        `/api/comments?video_id=${encodeURIComponent(stream.video_id)}&limit=20&offset=0`
-      );
+      const res = await fetch(`/api/comments?${buildEmissionParams({ limit: 20, offset: 0 })}`);
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
@@ -169,7 +185,7 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [stream.video_id]);
+  }, [stream.video_id, buildEmissionParams]);
 
   // Load next batch of 20 comments (infinite scroll)
   const loadMoreComments = useCallback(async () => {
@@ -179,7 +195,7 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
     try {
       const nextOffset = comments.length;
       const res = await fetch(
-        `/api/comments?video_id=${encodeURIComponent(stream.video_id)}&limit=20&offset=${nextOffset}&type=comments`
+        `/api/comments?${buildEmissionParams({ limit: 20, offset: nextOffset, type: 'comments' })}`
       );
       if (res.ok) {
         const data = await res.json();
@@ -201,7 +217,7 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
     } finally {
       setIsLoadingMore(false);
     }
-  }, [isLoadingMore, hasMoreComments, stream.video_id, comments.length]);
+  }, [isLoadingMore, hasMoreComments, stream.video_id, comments.length, buildEmissionParams]);
 
   // Scroll listener for infinite scroll
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -697,6 +713,9 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
             <TopCommentatorsList
               videoId={stream.video_id}
               scopeTitle={stream.video_title}
+              startDate={stream.type === 'eternal' ? stream.start_date : undefined}
+              endDate={stream.type === 'eternal' ? stream.scrape_date : undefined}
+              isLive={stream.live === 'live'}
               onSelectAuthor={handleSelectAuthor}
             />
           </div>

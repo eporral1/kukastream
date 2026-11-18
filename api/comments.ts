@@ -48,6 +48,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const videoId = req.query.video_id as string | undefined;
   const channelIdParam = req.query.channel_id as string | undefined;
   const channelParam = req.query.channel as string | undefined;
+  const startDateParam = req.query.start_date as string | undefined;
+  const endDateParam = req.query.end_date as string | undefined;
+  const isLiveParam = req.query.is_live as string | undefined;
 
   // Strict limit cap between 1 and 50
   const limit = Math.min(Math.max(parseInt((req.query.limit as string) || '20', 10), 1), 50);
@@ -127,61 +130,189 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let totalSuperchats = 0;
 
     if (resolvedVideoId) {
-      // Total count of comments
-      const countRes = await executeQuery(
-        `SELECT COUNT(*)::int AS total FROM public.comments WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'`,
-        [resolvedVideoId]
-      );
-      totalComments = countRes.rows[0]?.total || 0;
+      let resolvedStartDate: string | null = startDateParam || null;
+      let resolvedEndDate: string | null = endDateParam || null;
+      let isEternalEmission = Boolean(resolvedStartDate);
 
-      // Paginated comments without leaking internal DB row IDs
-      if (type !== 'superchats') {
-        const commentsRes = await executeQuery(
-          `SELECT created_at, video_id, author_id, COALESCE(comment_text, '') AS comment_text
-           FROM public.comments
-           WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
-           ORDER BY created_at DESC 
-           LIMIT $2 OFFSET $3`,
-          [resolvedVideoId, limit, offset]
+      if (!isEternalEmission) {
+        // Auto-detect if this video_id belongs to an eternal channel and find the latest show's time window
+        const etRes = await executeQuery(
+          `SELECT m.video_title,
+                  MIN(m.scrape_date) AS start_time,
+                  MAX(m.scrape_date) AS end_time
+           FROM public.minute m
+           JOIN public.channels c ON m.channel_id = c.channel_id
+           WHERE m.video_id = $1
+             AND c.type = 'eternal'
+             AND m.video_title IS NOT NULL AND m.video_title <> ''
+           GROUP BY m.video_title
+           ORDER BY MAX(m.scrape_date) DESC
+           LIMIT 1`,
+          [resolvedVideoId]
         );
-        commentsRows = commentsRes.rows.map((r: any, idx: number) => ({
-          id: `cmt_${r.video_id}_${offset + idx}`,
-          created_at: r.created_at,
-          video_id: r.video_id,
-          author_id: r.author_id,
-          comment_text: r.comment_text,
-        }));
+        if (etRes.rows.length > 0) {
+          isEternalEmission = true;
+          resolvedStartDate = etRes.rows[0].start_time;
+          resolvedEndDate = etRes.rows[0].end_time;
+        }
       }
 
-      // Superchats capped to 50
-      if (type !== 'comments' || offset === 0) {
-        const scCountRes = await executeQuery(
-          `SELECT COUNT(*)::int AS total FROM public.superchats WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'`,
-          [resolvedVideoId]
+      if (isEternalEmission && resolvedStartDate) {
+        const effectiveEndDate = isLiveParam === '1' ? null : resolvedEndDate;
+        const countRes = await executeQuery(
+          `SELECT 
+             COALESCE((
+               SELECT MAX(comments_count)
+               FROM public.minute
+               WHERE video_id = $1
+                 AND scrape_date >= $2::timestamptz
+                 AND ($3::timestamptz IS NULL OR scrape_date <= $3::timestamptz)
+             ), 0)::int AS max_c,
+             COALESCE((
+               SELECT comments_count
+               FROM public.minute
+               WHERE video_id = $1
+                 AND scrape_date < $2::timestamptz
+               ORDER BY scrape_date DESC, id DESC
+               LIMIT 1
+             ), 0)::int AS prev_c,
+             COALESCE((
+               SELECT MIN(comments_count)
+               FROM public.minute
+               WHERE video_id = $1
+                 AND scrape_date >= $2::timestamptz
+                 AND ($3::timestamptz IS NULL OR scrape_date <= $3::timestamptz)
+             ), 0)::int AS min_c,
+             EXISTS(
+               SELECT 1 FROM public.minute WHERE video_id = $1 AND scrape_date < $2::timestamptz
+             ) AS has_prev`,
+          [resolvedVideoId, resolvedStartDate, effectiveEndDate]
         );
-        totalSuperchats = scCountRes.rows[0]?.total || 0;
+        const row = countRes.rows[0] || {};
+        const maxC = Number(row.max_c || 0);
+        const minC = Number(row.min_c || 0);
+        const prevC = Number(row.prev_c || 0);
+        const baselineC = row.has_prev && maxC >= prevC ? prevC : minC;
+        totalComments = Math.max(0, maxC - baselineC);
 
-        const scRes = await executeQuery(
-          `SELECT created_at, amount, currency, video_id, COALESCE(superchat_text, '') AS superchat_text
-           FROM public.superchats
-           WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
-           ORDER BY created_at DESC 
-           LIMIT 50`,
+        if (type !== 'superchats') {
+          const commentsRes = await executeQuery(
+            `SELECT created_at, video_id, author_id, COALESCE(comment_text, '') AS comment_text
+             FROM public.comments
+             WHERE video_id = $1
+               AND created_at >= ($2::timestamptz - INTERVAL '5 minutes')
+               AND ($3::timestamptz IS NULL OR created_at <= ($3::timestamptz + INTERVAL '5 minutes'))
+             ORDER BY created_at DESC 
+             LIMIT $4 OFFSET $5`,
+            [resolvedVideoId, resolvedStartDate, effectiveEndDate, limit, offset]
+          );
+          commentsRows = commentsRes.rows.map((r: any, idx: number) => ({
+            id: `cmt_${r.video_id}_${offset + idx}`,
+            created_at: r.created_at,
+            video_id: r.video_id,
+            author_id: r.author_id,
+            comment_text: r.comment_text,
+          }));
+        }
+
+        if (type !== 'comments' || offset === 0) {
+          const scCountRes = await executeQuery(
+            `SELECT COUNT(*)::int AS total
+             FROM public.superchats
+             WHERE video_id = $1
+               AND created_at >= ($2::timestamptz - INTERVAL '5 minutes')
+               AND ($3::timestamptz IS NULL OR created_at <= ($3::timestamptz + INTERVAL '5 minutes'))`,
+            [resolvedVideoId, resolvedStartDate, effectiveEndDate]
+          );
+          totalSuperchats = scCountRes.rows[0]?.total || 0;
+
+          const scRes = await executeQuery(
+            `SELECT created_at, amount, currency, video_id, COALESCE(superchat_text, '') AS superchat_text
+             FROM public.superchats
+             WHERE video_id = $1
+               AND created_at >= ($2::timestamptz - INTERVAL '5 minutes')
+               AND ($3::timestamptz IS NULL OR created_at <= ($3::timestamptz + INTERVAL '5 minutes'))
+             ORDER BY created_at DESC 
+             LIMIT 50`,
+            [resolvedVideoId, resolvedStartDate, effectiveEndDate]
+          );
+          superchatsRows = scRes.rows.map((r: any, idx: number) => ({
+            id: `sc_${r.video_id}_${idx}`,
+            created_at: r.created_at,
+            amount: Number(r.amount || 0),
+            currency: r.currency,
+            video_id: r.video_id,
+            superchat_text: r.superchat_text,
+          }));
+        }
+      } else {
+        // Standard stream: Total count of comments from latest measurement in public.minute
+        const countRes = await executeQuery(
+          `SELECT COALESCE(comments_count, 0)::int AS total
+           FROM public.minute
+           WHERE video_id = $1
+           ORDER BY scrape_date DESC, id DESC
+           LIMIT 1`,
           [resolvedVideoId]
         );
-        superchatsRows = scRes.rows.map((r: any, idx: number) => ({
-          id: `sc_${r.video_id}_${idx}`,
-          created_at: r.created_at,
-          amount: Number(r.amount || 0),
-          currency: r.currency,
-          video_id: r.video_id,
-          superchat_text: r.superchat_text,
-        }));
+        totalComments = countRes.rows[0]?.total || 0;
+
+        // Paginated comments without leaking internal DB row IDs
+        if (type !== 'superchats') {
+          const commentsRes = await executeQuery(
+            `SELECT created_at, video_id, author_id, COALESCE(comment_text, '') AS comment_text
+             FROM public.comments
+             WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
+             ORDER BY created_at DESC 
+             LIMIT $2 OFFSET $3`,
+            [resolvedVideoId, limit, offset]
+          );
+          commentsRows = commentsRes.rows.map((r: any, idx: number) => ({
+            id: `cmt_${r.video_id}_${offset + idx}`,
+            created_at: r.created_at,
+            video_id: r.video_id,
+            author_id: r.author_id,
+            comment_text: r.comment_text,
+          }));
+        }
+
+        // Superchats capped to 50
+        if (type !== 'comments' || offset === 0) {
+          const scCountRes = await executeQuery(
+            `SELECT COUNT(*)::int AS total FROM public.superchats WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'`,
+            [resolvedVideoId]
+          );
+          totalSuperchats = scCountRes.rows[0]?.total || 0;
+
+          const scRes = await executeQuery(
+            `SELECT created_at, amount, currency, video_id, COALESCE(superchat_text, '') AS superchat_text
+             FROM public.superchats
+             WHERE video_id = $1 AND created_at >= '${OCT_2026_CUTOFF}'
+             ORDER BY created_at DESC 
+             LIMIT 50`,
+            [resolvedVideoId]
+          );
+          superchatsRows = scRes.rows.map((r: any, idx: number) => ({
+            id: `sc_${r.video_id}_${idx}`,
+            created_at: r.created_at,
+            amount: Number(r.amount || 0),
+            currency: r.currency,
+            video_id: r.video_id,
+            superchat_text: r.superchat_text,
+          }));
+        }
       }
     } else if (channelVideoIds.length > 0) {
-      // Total count of comments for channel
+      // Total count of comments for channel from latest measurements in public.minute
       const countRes = await executeQuery(
-        `SELECT COUNT(*)::int AS total FROM public.comments WHERE video_id = ANY($1) AND created_at >= '${OCT_2026_CUTOFF}'`,
+        `WITH latest_minute AS (
+           SELECT DISTINCT ON (video_id)
+             COALESCE(comments_count, 0)::int AS comments_count
+           FROM public.minute
+           WHERE video_id = ANY($1)
+           ORDER BY video_id, scrape_date DESC, id DESC
+         )
+         SELECT COALESCE(SUM(comments_count), 0)::int AS total FROM latest_minute`,
         [channelVideoIds]
       );
       totalComments = countRes.rows[0]?.total || 0;

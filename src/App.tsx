@@ -118,37 +118,6 @@ export default function App({ initialData }: AppProps) {
         setStreams(liveList);
         setRecentStreams(recentList);
 
-        const missingIds = Array.from(
-          new Set(
-            [...liveList, ...recentList]
-              .filter((s: Stream) => s.video_id && !s.unique_commentators)
-              .map((s: Stream) => s.video_id)
-          )
-        );
-        if (missingIds.length > 0) {
-          fetch(`/api/unique-commentators?video_ids=${encodeURIComponent(missingIds.join(','))}`)
-            .then((r) => r.json())
-            .then((ucData) => {
-              if (ucData?.success && ucData.counts) {
-                setStreams((prev) =>
-                  prev.map((s) =>
-                    s.video_id && ucData.counts[s.video_id] !== undefined
-                      ? { ...s, unique_commentators: Number(ucData.counts[s.video_id] || 0) }
-                      : s
-                  )
-                );
-                setRecentStreams((prev) =>
-                  prev.map((s) =>
-                    s.video_id && ucData.counts[s.video_id] !== undefined
-                      ? { ...s, unique_commentators: Number(ucData.counts[s.video_id] || 0) }
-                      : s
-                  )
-                );
-              }
-            })
-            .catch(() => {});
-        }
-
         // Find the most recent scrape_date among all retrieved streams
         const allDates = [...liveList, ...recentList]
           .map((s: any) => s.scrape_date)

@@ -84,6 +84,9 @@ function clusterEternalTitleGroups(rawGroups: any[]): any[] {
           cluster.min_comments = Math.min(cluster.min_comments, group.min_comments);
           cluster.max_comments = Math.max(cluster.max_comments, group.max_comments);
           cluster.comm_delta = Math.max(0, cluster.max_comments - cluster.min_comments);
+          cluster.min_authors = Math.min(cluster.min_authors ?? 0, group.min_authors ?? 0);
+          cluster.max_authors = Math.max(cluster.max_authors ?? 0, group.max_authors ?? 0);
+          cluster.authors_delta = Math.max(0, cluster.max_authors - cluster.min_authors);
           cluster.point_count += group.point_count;
 
           // Pick the longer / more complete title as the display video_title
@@ -111,7 +114,7 @@ function clusterEternalTitleGroups(rawGroups: any[]): any[] {
 }
 
 /**
- * Chains cumulative metrics (likes and comments) across sequential shows within each video_id.
+ * Chains cumulative metrics (likes, comments, authors) across sequential shows within each video_id.
  * For the first show of a video_id: baseline is the first measurement of that video_id.
  * For any subsequent show i >= 1: baseline is the LAST measurement of the previous show (L_end,i-1).
  * Telescoping sum property:
@@ -136,6 +139,7 @@ function chainEternalTitleDeltas(groups: any[]): any[] {
 
     let prevLastLikes: number | null = null;
     let prevLastComments: number | null = null;
+    let prevLastAuthors: number | null = null;
 
     for (let i = 0; i < videoGroups.length; i++) {
       const g = videoGroups[i];
@@ -143,6 +147,8 @@ function chainEternalTitleDeltas(groups: any[]): any[] {
       const curMinLikes = Number(g.min_likes || 0);
       const curMaxComm = Number(g.max_comments || 0);
       const curMinComm = Number(g.min_comments || 0);
+      const curMaxAuth = Number(g.max_authors || 0);
+      const curMinAuth = Number(g.min_authors || 0);
 
       let baselineLikes: number;
       if (i === 0 || prevLastLikes === null) {
@@ -158,13 +164,23 @@ function chainEternalTitleDeltas(groups: any[]): any[] {
         baselineComments = curMaxComm >= prevLastComments ? prevLastComments : curMinComm;
       }
 
+      let baselineAuthors: number;
+      if (i === 0 || prevLastAuthors === null) {
+        baselineAuthors = curMinAuth;
+      } else {
+        baselineAuthors = curMaxAuth >= prevLastAuthors ? prevLastAuthors : curMinAuth;
+      }
+
       g.baseline_likes = baselineLikes;
       g.baseline_comments = baselineComments;
+      g.baseline_authors = baselineAuthors;
       g.likes_delta = Math.max(0, curMaxLikes - baselineLikes);
       g.comm_delta = Math.max(0, curMaxComm - baselineComments);
+      g.authors_delta = Math.max(0, curMaxAuth - baselineAuthors);
 
       prevLastLikes = curMaxLikes;
       prevLastComments = curMaxComm;
+      prevLastAuthors = curMaxAuth;
     }
   }
 
@@ -193,6 +209,8 @@ async function enrichEternalStreams(streams: any[]) {
               MAX(likes) AS max_likes,
               MIN(comments_count) AS min_comments,
               MAX(comments_count) AS max_comments,
+              MIN(COALESCE(authors_count, 0)) AS min_authors,
+              MAX(COALESCE(authors_count, 0)) AS max_authors,
               COUNT(*) AS point_count
        FROM public.minute
        WHERE channel_id = ANY($1) 
@@ -212,6 +230,8 @@ async function enrichEternalStreams(streams: any[]) {
       const minLikes = Number(row.min_likes || 0);
       const maxComm = Number(row.max_comments || 0);
       const minComm = Number(row.min_comments || 0);
+      const maxAuth = Number(row.max_authors || 0);
+      const minAuth = Number(row.min_authors || 0);
 
       channelRawMap.get(row.channel_id)!.push({
         video_title: row.video_title,
@@ -227,6 +247,9 @@ async function enrichEternalStreams(streams: any[]) {
         min_comments: minComm,
         max_comments: maxComm,
         comm_delta: Math.max(0, maxComm - minComm),
+        min_authors: minAuth,
+        max_authors: maxAuth,
+        authors_delta: Math.max(0, maxAuth - minAuth),
         point_count: Number(row.point_count || 0),
       });
     }
@@ -248,6 +271,7 @@ async function enrichEternalStreams(streams: any[]) {
           const currentSession = sessions[0];
           stream.current_likes = currentSession.likes_delta;
           stream.comments_count = currentSession.comm_delta;
+          stream.unique_commentators = currentSession.authors_delta;
           if (currentSession.avg_viewers) {
             stream.avg_viewers = currentSession.avg_viewers;
           }
@@ -268,6 +292,7 @@ async function enrichEternalStreams(streams: any[]) {
           if (matched) {
             stream.current_likes = matched.likes_delta;
             stream.comments_count = matched.comm_delta;
+            stream.unique_commentators = matched.authors_delta;
             if (matched.avg_viewers) {
               stream.avg_viewers = matched.avg_viewers;
             }
@@ -348,12 +373,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         0::numeric as superchats_total,
         0::int as superchats_count,
         COALESCE(comm.comments_count, 0)::int as comments_count,
-        0::int as unique_commentators,
+        COALESCE(comm.authors_count, 0)::int as unique_commentators,
         l.current_likes
       FROM public.live l
       JOIN public.channels c ON l.channel_id = c.channel_id
       LEFT JOIN LATERAL (
-        SELECT COALESCE(m.comments_count, 0) as comments_count
+        SELECT COALESCE(m.comments_count, 0) as comments_count,
+               COALESCE(m.authors_count, 0) as authors_count
         FROM public.minute m 
         WHERE m.video_id = l.video_id 
         ORDER BY m.scrape_date DESC, m.id DESC 
@@ -447,15 +473,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         l.video_id, l.channel_id, l.concurrent_viewers, l.old_viewers,
         l.current_likes, l.old_likes, l.scrape_date, l.start_date, l.live,
         COALESCE(l.video_title, '') AS video_title,
-        c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter,
+        c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter, c.type,
         0::numeric as superchats_total,
         0::int as superchats_count,
         COALESCE(comm.comments_count, 0)::int as comments_count,
-        0::int as unique_commentators
+        COALESCE(comm.authors_count, 0)::int as unique_commentators
       FROM public.live l
       JOIN public.channels c ON l.channel_id = c.channel_id
       LEFT JOIN LATERAL (
-        SELECT COALESCE(m.comments_count, 0) as comments_count
+        SELECT COALESCE(m.comments_count, 0) as comments_count,
+               COALESCE(m.authors_count, 0) as authors_count
         FROM public.minute m 
         WHERE m.video_id = l.video_id 
         ORDER BY m.scrape_date DESC, m.id DESC 
@@ -541,31 +568,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       } catch (e) {
         console.error('Error fetching peak viewers for streams:', e);
-      }
-
-      try {
-        const uniqRes: any = await executeQuery(
-          `SELECT video_id, COUNT(DISTINCT author_id)::int AS unique_commentators
-           FROM public.comments
-           WHERE video_id = ANY($1)
-             AND created_at >= '2026-10-01 00:00:00'
-             AND author_id IS NOT NULL
-             AND TRIM(author_id) != ''
-           GROUP BY video_id`,
-          [allVideoIds]
-        );
-        const uniqMap = new Map<string, number>();
-        for (const row of uniqRes.rows || []) {
-          uniqMap.set(row.video_id, Number(row.unique_commentators || 0));
-        }
-        for (const stream of liveResult.rows) {
-          stream.unique_commentators = uniqMap.get(stream.video_id) || 0;
-        }
-        for (const stream of recentResult.rows) {
-          stream.unique_commentators = uniqMap.get(stream.video_id) || 0;
-        }
-      } catch (e) {
-        console.error('Error fetching unique commentators for streams:', e);
       }
     }
 

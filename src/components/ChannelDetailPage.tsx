@@ -126,35 +126,6 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
           setPastStreams(streamList);
           setHeatmapData(data.hour_day_data || []);
           setAvgData(data.avg_data || []);
-
-          // Ensure unique_commentators (author_id count from public.comments) is populated even if response was cached
-          const videoIdsToCheck = Array.from(
-            new Set([
-              ...(activeLive?.video_id && !activeLive.unique_commentators ? [activeLive.video_id] : []),
-              ...streamList.filter((s) => s.video_id && !s.unique_commentators).map((s) => s.video_id),
-            ])
-          );
-          if (videoIdsToCheck.length > 0) {
-            fetch(`/api/unique-commentators?video_ids=${encodeURIComponent(videoIdsToCheck.join(','))}`)
-              .then((r) => r.json())
-              .then((ucData) => {
-                if (ucData?.success && ucData.counts) {
-                  if (activeLive?.video_id && ucData.counts[activeLive.video_id] !== undefined) {
-                    setLiveStream((prev) =>
-                      prev ? { ...prev, unique_commentators: Number(ucData.counts[activeLive.video_id] || 0) } : prev
-                    );
-                  }
-                  setPastStreams((prev) =>
-                    prev.map((s) =>
-                      s.video_id && ucData.counts[s.video_id] !== undefined
-                        ? { ...s, unique_commentators: Number(ucData.counts[s.video_id] || 0) }
-                        : s
-                    )
-                  );
-                }
-              })
-              .catch(() => {});
-          }
         } else {
           setChannelError(data?.error || data?.message || `Canal '${channelIdentifier}' no encontrado`);
           setPastStreams([]); setHeatmapData([]); setAvgData([]);
