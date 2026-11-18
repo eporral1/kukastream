@@ -313,6 +313,12 @@ async function runPrerender() {
     const updatedDistHtml = injectPrerenderIntoHtml(distHtml, appHtml, jsonLdTag, metaDescription);
     fs.writeFileSync(distIndexPath, updatedDistHtml, 'utf-8');
     console.log(`[prerender] Successfully injected prerendered Home HTML (${appHtml.length} chars) into dist/index.html`);
+
+    // Save compiled dist/index.html into src/utils/indexHtmlTemplate.ts for Vercel serverless SSR routes
+    const templateModulePath = path.join(ROOT_DIR, 'src', 'utils', 'indexHtmlTemplate.ts');
+    const templateModuleContent = `// Auto-updated by scripts/prerender.tsx during \`npm run build\`\nexport const INDEX_HTML_TEMPLATE = ${JSON.stringify(updatedDistHtml)};\n`;
+    fs.writeFileSync(templateModulePath, templateModuleContent, 'utf-8');
+    console.log('[prerender] Updated src/utils/indexHtmlTemplate.ts for serverless SEO routes.');
   }
 
   // Also update root index.html so initial load in dev/source has prerendered HTML

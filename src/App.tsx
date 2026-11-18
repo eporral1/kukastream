@@ -325,6 +325,27 @@ export default function App({ initialData }: AppProps) {
 
     if (found) return found;
 
+    // Check if the server injected #prerender-channel JSON metadata in <head> for direct /channel/:id loads
+    if (typeof document !== 'undefined') {
+      try {
+        const el = document.getElementById('prerender-channel');
+        if (el?.textContent) {
+          const parsed = JSON.parse(el.textContent);
+          if (
+            parsed &&
+            ((parsed.channel || '').toLowerCase() === withAt ||
+              (parsed.channel || '').toLowerCase() === withoutAt ||
+              (parsed.channel_id || '').toLowerCase() === currentChannelIdentifier ||
+              (parsed.channel_name || '').toLowerCase() === currentChannelIdentifier)
+          ) {
+            return parsed as Channel;
+          }
+        }
+      } catch {
+        // Ignore parse error
+      }
+    }
+
     // Default object so ChannelDetailPage can request /api/channel/:id and populate
     return {
       channel_id: currentChannelIdentifier,

@@ -7,7 +7,13 @@ import { GoogleGenAI } from '@google/genai';
 import { SITE_NAME } from './src/config/site.ts';
 import { isStreamTitleBlocked } from './src/config/streamFilters.ts';
 import { getPool, executeQuery, getCachedResponse, setCachedResponse } from './src/utils/serverDb.ts';
-import { generateSitemapXml, generateRobotsTxt, resolveBaseUrl } from './src/utils/sitemap.ts';
+import {
+  generateSitemapXml,
+  generateRobotsTxt,
+  resolveBaseUrl,
+  resolveRouteSeoMeta,
+  applySeoToHtml,
+} from './src/utils/sitemap.ts';
 import { fetchGlobalCrossChannelCommentators } from './src/utils/serverCommentators.ts';
 import { generateVideoPoliticalAnalysis } from './src/utils/serverPoliticalAnalysis.ts';
 
@@ -3620,113 +3626,6 @@ app.get(['/robots.txt', '/api/robots'], (req: Request, res: Response) => {
   res.status(200).send(generateRobotsTxt(baseUrl));
 });
 
-function escapeHtmlAttrServer(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-async function resolveRouteSeoMeta(pathname: string): Promise<{ title?: string; description?: string }> {
-  const cleanPath = (pathname || '/').split('?')[0];
-  const p = getPool();
-
-  if (cleanPath === '/channels') {
-    const title = `${SITE_NAME} - Canales`;
-    if (!p) return { title };
-    try {
-      const cached = getCachedResponse<{ channels?: any[] }>('channels:viewers');
-      let rows = cached?.channels;
-      if (!rows || rows.length === 0) {
-        const res = await p.query(
-          `SELECT channel_name, channel FROM public.channels WHERE active::text IN ('1', 'true') ORDER BY subs DESC NULLS LAST`
-        );
-        rows = res.rows || [];
-      }
-      const names = Array.from(
-        new Set(
-          rows
-            .map((c: any) => (c.channel_name || c.channel || '').trim())
-            .filter(Boolean)
-        )
-      );
-      return {
-        title,
-        ...(names.length > 0 ? { description: names.join(', ') } : {}),
-      };
-    } catch {
-      return { title };
-    }
-  }
-
-  if (cleanPath.startsWith('/channel/')) {
-    const rawId = decodeURIComponent(cleanPath.replace('/channel/', '')).trim();
-    if (!rawId) return { title: `${SITE_NAME} - Canal` };
-    const withAt = rawId.startsWith('@') ? rawId : `@${rawId}`;
-    const withoutAt = rawId.startsWith('@') ? rawId.substring(1) : rawId;
-    if (!p) return { title: `${SITE_NAME} - ${withoutAt}` };
-    try {
-      const res = await p.query(
-        `SELECT channel, channel_name, description
-         FROM public.channels
-         WHERE LOWER(channel) = LOWER($1)
-            OR LOWER(channel) = LOWER($2)
-            OR LOWER(channel_id) = LOWER($3)
-            OR LOWER(channel_name) = LOWER($3)
-         LIMIT 1`,
-        [withAt, withoutAt, rawId]
-      );
-      const ch = res.rows?.[0];
-      if (ch) {
-        const label = (ch.channel_name || ch.channel || withoutAt).trim();
-        const desc = (ch.description || '').replace(/\s+/g, ' ').trim();
-        return {
-          title: `${SITE_NAME} - ${label}`,
-          ...(desc ? { description: desc } : {}),
-        };
-      }
-    } catch {
-      // ignore
-    }
-    return { title: `${SITE_NAME} - ${withoutAt}` };
-  }
-
-  return {};
-}
-
-function applySeoToHtml(html: string, seo: { title?: string; description?: string }): string {
-  let out = html;
-  if (seo.title) {
-    const escapedTitle = escapeHtmlAttrServer(seo.title);
-    out = out.replace(/<title>[\s\S]*?<\/title>/i, `<title>${escapedTitle}</title>`);
-    out = out.replace(
-      /<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>/i,
-      `<meta property="og:title" content="${escapedTitle}" />`
-    );
-    out = out.replace(
-      /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i,
-      `<meta name="twitter:title" content="${escapedTitle}" />`
-    );
-  }
-  if (seo.description) {
-    const escapedDesc = escapeHtmlAttrServer(seo.description);
-    out = out.replace(
-      /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
-      `<meta name="description" content="${escapedDesc}" />`
-    );
-    out = out.replace(
-      /<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/i,
-      `<meta property="og:description" content="${escapedDesc}" />`
-    );
-    out = out.replace(
-      /<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i,
-      `<meta name="twitter:description" content="${escapedDesc}" />`
-    );
-  }
-  return out;
-}
-
 // In development, mount Vite middleware. In production, serve static dist files.
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
@@ -3745,7 +3644,8 @@ async function startServer() {
         try {
           const rawHtml = fs.readFileSync(path.resolve(__dirname, 'index.html'), 'utf-8');
           const transformed = await vite.transformIndexHtml(req.originalUrl, rawHtml);
-          const seo = await resolveRouteSeoMeta(cleanPath);
+          const baseUrl = resolveBaseUrl(req.headers as Record<string, string | string[] | undefined>);
+          const seo = await resolveRouteSeoMeta(cleanPath, baseUrl);
           res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).end(applySeoToHtml(transformed, seo));
           return;
         } catch (e) {
@@ -3763,7 +3663,8 @@ async function startServer() {
       const indexPath = path.resolve(__dirname, 'dist', 'index.html');
       try {
         const rawHtml = fs.readFileSync(indexPath, 'utf-8');
-        const seo = await resolveRouteSeoMeta(req.path || '/');
+        const baseUrl = resolveBaseUrl(req.headers as Record<string, string | string[] | undefined>);
+        const seo = await resolveRouteSeoMeta(req.path || '/', baseUrl);
         res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).send(applySeoToHtml(rawHtml, seo));
       } catch {
         res.sendFile(indexPath);

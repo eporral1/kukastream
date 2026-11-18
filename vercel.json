@@ -16,6 +16,14 @@
       "destination": "/api/channel?id=:id"
     },
     {
+      "source": "/channels",
+      "destination": "/api/status?type=seo&route=channels"
+    },
+    {
+      "source": "/channel/:id*",
+      "destination": "/api/status?type=seo&route=channel&id=:id*"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }

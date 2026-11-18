@@ -1,8 +1,23 @@
 import { executeQuery, getPool, getCachedResponse, setCachedResponse } from './serverDb.ts';
+import { SITE_NAME } from '../config/site.ts';
 
 export interface SitemapChannelEntry {
   channel: string;
   channel_name?: string;
+  description?: string;
+  subs?: number;
+  thumb?: string;
+  tags?: string;
+}
+
+export interface RouteSeoData {
+  title?: string;
+  description?: string;
+  canonicalUrl?: string;
+  ogImage?: string;
+  jsonLd?: string;
+  prerenderBody?: string;
+  channelData?: Record<string, any>;
 }
 
 /**
@@ -209,13 +224,416 @@ ${urlEntries.join('\n')}
 
 /**
  * Genera el contenido de robots.txt apuntando al sitemap del dominio actual.
+ * Importante: NO bloquear /api/ con Disallow, ya que Googlebot (Web Rendering Service)
+ * necesita consultar /api/channel, /api/channels y /api/live al renderizar el SPA.
  */
 export function generateRobotsTxt(baseUrl: string): string {
   const cleanBase = baseUrl.replace(/\/+$/, '');
   return `User-agent: *
 Allow: /
-Disallow: /api/
 
 Sitemap: ${cleanBase}/sitemap.xml
 `;
 }
+
+export function escapeHtmlAttrServer(str: string): string {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Resuelve título, meta description, canonical URL, JSON-LD y HTML prerenderizado
+ * para cualquier ruta (/channels, /channel/:id, etc.) tanto en Express como en Vercel.
+ */
+export async function resolveRouteSeoMeta(
+  pathname: string,
+  baseUrl?: string
+): Promise<RouteSeoData> {
+  const cleanPath = (pathname || '/').split('?')[0];
+  const cleanBase = (baseUrl || 'http://localhost:3000').replace(/\/+$/, '');
+  const canonicalUrl = `${cleanBase}${cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`}`;
+  const p = getPool();
+
+  if (cleanPath === '/channels') {
+    const title = `${SITE_NAME} - Canales`;
+    let rows: any[] = [];
+    const cached = getCachedResponse<{ channels?: any[] }>('channels:viewers');
+    if (cached?.channels && cached.channels.length > 0) {
+      rows = cached.channels;
+    } else if (p) {
+      try {
+        const res = await p.query(
+          `SELECT channel_name, channel, description, subs, thumb, tags
+           FROM public.channels
+           WHERE active::text IN ('1', 'true') AND channel <> '@Radio10am'
+           ORDER BY subs DESC NULLS LAST`
+        );
+        rows = res.rows || [];
+      } catch {
+        // Fallback to static channels list below
+      }
+    }
+    if (!rows || rows.length === 0) {
+      rows = PRODUCTION_CHANNELS_FALLBACK;
+    }
+
+    const names = Array.from(
+      new Set(
+        rows
+          .map((c: any) => String(c.channel_name || c.channel || '').trim())
+          .filter(Boolean)
+      )
+    );
+    const description =
+      names.length > 0
+        ? names.join(', ')
+        : `Directorio completo de canales de streaming monitoreados en ${SITE_NAME}.`;
+
+    const channelLinksHtml = rows
+      .map((c: any) => {
+        const handle = String(c.channel || '').startsWith('@')
+          ? String(c.channel)
+          : `@${c.channel}`;
+        const label = escapeHtmlAttrServer(c.channel_name || handle);
+        const desc = escapeHtmlAttrServer(
+          String(c.description || '').replace(/\s+/g, ' ').trim()
+        );
+        return `<article class="bg-white rounded-xl p-5 border border-gray-100 shadow-xs">
+          <h2 class="text-lg font-bold text-gray-900"><a href="/channel/${encodeURI(handle)}">${label}</a></h2>
+          <p class="text-xs text-gray-500">${escapeHtmlAttrServer(handle)}</p>
+          ${desc ? `<p class="text-sm text-gray-600 mt-2">${desc}</p>` : ''}
+        </article>`;
+      })
+      .join('');
+
+    const prerenderBody = `<div class="min-h-screen bg-gray-50 text-gray-900">
+      <header class="bg-white border-b border-gray-200 px-6 py-4">
+        <nav class="max-w-6xl mx-auto flex items-center justify-between">
+          <a href="/" class="text-xl font-black text-gray-900">${escapeHtmlAttrServer(SITE_NAME)}</a>
+          <div class="flex gap-4 text-sm font-medium text-gray-700">
+            <a href="/">Home</a>
+            <a href="/channels">Canales</a>
+            <a href="/streams">Streams</a>
+            <a href="/superchats">Superchats</a>
+            <a href="/face-off">Face-Off</a>
+          </div>
+        </nav>
+      </header>
+      <main class="max-w-6xl mx-auto px-4 py-8 space-y-6">
+        <h1 class="text-3xl font-extrabold text-gray-900">Canales de Streaming Monitoreados</h1>
+        <p class="text-sm text-gray-600">${escapeHtmlAttrServer(description)}</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${channelLinksHtml}</div>
+      </main>
+    </div>`;
+
+    return {
+      title,
+      description,
+      canonicalUrl,
+      prerenderBody,
+    };
+  }
+
+  if (cleanPath.startsWith('/channel/')) {
+    let rawId = cleanPath.replace('/channel/', '');
+    try {
+      rawId = decodeURIComponent(rawId);
+    } catch {
+      // Keep as is
+    }
+    rawId = rawId.trim();
+
+    if (!rawId) {
+      return {
+        title: `${SITE_NAME} - Canal`,
+        canonicalUrl,
+      };
+    }
+
+    const withAt = rawId.startsWith('@') ? rawId : `@${rawId}`;
+    const withoutAt = rawId.startsWith('@') ? rawId.substring(1) : rawId;
+
+    let ch: any = null;
+    if (p) {
+      try {
+        const res = await p.query(
+          `SELECT channel, channel_name, description, subs, channel_id, thumb, tags, twitter, type
+           FROM public.channels
+           WHERE LOWER(channel) = LOWER($1)
+              OR LOWER(channel) = LOWER($2)
+              OR LOWER(channel_id) = LOWER($3)
+              OR LOWER(channel_name) = LOWER($3)
+           LIMIT 1`,
+          [withAt, withoutAt, rawId]
+        );
+        ch = res.rows?.[0] || null;
+      } catch {
+        // Fallback below
+      }
+    }
+
+    if (!ch) {
+      const fb = PRODUCTION_CHANNELS_FALLBACK.find(
+        (item) =>
+          item.channel.toLowerCase() === withAt.toLowerCase() ||
+          item.channel.toLowerCase() === withoutAt.toLowerCase() ||
+          (item.channel_name || '').toLowerCase() === rawId.toLowerCase()
+      );
+      if (fb) {
+        ch = {
+          channel: fb.channel,
+          channel_name: fb.channel_name || withoutAt,
+          description: fb.description || '',
+          subs: fb.subs || 0,
+          channel_id: fb.channel,
+          thumb: fb.thumb || '',
+          tags: fb.tags || 'stream',
+        };
+      }
+    }
+
+    const label = String(ch?.channel_name || ch?.channel || withoutAt).trim();
+    const handle = String(ch?.channel || withAt).trim();
+    const rawDesc = String(ch?.description || '').replace(/\s+/g, ' ').trim();
+    const description =
+      rawDesc ||
+      `Métricas en vivo, audiencia en tiempo real, emisiones recientes, superchats y estadísticas de ${label} (${handle}) en ${SITE_NAME}.`;
+    const title = `${SITE_NAME} - ${label}`;
+    const ogImage = ch?.thumb && String(ch.thumb).startsWith('http') ? String(ch.thumb) : undefined;
+
+    const schema = {
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'WebPage',
+          '@id': canonicalUrl,
+          url: canonicalUrl,
+          name: title,
+          description,
+          inLanguage: 'es-AR',
+          isPartOf: {
+            '@type': 'WebSite',
+            name: SITE_NAME,
+            url: `${cleanBase}/`,
+          },
+        },
+        {
+          '@type': 'BroadcastChannel',
+          name: label,
+          alternateName: handle,
+          description,
+          url: canonicalUrl,
+          ...(ogImage ? { image: ogImage } : {}),
+        },
+        {
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            {
+              '@type': 'ListItem',
+              position: 1,
+              name: SITE_NAME,
+              item: `${cleanBase}/`,
+            },
+            {
+              '@type': 'ListItem',
+              position: 2,
+              name: 'Canales',
+              item: `${cleanBase}/channels`,
+            },
+            {
+              '@type': 'ListItem',
+              position: 3,
+              name: label,
+              item: canonicalUrl,
+            },
+          ],
+        },
+      ],
+    };
+
+    const jsonLd = `<script id="schema-jsonld" type="application/ld+json">${JSON.stringify(schema)}</script>`;
+
+    const channelData = {
+      channel_id: ch?.channel_id || handle,
+      channel: handle.startsWith('@') ? handle : `@${handle}`,
+      channel_name: label,
+      description: rawDesc,
+      subs: Number(ch?.subs || 0),
+      thumb: ch?.thumb || 'https://yt3.ggpht.com/',
+      tags: ch?.tags || 'stream',
+      twitter: ch?.twitter || '',
+      type: ch?.type || 'normal',
+      avg_viewers: 0,
+      avg_likes: 0,
+    };
+
+    const prerenderBody = `<div class="min-h-screen bg-gray-50 text-gray-900">
+      <header class="bg-white border-b border-gray-200 px-6 py-4">
+        <nav class="max-w-6xl mx-auto flex items-center justify-between">
+          <a href="/" class="text-xl font-black text-gray-900">${escapeHtmlAttrServer(SITE_NAME)}</a>
+          <div class="flex gap-4 text-sm font-medium text-gray-700">
+            <a href="/">Home</a>
+            <a href="/channels">Canales</a>
+            <a href="/streams">Streams</a>
+            <a href="/superchats">Superchats</a>
+            <a href="/face-off">Face-Off</a>
+          </div>
+        </nav>
+      </header>
+      <main class="max-w-6xl mx-auto px-4 py-8 space-y-6">
+        <a href="/" class="inline-flex items-center text-sm font-semibold text-gray-600 hover:text-blue-600">← Volver al Ranking</a>
+        <article class="bg-white rounded-xl shadow-xs border border-gray-100 p-6 md:p-8 space-y-4">
+          <div class="flex items-center gap-4">
+            ${ogImage ? `<img src="${escapeHtmlAttrServer(ogImage)}" alt="${escapeHtmlAttrServer(label)}" class="w-20 h-20 rounded-full object-cover" />` : ''}
+            <div>
+              <h1 class="text-2xl sm:text-3xl font-extrabold text-gray-900">${escapeHtmlAttrServer(label)}</h1>
+              <p class="text-sm text-gray-500">${escapeHtmlAttrServer(handle)}</p>
+            </div>
+          </div>
+          <p class="text-sm text-gray-700 leading-relaxed">${escapeHtmlAttrServer(description)}</p>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
+            <div class="bg-gray-50 rounded-xl p-4 border border-gray-100">
+              <div class="text-xs text-gray-500">Suscriptores</div>
+              <div class="text-lg font-extrabold text-gray-900">${Number(ch?.subs || 0).toLocaleString('es-AR')}</div>
+            </div>
+            <div class="bg-gray-50 rounded-xl p-4 border border-gray-100">
+              <div class="text-xs text-gray-500">Categoría</div>
+              <div class="text-lg font-extrabold text-gray-900">${escapeHtmlAttrServer(ch?.tags || 'Streaming')}</div>
+            </div>
+          </div>
+        </article>
+        <section class="space-y-3">
+          <h2 class="text-xl font-bold text-gray-900">Emisiones y estadísticas en tiempo real de ${escapeHtmlAttrServer(label)}</h2>
+          <p class="text-sm text-gray-600">Monitoreo minuto a minuto de espectadores concurrentes, picos de audiencia, likes, superchats y comentaristas únicos en el chat en vivo de ${escapeHtmlAttrServer(label)}.</p>
+        </section>
+      </main>
+    </div>`;
+
+    return {
+      title,
+      description,
+      canonicalUrl,
+      ogImage,
+      jsonLd,
+      prerenderBody,
+      channelData,
+    };
+  }
+
+  return {
+    canonicalUrl,
+  };
+}
+
+export function applySeoToHtml(html: string, seo: RouteSeoData): string {
+  let out = html;
+
+  if (seo.title) {
+    const escapedTitle = escapeHtmlAttrServer(seo.title);
+    out = out.replace(/<title>[\s\S]*?<\/title>/i, `<title>${escapedTitle}</title>`);
+    out = out.replace(
+      /<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:title" content="${escapedTitle}" />`
+    );
+    out = out.replace(
+      /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="twitter:title" content="${escapedTitle}" />`
+    );
+  }
+
+  if (seo.description) {
+    const escapedDesc = escapeHtmlAttrServer(seo.description);
+    out = out.replace(
+      /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="description" content="${escapedDesc}" />`
+    );
+    out = out.replace(
+      /<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:description" content="${escapedDesc}" />`
+    );
+    out = out.replace(
+      /<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="twitter:description" content="${escapedDesc}" />`
+    );
+  }
+
+  if (seo.ogImage) {
+    const escapedImg = escapeHtmlAttrServer(seo.ogImage);
+    out = out.replace(
+      /<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:image" content="${escapedImg}" />`
+    );
+    out = out.replace(
+      /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="twitter:image" content="${escapedImg}" />`
+    );
+  }
+
+  if (seo.canonicalUrl) {
+    const escapedCanonical = escapeHtmlAttrServer(seo.canonicalUrl);
+    const canonicalTag = `<link rel="canonical" href="${escapedCanonical}" />`;
+    const ogUrlTag = `<meta property="og:url" content="${escapedCanonical}" />`;
+
+    if (/<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>/i.test(out)) {
+      out = out.replace(/<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>/i, canonicalTag);
+    } else {
+      out = out.replace('</head>', `    ${canonicalTag}\n  </head>`);
+    }
+
+    if (/<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i.test(out)) {
+      out = out.replace(/<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i, ogUrlTag);
+    } else {
+      out = out.replace('</head>', `    ${ogUrlTag}\n  </head>`);
+    }
+  }
+
+  // Ensure explicit index, follow robots tag is present
+  const robotsTag = `<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />`;
+  if (!/<meta\s+name="robots"/i.test(out)) {
+    out = out.replace('</head>', `    ${robotsTag}\n  </head>`);
+  }
+
+  if (seo.jsonLd) {
+    if (out.includes('id="schema-jsonld"')) {
+      out = out.replace(
+        /<script id="schema-jsonld" type="application\/ld\+json">[\s\S]*?<\/script>/i,
+        seo.jsonLd
+      );
+    } else {
+      out = out.replace('</head>', `    ${seo.jsonLd}\n  </head>`);
+    }
+  }
+
+  if (seo.channelData) {
+    const safeJson = JSON.stringify(seo.channelData).replace(/</g, '\\u003c');
+    const channelScript = `<script id="prerender-channel" type="application/json">${safeJson}</script>`;
+    if (out.includes('id="prerender-channel"')) {
+      out = out.replace(
+        /<script id="prerender-channel" type="application\/json">[\s\S]*?<\/script>/i,
+        channelScript
+      );
+    } else {
+      out = out.replace('</head>', `    ${channelScript}\n  </head>`);
+    }
+  }
+
+  if (seo.prerenderBody) {
+    if (out.includes('<!--PRERENDER_START-->')) {
+      out = out.replace(
+        /<div id="root">[\s\S]*?<!--PRERENDER_END--><\/div>/,
+        `<div id="root"><!--PRERENDER_START-->${seo.prerenderBody}<!--PRERENDER_END--></div>`
+      );
+    } else {
+      out = out.replace(
+        /<div id="root"><\/div>/,
+        `<div id="root"><!--PRERENDER_START-->${seo.prerenderBody}<!--PRERENDER_END--></div>`
+      );
+    }
+  }
+
+  return out;
+}
+

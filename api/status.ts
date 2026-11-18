@@ -1,6 +1,75 @@
+import fs from 'fs';
+import path from 'path';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getPool, executeQuery } from '../src/utils/serverDb.ts';
-import { generateSitemapXml, generateRobotsTxt, resolveBaseUrl } from '../src/utils/sitemap.ts';
+import {
+  generateSitemapXml,
+  generateRobotsTxt,
+  resolveBaseUrl,
+  resolveRouteSeoMeta,
+  applySeoToHtml,
+} from '../src/utils/sitemap.ts';
+import { INDEX_HTML_TEMPLATE } from '../src/utils/indexHtmlTemplate.ts';
+
+let cachedBaseHtml: string | null = INDEX_HTML_TEMPLATE || null;
+
+async function getBaseIndexHtml(baseUrl: string): Promise<string> {
+  if (cachedBaseHtml && cachedBaseHtml.includes('<div id="root">')) {
+    return cachedBaseHtml;
+  }
+
+  const candidatePaths = [
+    path.join(process.cwd(), 'dist', 'index.html'),
+    path.join(process.cwd(), 'index.html'),
+  ];
+
+  for (const p of candidatePaths) {
+    try {
+      if (fs.existsSync(p)) {
+        const content = fs.readFileSync(p, 'utf-8');
+        if (content && content.includes('<div id="root">')) {
+          // Only cache if it is the compiled dist/index.html (doesn't point to /src/main.tsx)
+          if (!content.includes('/src/main.tsx')) {
+            cachedBaseHtml = content;
+          }
+          return content;
+        }
+      }
+    } catch {
+      // Ignore fs errors on serverless
+    }
+  }
+
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/index.html`);
+    if (res.ok) {
+      const text = await res.text();
+      if (text && text.includes('<div id="root">')) {
+        cachedBaseHtml = text;
+        return text;
+      }
+    }
+  } catch {
+    // Fallback below
+  }
+
+  return `<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StreamData</title>
+    <meta name="description" content="StreamData" />
+    <meta property="og:title" content="StreamData" />
+    <meta property="og:description" content="StreamData" />
+    <meta name="twitter:title" content="StreamData" />
+    <meta name="twitter:description" content="StreamData" />
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>`;
+}
 
 function getDiagnosticPool() {
   return getPool();
@@ -31,9 +100,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (reqType === 'robots') {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
+    res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400');
     const baseUrl = resolveBaseUrl(req.headers as Record<string, string | string[] | undefined>);
     return res.status(200).send(generateRobotsTxt(baseUrl));
+  }
+
+  if (reqType === 'seo') {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=3600');
+    const baseUrl = resolveBaseUrl(req.headers as Record<string, string | string[] | undefined>);
+    const rawRoute = String(req.query?.route || req.url || '/');
+    const idParam = req.query?.id ? String(req.query.id) : '';
+    let routePath = rawRoute.split('?')[0];
+    if (routePath === 'channel' && idParam) {
+      routePath = `/channel/${idParam}`;
+    } else if (routePath === 'channels') {
+      routePath = '/channels';
+    } else if (!routePath.startsWith('/')) {
+      routePath = `/${routePath}`;
+    }
+
+    try {
+      const [rawHtml, seo] = await Promise.all([
+        getBaseIndexHtml(baseUrl),
+        resolveRouteSeoMeta(routePath, baseUrl),
+      ]);
+      return res.status(200).send(applySeoToHtml(rawHtml, seo));
+    } catch (err: any) {
+      console.error('[api/status?type=seo] Error:', err);
+      const fallbackHtml = await getBaseIndexHtml(baseUrl);
+      return res.status(200).send(fallbackHtml);
+    }
   }
 
   const connectionString =

@@ -398,14 +398,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  // Security check: Only allow requests originating from our frontend application
+  // Security check: Only allow requests originating from our frontend application or search engine inspection bots
   const secFetchSite = req.headers['sec-fetch-site'];
   const secFetchMode = req.headers['sec-fetch-mode'];
   const appClientHeader = req.headers['x-app-client'];
+  const userAgent = String(req.headers['user-agent'] || '');
+  const isSearchBot = /(Googlebot|Google-InspectionTool|GoogleOther|Storebot-Google|bingbot|Applebot)/i.test(userAgent);
   const isDirectBrowserNav = secFetchMode === 'navigate' || (secFetchSite === 'none' && !appClientHeader);
   const isCrossSite = secFetchSite === 'cross-site';
 
-  if (isDirectBrowserNav || isCrossSite || appClientHeader !== 'kukastream-web') {
+  if (!isSearchBot && (isDirectBrowserNav || isCrossSite || appClientHeader !== 'kukastream-web')) {
     return res.status(403).json({
       success: false,
       error: 'Acceso denegado. Este endpoint solo puede ser invocado desde la aplicación oficial.',

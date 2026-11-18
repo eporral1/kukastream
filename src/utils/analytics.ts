@@ -98,14 +98,16 @@ export function getSectionTitle(pathname: string, channelName?: string): { title
 }
 
 /**
- * Actualiza <title>, <meta name="description">, OpenGraph y Twitter Card tags en el DOM
+ * Actualiza <title>, <meta name="description">, <link rel="canonical">, OpenGraph y Twitter Card tags en el DOM
  */
 export function updateSeoMeta({
   title,
   description,
+  canonicalPath,
 }: {
   title?: string;
   description?: string;
+  canonicalPath?: string;
 }): void {
   if (typeof document === 'undefined') return;
 
@@ -131,6 +133,27 @@ export function updateSeoMeta({
 
     const twDesc = document.querySelector('meta[name="twitter:description"]');
     if (twDesc) twDesc.setAttribute('content', description);
+  }
+
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    const cleanPath = (canonicalPath || window.location.pathname || '/').split('?')[0];
+    const canonicalUrl = `${window.location.origin}${cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`}`;
+
+    let canonicalLink = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (!canonicalLink) {
+      canonicalLink = document.createElement('link');
+      canonicalLink.setAttribute('rel', 'canonical');
+      document.head.appendChild(canonicalLink);
+    }
+    canonicalLink.setAttribute('href', canonicalUrl);
+
+    let ogUrl = document.querySelector('meta[property="og:url"]') as HTMLMetaElement | null;
+    if (!ogUrl) {
+      ogUrl = document.createElement('meta');
+      ogUrl.setAttribute('property', 'og:url');
+      document.head.appendChild(ogUrl);
+    }
+    ogUrl.setAttribute('content', canonicalUrl);
   }
 }
 
