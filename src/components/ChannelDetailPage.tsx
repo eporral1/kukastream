@@ -10,7 +10,7 @@ import { StreamCommentsModal } from './StreamCommentsModal';
 import { isOctober2026OrLater, formatArgentinaDateTime } from '../utils/dateFilter';
 import { ArrowLeft, ExternalLink, Calendar, Heart, Eye, MessageSquare, Users, Radio, RefreshCw, AlertCircle, Swords } from 'lucide-react';
 import { SITE_NAME } from '../config/site';
-import { trackEvent } from '../utils/analytics';
+import { trackEvent, updateSeoMeta } from '../utils/analytics';
 
 interface ChannelDetailPageProps {
   channel: Channel;
@@ -80,8 +80,12 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
 
   useEffect(() => {
     const label = channel?.channel_name || channel?.channel || 'Canal';
-    document.title = `${SITE_NAME} - ${label}`;
-  }, [channel?.channel_name, channel?.channel]);
+    const desc = (channel?.description || '').trim();
+    updateSeoMeta({
+      title: `${SITE_NAME} - ${label}`,
+      description: desc || `${SITE_NAME} - ${label}`,
+    });
+  }, [channel?.channel_name, channel?.channel, channel?.description]);
 
   const tryFetchChannel = React.useCallback(async (channelIdentifier: string) => {
     if (lastFetchedId.current === channelIdentifier) return;

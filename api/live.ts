@@ -370,7 +370,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       liveQuery += ` AND (c.tags ILIKE $1 OR REPLACE(c.tags, 'í', 'i') ILIKE $1)`;
     }
 
-    liveQuery += ` ORDER BY l.concurrent_viewers DESC LIMIT 25;`;
+    liveQuery += ` ORDER BY l.concurrent_viewers DESC LIMIT 100;`;
     const liveResult: any = await executeQuery(liveQuery, liveParams);
 
     // For eternal channels in Home (live): group by video_title and keep the latest group

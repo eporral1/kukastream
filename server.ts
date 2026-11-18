@@ -468,7 +468,7 @@ async function enrichEternalChannels(channels: any[], p: any) {
          SELECT DISTINCT scrape_date::date AS bday
          FROM public.live
          WHERE scrape_date >= '${OCT_2026_CUTOFF}'
-           AND concurrent_viewers > 0
+           AND GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) > 0
            AND EXTRACT(ISODOW FROM scrape_date) BETWEEN 1 AND 5
          ORDER BY bday DESC
          LIMIT 7
@@ -502,7 +502,6 @@ async function enrichEternalChannels(channels: any[], p: any) {
         byChannel.set(chId, []);
       }
       const list = byChannel.get(chId)!;
-      if (list.length >= 100) continue;
 
       const maxLikes = Number(row.max_likes || 0);
       const minLikes = Number(row.min_likes || 0);
@@ -679,7 +678,7 @@ app.get('/api/live', async (req: Request, res: Response) => {
       liveQuery += ` AND (c.tags ILIKE $1 OR REPLACE(c.tags, 'í', 'i') ILIKE $1)`;
     }
 
-    liveQuery += ` ORDER BY l.concurrent_viewers DESC LIMIT 25;`;
+    liveQuery += ` ORDER BY l.concurrent_viewers DESC LIMIT 100;`;
     const liveResult = await p.query(liveQuery, liveParams);
 
     // Also get recent finished streams from the last 24h, strictly October 2026 onwards
@@ -849,13 +848,15 @@ app.get('/api/channels', async (req: Request, res: Response) => {
     return;
   }
 
+  const sortParam = (((req.query.sort || '') as string) || 'viewers').toLowerCase();
+
   try {
     let query = `
       WITH last_7_business_days AS (
         SELECT DISTINCT scrape_date::date AS bday
         FROM public.live
         WHERE scrape_date >= '${OCT_2026_CUTOFF}'
-          AND concurrent_viewers > 0
+          AND GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) > 0
           AND EXTRACT(ISODOW FROM scrape_date) BETWEEN 1 AND 5
         ORDER BY bday DESC
         LIMIT 7
@@ -875,52 +876,58 @@ app.get('/api/channels', async (req: Request, res: Response) => {
       ),
       recent_videos AS (
         SELECT video_id, channel_id,
-               MAX(concurrent_viewers) AS max_viewers
+               MAX(GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0))) AS max_viewers,
+               MAX(GREATEST(COALESCE(current_likes, 0), COALESCE(old_likes, 0))) AS max_likes
         FROM public.live
         WHERE scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
           AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
-          AND concurrent_viewers > 0
+          AND GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) > 0
         GROUP BY video_id, channel_id
       ),
+      all_channel_videos AS (
+        SELECT
+          COALESCE(rv.channel_id, vs.channel_id) AS channel_id,
+          COALESCE(rv.video_id, vs.video_id) AS video_id,
+          GREATEST(COALESCE(rv.max_viewers, 0), COALESCE(vs.max_viewers, 0)) AS max_viewers,
+          GREATEST(COALESCE(vs.max_likes, 0), COALESCE(rv.max_likes, 0)) AS max_likes,
+          COALESCE(vs.max_comments, 0) AS max_comments
+        FROM recent_videos rv
+        FULL OUTER JOIN video_stats vs
+          ON rv.channel_id = vs.channel_id AND rv.video_id = vs.video_id
+      ),
       video_unique_users AS (
-        SELECT c.video_id, COUNT(DISTINCT c.author_id)::int AS unique_commentators
+        SELECT
+          c.video_id,
+          COUNT(DISTINCT CASE WHEN c.author_id IS NOT NULL AND TRIM(c.author_id) != '' THEN c.author_id END)::int AS unique_commentators,
+          COUNT(c.id)::int AS comments_from_table
         FROM public.comments c
-        WHERE c.video_id IN (SELECT video_id FROM recent_videos)
+        WHERE c.video_id IN (SELECT video_id FROM all_channel_videos)
           AND c.created_at >= '2026-10-01 00:00:00'
-          AND c.author_id IS NOT NULL
-          AND TRIM(c.author_id) != ''
         GROUP BY c.video_id
       ),
-      viewer_stats AS (
-        SELECT rv.channel_id,
-               COALESCE(ROUND(AVG(rv.max_viewers)), 0)::int AS avg_viewers,
-               COALESCE(ROUND(AVG(COALESCE(vuu.unique_commentators, 0))), 0)::int AS avg_unique_commentators
-        FROM recent_videos rv
-        LEFT JOIN video_unique_users vuu ON vuu.video_id = rv.video_id
-        GROUP BY rv.channel_id
-      ),
-      ratio_stats AS (
+      channel_stats AS (
         SELECT 
-          channel_id,
-          COALESCE(ROUND(AVG(max_viewers)), 0)::int AS minute_avg_viewers,
-          COALESCE(ROUND(AVG(max_likes)), 0)::int AS avg_likes,
-          COALESCE(ROUND(AVG(max_comments)), 0)::int AS avg_comments,
-          COALESCE(ROUND(AVG(CASE WHEN max_viewers > 0 THEN max_likes::numeric / max_viewers ELSE 0 END), 2), 0)::numeric AS likes_per_viewer,
-          COALESCE(ROUND(AVG(CASE WHEN max_viewers > 0 THEN max_comments::numeric / max_viewers ELSE 0 END), 2), 0)::numeric AS comments_per_viewer
-        FROM video_stats
-        GROUP BY channel_id
+          acv.channel_id,
+          COALESCE(ROUND(AVG(acv.max_viewers)), 0)::int AS avg_viewers,
+          COALESCE(ROUND(AVG(acv.max_likes)), 0)::int AS avg_likes,
+          COALESCE(ROUND(AVG(GREATEST(acv.max_comments, COALESCE(vuu.comments_from_table, 0)))), 0)::int AS avg_comments,
+          COALESCE(ROUND(AVG(COALESCE(vuu.unique_commentators, 0))), 0)::int AS avg_unique_commentators,
+          COALESCE(ROUND(AVG(CASE WHEN acv.max_viewers > 0 THEN acv.max_likes::numeric / acv.max_viewers ELSE 0 END), 2), 0)::numeric AS likes_per_viewer,
+          COALESCE(ROUND(AVG(CASE WHEN acv.max_viewers > 0 THEN GREATEST(acv.max_comments, COALESCE(vuu.comments_from_table, 0))::numeric / acv.max_viewers ELSE 0 END), 2), 0)::numeric AS comments_per_viewer
+        FROM all_channel_videos acv
+        LEFT JOIN video_unique_users vuu ON vuu.video_id = acv.video_id
+        GROUP BY acv.channel_id
       )
       SELECT 
         c.channel, c.channel_name, c.description, c.subs, c.channel_id, c.thumb, c.tags, c.twitter, c.active, c.type,
-        COALESCE(vs.avg_viewers, rs.minute_avg_viewers, 0)::int AS avg_viewers,
-        COALESCE(rs.avg_likes, 0)::int AS avg_likes,
-        COALESCE(rs.avg_comments, 0)::int AS avg_comments,
-        COALESCE(vs.avg_unique_commentators, 0)::int AS avg_unique_commentators,
-        COALESCE(rs.likes_per_viewer, 0)::numeric AS likes_per_viewer,
-        COALESCE(rs.comments_per_viewer, 0)::numeric AS comments_per_viewer
+        COALESCE(cs.avg_viewers, 0)::int AS avg_viewers,
+        COALESCE(cs.avg_likes, 0)::int AS avg_likes,
+        COALESCE(cs.avg_comments, 0)::int AS avg_comments,
+        COALESCE(cs.avg_unique_commentators, 0)::int AS avg_unique_commentators,
+        COALESCE(cs.likes_per_viewer, 0)::numeric AS likes_per_viewer,
+        COALESCE(cs.comments_per_viewer, 0)::numeric AS comments_per_viewer
       FROM public.channels c
-      LEFT JOIN viewer_stats vs ON vs.channel_id = c.channel_id
-      LEFT JOIN ratio_stats rs ON rs.channel_id = c.channel_id
+      LEFT JOIN channel_stats cs ON cs.channel_id = c.channel_id
       WHERE c.active::text IN ('1', 'true')
       ORDER BY avg_viewers DESC;
     `;
@@ -933,7 +940,7 @@ app.get('/api/channels', async (req: Request, res: Response) => {
           SELECT DISTINCT scrape_date::date AS bday
           FROM public.live
           WHERE scrape_date >= '${OCT_2026_CUTOFF}'
-            AND concurrent_viewers > 0
+            AND GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) > 0
             AND EXTRACT(ISODOW FROM scrape_date) BETWEEN 1 AND 5
           ORDER BY bday DESC
           LIMIT 7
@@ -942,12 +949,12 @@ app.get('/api/channels', async (req: Request, res: Response) => {
           SELECT 
             channel_id,
             video_id,
-            MAX(concurrent_viewers) AS max_viewers,
-            MAX(current_likes) AS max_likes
+            MAX(GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0))) AS max_viewers,
+            MAX(GREATEST(COALESCE(current_likes, 0), COALESCE(old_likes, 0))) AS max_likes
           FROM public.live
           WHERE scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
             AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
-            AND concurrent_viewers > 0
+            AND GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) > 0
           GROUP BY channel_id, video_id
         ),
         channel_ratios AS (
@@ -977,6 +984,12 @@ app.get('/api/channels', async (req: Request, res: Response) => {
     }
     if (result && result.rows) {
       await enrichEternalChannels(result.rows, p);
+      result.rows.sort((a: any, b: any) => {
+        if (sortParam === 'likes') return (Number(b.avg_likes) || 0) - (Number(a.avg_likes) || 0);
+        if (sortParam === 'comments') return (Number(b.avg_comments) || 0) - (Number(a.avg_comments) || 0);
+        if (sortParam === 'chat_users') return (Number(b.avg_unique_commentators) || 0) - (Number(a.avg_unique_commentators) || 0);
+        return (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
+      });
     }
     res.json({ success: true, channels: result.rows });
   } catch (err: any) {
@@ -1012,7 +1025,7 @@ app.get('/api/streams', async (req: Request, res: Response) => {
         SELECT DISTINCT scrape_date::date AS bday
         FROM public.live
         WHERE scrape_date >= '${OCT_2026_CUTOFF}'
-          AND concurrent_viewers > 0
+          AND GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) > 0
           AND EXTRACT(ISODOW FROM scrape_date) BETWEEN 1 AND 5
         ORDER BY bday DESC
         LIMIT 7
@@ -1036,8 +1049,8 @@ app.get('/api/streams', async (req: Request, res: Response) => {
         FROM public.live
         WHERE scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
           AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
-        ${!searchParam ? 'AND concurrent_viewers > 0' : ''}
-        ORDER BY video_id, (CASE WHEN video_title IS NOT NULL AND video_title <> '' THEN 1 ELSE 0 END) DESC, concurrent_viewers DESC
+        ${!searchParam ? 'AND GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) > 0' : ''}
+        ORDER BY video_id, (CASE WHEN video_title IS NOT NULL AND video_title <> '' THEN 1 ELSE 0 END) DESC, GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) DESC
       ) sub
       JOIN public.channels c ON sub.channel_id = c.channel_id
       LEFT JOIN LATERAL (
@@ -1088,11 +1101,11 @@ app.get('/api/streams', async (req: Request, res: Response) => {
     const sortParam = (((req.query.sort || '') as string) || 'viewers').toLowerCase();
 
     if (sortParam === 'likes') {
-      standardQuery += ` ORDER BY COALESCE(sub.current_likes, sub.old_likes, 0) DESC LIMIT ${searchParam ? 200 : 100};`;
+      standardQuery += ` ORDER BY COALESCE(sub.current_likes, sub.old_likes, 0) DESC;`;
     } else if (sortParam === 'comments') {
-      standardQuery += ` ORDER BY COALESCE(comm.comments_count, 0) DESC LIMIT ${searchParam ? 200 : 100};`;
+      standardQuery += ` ORDER BY COALESCE(comm.comments_count, 0) DESC;`;
     } else {
-      standardQuery += ` ORDER BY COALESCE(NULLIF(v_avg.avg_viewers, 0), sub.old_viewers, sub.concurrent_viewers, 0) DESC LIMIT ${searchParam ? 200 : 100};`;
+      standardQuery += ` ORDER BY COALESCE(NULLIF(v_avg.avg_viewers, 0), sub.old_viewers, sub.concurrent_viewers, 0) DESC;`;
     }
     const standardResult = await p.query(standardQuery, standardParams);
     const standardStreams: any[] = standardResult.rows || [];
@@ -1139,7 +1152,7 @@ app.get('/api/streams', async (req: Request, res: Response) => {
             SELECT DISTINCT scrape_date::date AS bday
             FROM public.live
             WHERE scrape_date >= '${OCT_2026_CUTOFF}'
-              AND concurrent_viewers > 0
+              AND GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) > 0
               AND EXTRACT(ISODOW FROM scrape_date) BETWEEN 1 AND 5
             ORDER BY bday DESC
             LIMIT 7
@@ -1183,8 +1196,7 @@ app.get('/api/streams', async (req: Request, res: Response) => {
                  COUNT(*) AS point_count
           FROM m_filtered
           GROUP BY video_title, video_id, channel_id
-          ORDER BY MAX(scrape_date) DESC 
-          LIMIT ${searchParam ? 200 : 100}
+          ORDER BY MAX(scrape_date) DESC
         `;
 
         const titleGroupsRes = await p.query(titleGroupsQuery, titleParams);
@@ -1367,8 +1379,7 @@ app.get('/api/streams', async (req: Request, res: Response) => {
       return bAvg - aAvg;
     });
 
-    // Return up to 200 matches if searching, or top 50 if browsing
-    const returnStreams = searchParam ? filtered.slice(0, 200) : filtered.slice(0, 50);
+    const returnStreams = filtered;
 
     res.json({
       success: true,

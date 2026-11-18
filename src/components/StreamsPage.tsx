@@ -6,7 +6,7 @@ import { formatArgentinaDateTime } from '../utils/dateFilter';
 import { Search, Radio, Heart, MessageSquare, DollarSign, Sparkles, RefreshCw, BarChart2, ExternalLink } from 'lucide-react';
 import { BLOCKED_STREAM_TITLE_KEYWORDS, isStreamTitleBlocked } from '../config/streamFilters';
 import { SITE_NAME } from '../config/site';
-import { trackEvent } from '../utils/analytics';
+import { trackEvent, updateSeoMeta } from '../utils/analytics';
 export { BLOCKED_STREAM_TITLE_KEYWORDS };
 
 export type StreamSortOption = 'viewers' | 'likes' | 'comments' | 'superchats';
@@ -66,10 +66,6 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
   const [sortBy, setSortBy] = useState<StreamSortOption>('viewers');
   const [selectedCommentsStream, setSelectedCommentsStream] = useState<Stream | null>(null);
   const [filterSuperchatsOnly, setFilterSuperchatsOnly] = useState<boolean>(false);
-
-  useEffect(() => {
-    document.title = `${SITE_NAME} - Streams`;
-  }, []);
 
   const cleanSearchTerm = useMemo(() => cleanQueryString(searchQuery), [searchQuery]);
 
@@ -168,6 +164,27 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
       return bAvg - aAvg;
     });
   }, [streams, cleanSearchTerm, filterSuperchatsOnly, sortBy]);
+
+  useEffect(() => {
+    const visibleStreams = filteredStreams.slice(0, 10);
+    const streamEntries = visibleStreams
+      .map((s) => {
+        const ch = (s.channel_name || s.channel || '').trim();
+        const title = (s.video_title || '').trim();
+        return ch && title ? `${ch} (${title})` : ch || title;
+      })
+      .filter(Boolean);
+
+    const description =
+      streamEntries.length > 0
+        ? `${SITE_NAME} - Streams y emisiones: ${streamEntries.join(' | ')}.`
+        : `${SITE_NAME} - Explora y busca entre todas las emisiones y programas disponibles.`;
+
+    updateSeoMeta({
+      title: `${SITE_NAME} - Streams`,
+      description,
+    });
+  }, [filteredStreams]);
 
   return (
     <div className="space-y-6">

@@ -323,7 +323,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const searchParam = rawSearch.replace(/^["'«»“”„]+|["'«»“”„]+$/g, '').trim();
   const sortParamReq = (((req.query.sort || '') as string) || 'viewers').toLowerCase();
 
-  const cached = getCachedResponse(`api:streams:v2:7bdays:${tag || 'all'}:${searchParam}:${sortParamReq}`);
+  const cached = getCachedResponse(`api:streams:v3:7bdays:${tag || 'all'}:${searchParam}:${sortParamReq}`);
   if (cached) {
     res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
     return res.status(200).json(cached);
@@ -339,7 +339,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         SELECT DISTINCT scrape_date::date AS bday
         FROM public.live
         WHERE scrape_date >= '${OCT_2026_CUTOFF}'
-          AND concurrent_viewers > 0
+          AND GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) > 0
           AND EXTRACT(ISODOW FROM scrape_date) BETWEEN 1 AND 5
         ORDER BY bday DESC
         LIMIT 7
@@ -363,8 +363,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         FROM public.live
         WHERE scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
           AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
-        ${!searchParam ? 'AND concurrent_viewers > 0' : ''}
-        ORDER BY video_id, (CASE WHEN video_title IS NOT NULL AND video_title <> '' THEN 1 ELSE 0 END) DESC, concurrent_viewers DESC
+        ${!searchParam ? 'AND GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) > 0' : ''}
+        ORDER BY video_id, (CASE WHEN video_title IS NOT NULL AND video_title <> '' THEN 1 ELSE 0 END) DESC, GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) DESC
       ) sub
       JOIN public.channels c ON sub.channel_id = c.channel_id
       LEFT JOIN LATERAL (
@@ -415,11 +415,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const sortParam = (((req.query.sort || '') as string) || 'viewers').toLowerCase();
 
     if (sortParam === 'likes') {
-      standardQuery += ` ORDER BY COALESCE(sub.current_likes, sub.old_likes, 0) DESC LIMIT ${searchParam ? 200 : 100};`;
+      standardQuery += ` ORDER BY COALESCE(sub.current_likes, sub.old_likes, 0) DESC;`;
     } else if (sortParam === 'comments') {
-      standardQuery += ` ORDER BY COALESCE(comm.comments_count, 0) DESC LIMIT ${searchParam ? 200 : 100};`;
+      standardQuery += ` ORDER BY COALESCE(comm.comments_count, 0) DESC;`;
     } else {
-      standardQuery += ` ORDER BY COALESCE(NULLIF(v_avg.avg_viewers, 0), sub.old_viewers, sub.concurrent_viewers, 0) DESC LIMIT ${searchParam ? 200 : 100};`;
+      standardQuery += ` ORDER BY COALESCE(NULLIF(v_avg.avg_viewers, 0), sub.old_viewers, sub.concurrent_viewers, 0) DESC;`;
     }
     const standardRes: any = await executeQuery(standardQuery, standardParams);
     const standardStreams: any[] = standardRes.rows || [];
@@ -464,7 +464,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             SELECT DISTINCT scrape_date::date AS bday
             FROM public.live
             WHERE scrape_date >= '${OCT_2026_CUTOFF}'
-              AND concurrent_viewers > 0
+              AND GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) > 0
               AND EXTRACT(ISODOW FROM scrape_date) BETWEEN 1 AND 5
             ORDER BY bday DESC
             LIMIT 7
@@ -508,8 +508,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                  COUNT(*) AS point_count
           FROM m_filtered
           GROUP BY video_title, video_id, channel_id
-          ORDER BY MAX(scrape_date) DESC 
-          LIMIT ${searchParam ? 200 : 100}
+          ORDER BY MAX(scrape_date) DESC
         `;
 
         const titleGroupsRes: any = await executeQuery(titleGroupsQuery, titleParams);
@@ -690,7 +689,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return bAvg - aAvg;
     });
 
-    const returnStreams = searchParam ? filtered.slice(0, 200) : filtered.slice(0, 50);
+    const returnStreams = filtered;
 
     const payload = {
       success: true,
@@ -698,7 +697,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       total_found: filtered.length,
       is_search: Boolean(searchParam),
     };
-    setCachedResponse(`api:streams:v2:7bdays:${tag || 'all'}:${searchParam}:${sortParam}`, payload, 12000);
+    setCachedResponse(`api:streams:v3:7bdays:${tag || 'all'}:${searchParam}:${sortParam}`, payload, 12000);
     res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
     return res.status(200).json(payload);
   } catch (err: any) {

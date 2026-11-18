@@ -126,7 +126,7 @@ async function fetchPrerenderData(): Promise<InitialPrerenderData> {
   // 2. Try local running server on port 3000 if available
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3500);
+    const timeout = setTimeout(() => controller.abort(), 20000);
     const [liveRes, chRes] = await Promise.all([
       fetch('http://localhost:3000/api/live?tag=all', {
         headers: { 'X-App-Client': 'kukastream-web' },
@@ -208,7 +208,49 @@ function buildJsonLd(data: InitialPrerenderData): string {
   return `<script id="schema-jsonld" type="application/ld+json">${JSON.stringify(schema)}</script>`;
 }
 
-function injectPrerenderIntoHtml(rawHtml: string, appHtml: string, jsonLdTag: string): string {
+function escapeHtmlAttr(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function buildHomeMetaDescription(data: InitialPrerenderData): string {
+  const visibleLive = (data.streams || []).slice(0, 10);
+  const visibleRecent = data.recentStreams || [];
+  const visibleStreams = [...visibleLive, ...visibleRecent];
+  const channelsList = data.channelsList && data.channelsList.length > 0 ? data.channelsList : CHANNELS;
+
+  const streamLabels = visibleStreams
+    .map((s) => {
+      const ch = (s.channel_name || s.channel || '').trim();
+      const title = (s.video_title || '').trim();
+      return ch && title ? `${ch} (${title})` : ch || title;
+    })
+    .filter(Boolean);
+
+  const visibleChannelNames = Array.from(
+    new Set(
+      [
+        ...visibleStreams.map((s) => (s.channel_name || s.channel || '').trim()),
+        ...channelsList.slice(0, 16).map((c) => (c.channel_name || c.channel || '').trim()),
+      ].filter(Boolean)
+    )
+  );
+
+  if (streamLabels.length > 0) {
+    return `${SITE_NAME} - Emisiones y canales en vivo: ${streamLabels.join(' | ')}${
+      visibleChannelNames.length > 0 ? `. Canales: ${visibleChannelNames.join(', ')}` : ''
+    }.`;
+  }
+  if (visibleChannelNames.length > 0) {
+    return `${SITE_NAME} - Canales de streaming en Argentina: ${visibleChannelNames.join(', ')}.`;
+  }
+  return `${SITE_NAME} - Ranking en vivo, métricas en tiempo real, superchats y estadísticas de canales de streaming en Argentina.`;
+}
+
+function injectPrerenderIntoHtml(rawHtml: string, appHtml: string, jsonLdTag: string, metaDescription: string): string {
   let html = rawHtml;
 
   // 0. If GA_ID is provided in environment (e.g. Vercel GA_ID), replace G-XXXXXXXXXX placeholder in <head>
@@ -216,6 +258,21 @@ function injectPrerenderIntoHtml(rawHtml: string, appHtml: string, jsonLdTag: st
   if (envGaId && envGaId !== 'G-XXXXXXXXXX') {
     html = html.replace(/G-XXXXXXXXXX/g, envGaId.trim());
   }
+
+  // 0b. Update meta description, og:description, and twitter:description with visible channels and emissions
+  const escapedDesc = escapeHtmlAttr(metaDescription);
+  html = html.replace(
+    /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
+    `<meta name="description" content="${escapedDesc}" />`
+  );
+  html = html.replace(
+    /<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/i,
+    `<meta property="og:description" content="${escapedDesc}" />`
+  );
+  html = html.replace(
+    /<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i,
+    `<meta name="twitter:description" content="${escapedDesc}" />`
+  );
 
   // 1. Inject or update JSON-LD in <head>
   if (html.includes('id="schema-jsonld"')) {
@@ -247,12 +304,13 @@ async function runPrerender() {
   const initialData = await fetchPrerenderData();
   const appHtml = renderToString(<App initialData={initialData} />);
   const jsonLdTag = buildJsonLd(initialData);
+  const metaDescription = buildHomeMetaDescription(initialData);
 
   // Update dist/index.html if built (for Vercel deployment)
   const distIndexPath = path.join(ROOT_DIR, 'dist', 'index.html');
   if (fs.existsSync(distIndexPath)) {
     const distHtml = fs.readFileSync(distIndexPath, 'utf-8');
-    const updatedDistHtml = injectPrerenderIntoHtml(distHtml, appHtml, jsonLdTag);
+    const updatedDistHtml = injectPrerenderIntoHtml(distHtml, appHtml, jsonLdTag, metaDescription);
     fs.writeFileSync(distIndexPath, updatedDistHtml, 'utf-8');
     console.log(`[prerender] Successfully injected prerendered Home HTML (${appHtml.length} chars) into dist/index.html`);
   }
@@ -261,7 +319,7 @@ async function runPrerender() {
   const rootIndexPath = path.join(ROOT_DIR, 'index.html');
   if (fs.existsSync(rootIndexPath)) {
     const rootHtml = fs.readFileSync(rootIndexPath, 'utf-8');
-    const updatedRootHtml = injectPrerenderIntoHtml(rootHtml, appHtml, jsonLdTag);
+    const updatedRootHtml = injectPrerenderIntoHtml(rootHtml, appHtml, jsonLdTag, metaDescription);
     fs.writeFileSync(rootIndexPath, updatedRootHtml, 'utf-8');
     console.log(`[prerender] Successfully injected prerendered Home HTML (${appHtml.length} chars) into index.html`);
   }

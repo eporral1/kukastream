@@ -4,7 +4,7 @@ import { formatNumber, formatSubs } from '../data/mockData';
 import { ChannelCommentsModal } from './ChannelCommentsModal';
 import { Search, ExternalLink, BarChart2, Radio, Heart, MessageSquare, DollarSign, Sparkles } from 'lucide-react';
 import { SITE_NAME } from '../config/site';
-import { trackEvent } from '../utils/analytics';
+import { trackEvent, updateSeoMeta } from '../utils/analytics';
 
 interface ChannelsPageProps {
   channels: Channel[];
@@ -24,10 +24,6 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
   const [selectedCommentsChannel, setSelectedCommentsChannel] = useState<Channel | null>(null);
   const [filterSuperchatsOnly, setFilterSuperchatsOnly] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<ChannelSortOption>('viewers');
-
-  useEffect(() => {
-    document.title = `${SITE_NAME} - Canales`;
-  }, []);
 
   const filteredChannels = useMemo(() => {
     if (!Array.isArray(channels)) return [];
@@ -77,6 +73,22 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
       return (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
     });
   }, [channels, searchQuery, selectedTag, filterSuperchatsOnly, sortBy]);
+
+  useEffect(() => {
+    const visibleChannels = filteredChannels.slice(0, 10);
+    const channelNames = visibleChannels
+      .map((c) => (c.channel_name || c.channel || '').trim())
+      .filter(Boolean);
+    const description =
+      channelNames.length > 0
+        ? `${SITE_NAME} - Canales de streaming: ${channelNames.join(', ')}.`
+        : `${SITE_NAME} - Ranking y estadísticas de canales de streaming en Argentina.`;
+
+    updateSeoMeta({
+      title: `${SITE_NAME} - Canales`,
+      description,
+    });
+  }, [filteredChannels]);
 
   return (
     <div className="space-y-6">

@@ -98,13 +98,53 @@ export function getSectionTitle(pathname: string, channelName?: string): { title
 }
 
 /**
+ * Actualiza <title>, <meta name="description">, OpenGraph y Twitter Card tags en el DOM
+ */
+export function updateSeoMeta({
+  title,
+  description,
+}: {
+  title?: string;
+  description?: string;
+}): void {
+  if (typeof document === 'undefined') return;
+
+  if (title) {
+    document.title = title;
+    const ogTitle = document.querySelector('meta[property="og:title"]');
+    if (ogTitle) ogTitle.setAttribute('content', title);
+    const twTitle = document.querySelector('meta[name="twitter:title"]');
+    if (twTitle) twTitle.setAttribute('content', title);
+  }
+
+  if (description !== undefined) {
+    let metaDesc = document.querySelector('meta[name="description"]');
+    if (!metaDesc) {
+      metaDesc = document.createElement('meta');
+      metaDesc.setAttribute('name', 'description');
+      document.head.appendChild(metaDesc);
+    }
+    metaDesc.setAttribute('content', description);
+
+    const ogDesc = document.querySelector('meta[property="og:description"]');
+    if (ogDesc) ogDesc.setAttribute('content', description);
+
+    const twDesc = document.querySelector('meta[name="twitter:description"]');
+    if (twDesc) twDesc.setAttribute('content', description);
+  }
+}
+
+/**
  * Actualiza document.title y registra page_view en Google Analytics 4
  */
-export function trackPageView(pathname: string, channelName?: string): void {
+export function trackPageView(pathname: string, channelName?: string, channelDescription?: string): void {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
   const { title, section } = getSectionTitle(pathname, channelName);
-  document.title = title;
+  updateSeoMeta({
+    title,
+    ...(channelDescription !== undefined ? { description: channelDescription } : {}),
+  });
 
   trackEvent('page_view', {
     page_title: title,

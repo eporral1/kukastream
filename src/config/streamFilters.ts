@@ -13,7 +13,7 @@
  * ];
  */
 export const BLOCKED_STREAM_TITLE_KEYWORDS: string[] = [
-  'DALE MATCH',
+  'DALE MATCH', 'Perros de la Calle'
 ];
 
 /**

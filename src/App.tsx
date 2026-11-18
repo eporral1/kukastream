@@ -17,7 +17,7 @@ import { CategoryTag, Stream, Channel } from './types';
 import { isOctober2026OrLater, formatArgentinaTime } from './utils/dateFilter';
 import { RefreshCw, Radio, Sparkles, Clock, AlertCircle, X } from 'lucide-react';
 import { SITE_NAME } from './config/site';
-import { initAnalytics, trackPageView, trackEvent } from './utils/analytics';
+import { initAnalytics, trackPageView, trackEvent, updateSeoMeta } from './utils/analytics';
 
 export interface InitialPrerenderData {
   streams?: Stream[];
@@ -54,6 +54,39 @@ export default function App({ initialData }: AppProps) {
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [dbError, setDbError] = useState<string | null>(null);
   const [isDbErrorDismissed, setIsDbErrorDismissed] = useState<boolean>(false);
+  const [homeSortBy, setHomeSortBy] = useState<'viewers' | 'likes_pct' | 'comments_per_viewer' | 'chat_users_pct'>('viewers');
+
+  const sortedLiveStreams = useMemo(() => {
+    const getMetrics = (stream: Stream) => {
+      const commentsCount = Number(stream.comments_count || 0);
+      const uniqueCommentators = Number(stream.unique_commentators || 0);
+      const currentLikes = Number(stream.current_likes || 0);
+      const isLive = stream.live === 'live';
+      const viewers = Number(isLive ? stream.concurrent_viewers : (stream.avg_viewers || stream.concurrent_viewers)) || 0;
+      const peakViewers = Number(
+        stream.max_viewers || stream.max_users || (isLive ? stream.concurrent_viewers : (stream.avg_viewers || stream.concurrent_viewers))
+      ) || 0;
+      const likesRatio = peakViewers > 0 ? currentLikes / peakViewers : 0;
+      const commentsRatio = peakViewers > 0 ? commentsCount / peakViewers : 0;
+      const uniqueRatio = peakViewers > 0 ? uniqueCommentators / peakViewers : 0;
+      return { viewers, likesRatio, commentsRatio, uniqueRatio };
+    };
+
+    return [...streams].sort((a, b) => {
+      const ma = getMetrics(a);
+      const mb = getMetrics(b);
+      if (homeSortBy === 'likes_pct') {
+        return mb.likesRatio - ma.likesRatio || mb.viewers - ma.viewers;
+      }
+      if (homeSortBy === 'comments_per_viewer') {
+        return mb.commentsRatio - ma.commentsRatio || mb.viewers - ma.viewers;
+      }
+      if (homeSortBy === 'chat_users_pct') {
+        return mb.uniqueRatio - ma.uniqueRatio || mb.viewers - ma.viewers;
+      }
+      return mb.viewers - ma.viewers;
+    });
+  }, [streams, homeSortBy]);
 
   // Fetch live streams and recent 24h streams from real DB
   const fetchLiveData = useCallback(async (isBackground = false) => {
@@ -314,7 +347,7 @@ export default function App({ initialData }: AppProps) {
       channel_id: currentChannelIdentifier,
       channel: withAt,
       channel_name: withoutAt,
-      description: 'Canal de streaming',
+      description: '',
       subs: 0,
       thumb: `https://yt3.ggpht.com/`,
       tags: 'stream',
@@ -325,8 +358,53 @@ export default function App({ initialData }: AppProps) {
 
   // Dynamically set document.title ("SITE_NAME - SECCION") and fire GA4 page_view on route change
   useEffect(() => {
-    trackPageView(currentPath, currentChannel?.channel_name);
-  }, [currentPath, currentChannel?.channel_name]);
+    trackPageView(
+      currentPath,
+      currentChannel?.channel_name,
+      isChannelDetail && currentChannel?.description ? currentChannel.description : undefined
+    );
+  }, [currentPath, currentChannel?.channel_name, currentChannel?.description, isChannelDetail]);
+
+  // Update Home meta description with visible channel names and broadcast titles
+  useEffect(() => {
+    const cleanPath = (currentPath || '/').split('?')[0];
+    if (cleanPath !== '/') return;
+
+    const visibleLive = sortedLiveStreams.slice(0, 10);
+    const visibleRecent = recentStreams;
+    const visibleStreams = [...visibleLive, ...visibleRecent];
+
+    const streamLabels = visibleStreams
+      .map((s) => {
+        const ch = (s.channel_name || s.channel || '').trim();
+        const title = (s.video_title || '').trim();
+        return ch && title ? `${ch} (${title})` : ch || title;
+      })
+      .filter(Boolean);
+
+    const visibleChannelNames = Array.from(
+      new Set(
+        [
+          ...visibleStreams.map((s) => (s.channel_name || s.channel || '').trim()),
+          ...channelsList.slice(0, 16).map((c) => (c.channel_name || c.channel || '').trim()),
+        ].filter(Boolean)
+      )
+    );
+
+    let description = `${SITE_NAME} - Ranking en vivo, métricas en tiempo real, superchats y estadísticas de canales de streaming en Argentina.`;
+    if (streamLabels.length > 0) {
+      description = `${SITE_NAME} - Emisiones y canales en vivo: ${streamLabels.join(' | ')}${
+        visibleChannelNames.length > 0 ? `. Canales: ${visibleChannelNames.join(', ')}` : ''
+      }.`;
+    } else if (visibleChannelNames.length > 0) {
+      description = `${SITE_NAME} - Canales de streaming en Argentina: ${visibleChannelNames.join(', ')}.`;
+    }
+
+    updateSeoMeta({
+      title: `${SITE_NAME} - Ranking en vivo de streamings`,
+      description,
+    });
+  }, [currentPath, sortedLiveStreams, recentStreams, channelsList]);
 
   const currentChannelLiveStream = useMemo(() => {
     if (!currentChannel) return undefined;
@@ -477,7 +555,7 @@ export default function App({ initialData }: AppProps) {
 
               {/* Ranking Live Streams */}
               <div id="live" className="space-y-4 pt-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
                   <div>
                     <div className="flex items-center gap-2">
                       <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">
@@ -494,18 +572,27 @@ export default function App({ initialData }: AppProps) {
                       Canales ordenados por audiencia actual
                     </p>
                   </div>
-                  {/*<div className="flex items-center gap-2 self-start sm:self-auto">
-                    <div className="text-xs sm:text-sm text-gray-500 bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-2xs flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-blue-600" />
-                      <span>Último scrapeo:</span>
-                      <strong className="text-gray-900">{lastUpdate}</strong>
-                    </div>
-                    {isRefreshing && (
-                      <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg animate-spin">
-                        <RefreshCw className="w-4 h-4" />
-                      </div>
-                    )}
-                  </div>*/}
+
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <label htmlFor="home-sort-select" className="text-xs font-semibold text-gray-600 shrink-0">
+                      Ordenar por:
+                    </label>
+                    <select
+                      id="home-sort-select"
+                      value={homeSortBy}
+                      onChange={(e) => {
+                        const val = e.target.value as 'viewers' | 'likes_pct' | 'comments_per_viewer' | 'chat_users_pct';
+                        setHomeSortBy(val);
+                        trackEvent('sort_home_streams', { sort_by: val });
+                      }}
+                      className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-bold text-gray-800 shadow-2xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none cursor-pointer"
+                    >
+                      <option value="viewers">Espectadores (actual)</option>
+                      <option value="likes_pct">% de likes</option>
+                      <option value="comments_per_viewer">Mensajes por espectador</option>
+                      <option value="chat_users_pct">% de espectadores (usuarios chat)</option>
+                    </select>
+                  </div>
                 </div>
 
                 {isLoadingStreams && streams.length === 0 ? (
@@ -535,7 +622,7 @@ export default function App({ initialData }: AppProps) {
                   </div>
                 ) : (
                   <>
-                    {streams.slice(0, 10).map((stream, idx) => (
+                    {sortedLiveStreams.slice(0, 10).map((stream, idx) => (
                       <RankingStreamCard
                         key={stream.video_id}
                         stream={stream}
@@ -660,7 +747,7 @@ export default function App({ initialData }: AppProps) {
                           <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 flex-wrap sm:flex-nowrap">
                             <div className="text-right min-w-[70px]">
                               <div className="text-[11px] text-gray-400 font-semibold">ESPECTADORES</div>
-                              <div className="text-base sm:text-lg font-extrabold text-gray-900">
+                              <div className="text-base sm:text-lg font-extrabold text-blue-600">
                                 {new Intl.NumberFormat('es-AR').format(rPeak || stream.concurrent_viewers)}
                               </div>
                               <div className="text-[10px] text-gray-400">PICO</div>
@@ -688,7 +775,7 @@ export default function App({ initialData }: AppProps) {
 
                             <div className="text-right min-w-[85px]">
                               <div className="text-[11px] text-gray-400 font-semibold">USUARIOS CHAT</div>
-                              <div className="text-base sm:text-lg font-extrabold text-indigo-600">
+                              <div className="text-base sm:text-lg font-extrabold text-emerald-600">
                                 {new Intl.NumberFormat('es-AR').format(rUniqueUsers)}
                               </div>
                               <div className="text-[10px] text-gray-500 font-medium" title="Usuarios únicos en el chat por espectador pico">
