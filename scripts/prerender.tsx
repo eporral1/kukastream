@@ -9,6 +9,7 @@ import { CHANNELS } from '../src/data/mockData.ts';
 import { SITE_NAME } from '../src/config/site.ts';
 import { formatArgentinaTime, isOctober2026OrLater } from '../src/utils/dateFilter.ts';
 import { getPool, executeQuery, resetPool } from '../src/utils/serverDb.ts';
+import { isStreamTitleBlocked } from '../src/config/streamFilters.ts';
 
 dotenv.config();
 
@@ -97,10 +98,14 @@ async function fetchPrerenderData(): Promise<InitialPrerenderData> {
       resetPool();
 
       const streams = (liveRes.rows || []).filter(
-        (s: any) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)
+        (s: any) =>
+          !isStreamTitleBlocked(s.video_title) &&
+          (isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date))
       );
       const recentStreams = (recentRes.rows || []).filter(
-        (s: any) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)
+        (s: any) =>
+          !isStreamTitleBlocked(s.video_title) &&
+          (isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date))
       );
       const channelsList = chRes.rows && chRes.rows.length > 0 ? chRes.rows : [];
 
@@ -142,8 +147,12 @@ async function fetchPrerenderData(): Promise<InitialPrerenderData> {
     if (liveRes.ok || chRes.ok) {
       const liveData: any = liveRes.ok ? await liveRes.json() : null;
       const chData: any = chRes.ok ? await chRes.json() : null;
-      const streams = Array.isArray(liveData?.streams) ? liveData.streams : [];
-      const recentStreams = Array.isArray(liveData?.recent_streams) ? liveData.recent_streams : [];
+      const streams = (Array.isArray(liveData?.streams) ? liveData.streams : []).filter(
+        (s: any) => !isStreamTitleBlocked(s.video_title)
+      );
+      const recentStreams = (Array.isArray(liveData?.recent_streams) ? liveData.recent_streams : []).filter(
+        (s: any) => !isStreamTitleBlocked(s.video_title)
+      );
       const channelsList = Array.isArray(chData?.channels) && chData.channels.length > 0 ? chData.channels : [];
       const allDates = [...streams, ...recentStreams].map((s: any) => s.scrape_date).filter(Boolean);
       const lastUpdate = allDates.length > 0 ? formatArgentinaTime(allDates.sort().reverse()[0]) : 'En vivo';

@@ -397,10 +397,35 @@ export async function resolveRouteSeoMeta(
 
     const label = String(ch?.channel_name || ch?.channel || withoutAt).trim();
     const handle = String(ch?.channel || withAt).trim();
+
+    let latestEmissionTitle = '';
+    if (p && (ch?.channel_id || handle)) {
+      try {
+        const liveCheck = await p.query(
+          `SELECT video_title FROM public.live WHERE (channel_id = $1 OR channel_id = $2) AND live = 'live' ORDER BY scrape_date DESC LIMIT 1`,
+          [ch?.channel_id, handle]
+        );
+        if (liveCheck.rows?.[0]?.video_title) {
+          latestEmissionTitle = `Transmitiendo: "${liveCheck.rows[0].video_title}"`;
+        } else {
+          const pastCheck = await p.query(
+            `SELECT video_title FROM public.live WHERE (channel_id = $1 OR channel_id = $2) ORDER BY scrape_date DESC LIMIT 1`,
+            [ch?.channel_id, handle]
+          );
+          if (pastCheck.rows?.[0]?.video_title) {
+            latestEmissionTitle = `Última emisión: "${pastCheck.rows[0].video_title}"`;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     const rawDesc = String(ch?.description || '').replace(/\s+/g, ' ').trim();
-    const description =
+    const baseDesc =
       rawDesc ||
       `Métricas en vivo, audiencia en tiempo real, emisiones recientes, superchats y estadísticas de ${label} (${handle}) en ${SITE_NAME}.`;
+    const description = latestEmissionTitle ? `${latestEmissionTitle}. ${baseDesc}` : baseDesc;
     const title = `${SITE_NAME} - ${label}`;
     const ogImage = ch?.thumb && String(ch.thumb).startsWith('http') ? String(ch.thumb) : undefined;
 
@@ -570,6 +595,12 @@ export function applySeoToHtml(html: string, seo: RouteSeoData): string {
       /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i,
       `<meta name="twitter:image" content="${escapedImg}" />`
     );
+    const faviconTag = `<link rel="icon" href="${escapedImg}" />\n    <link rel="shortcut icon" href="${escapedImg}" />`;
+    if (/<link\s+rel="icon"/i.test(out)) {
+      out = out.replace(/<link\s+rel="icon"[^>]*\/?>/i, `<link rel="icon" href="${escapedImg}" />`);
+    } else {
+      out = out.replace('</head>', `    ${faviconTag}\n  </head>`);
+    }
   }
 
   if (seo.canonicalUrl) {

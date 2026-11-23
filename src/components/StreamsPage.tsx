@@ -7,9 +7,10 @@ import { Search, Radio, Heart, MessageSquare, DollarSign, Sparkles, RefreshCw, B
 import { BLOCKED_STREAM_TITLE_KEYWORDS, isStreamTitleBlocked } from '../config/streamFilters';
 import { SITE_NAME } from '../config/site';
 import { trackEvent, updateSeoMeta } from '../utils/analytics';
+import { calculateStreamEngagement } from '../utils/engagement';
 export { BLOCKED_STREAM_TITLE_KEYWORDS };
 
-export type StreamSortOption = 'viewers' | 'likes' | 'comments' | 'superchats';
+export type StreamSortOption = 'engagement' | 'viewers' | 'likes' | 'comments' | 'chat_users' | 'superchats';
 
 interface StreamsPageProps {
   onNavigateChannel: (channelId: string) => void;
@@ -63,7 +64,7 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<StreamSortOption>('viewers');
+  const [sortBy, setSortBy] = useState<StreamSortOption>('engagement');
   const [selectedCommentsStream, setSelectedCommentsStream] = useState<Stream | null>(null);
   const [filterSuperchatsOnly, setFilterSuperchatsOnly] = useState<boolean>(false);
 
@@ -144,6 +145,11 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
       return false;
     })
     .sort((a, b) => {
+      if (sortBy === 'viewers') {
+        const aAvg = Number(a.avg_viewers ?? a.old_viewers ?? a.concurrent_viewers) || 0;
+        const bAvg = Number(b.avg_viewers ?? b.old_viewers ?? b.concurrent_viewers) || 0;
+        return bAvg - aAvg;
+      }
       if (sortBy === 'likes') {
         const aLikes = Number(a.current_likes ?? a.max_likes ?? a.old_likes) || 0;
         const bLikes = Number(b.current_likes ?? b.max_likes ?? b.old_likes) || 0;
@@ -154,14 +160,21 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
         const bComments = Number(b.comments_count) || 0;
         return bComments - aComments;
       }
+      if (sortBy === 'chat_users') {
+        const aUsers = Math.max(0, Number(a.unique_commentators || 0));
+        const bUsers = Math.max(0, Number(b.unique_commentators || 0));
+        return bUsers - aUsers;
+      }
       if (sortBy === 'superchats') {
         const aSuperchats = Number(a.superchats_total) || 0;
         const bSuperchats = Number(b.superchats_total) || 0;
         return bSuperchats - aSuperchats;
       }
+      const aEng = calculateStreamEngagement(a);
+      const bEng = calculateStreamEngagement(b);
       const aAvg = Number(a.avg_viewers ?? a.old_viewers ?? a.concurrent_viewers) || 0;
       const bAvg = Number(b.avg_viewers ?? b.old_viewers ?? b.concurrent_viewers) || 0;
-      return bAvg - aAvg;
+      return bEng - aEng || bAvg - aAvg;
     });
   }, [streams, cleanSearchTerm, filterSuperchatsOnly, sortBy]);
 
@@ -255,9 +268,11 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
               }}
               className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-bold text-gray-800 shadow-2xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none cursor-pointer"
             >
+              <option value="engagement">Engagement (mayor a menor)</option>
               <option value="viewers">Promedio de espectadores (mayor a menor)</option>
               <option value="likes">Likes (mayor a menor)</option>
               <option value="comments">Mensajes (mayor a menor)</option>
+              <option value="chat_users">Usuarios en el chat (mayor a menor)</option>
               <option value="superchats">Recaudación en superchats en ARS (mayor a menor)</option>
             </select>
           </div>
@@ -299,6 +314,7 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
 
             const isLive = stream.live === 'live';
             const superchatsTotal = Number(stream.superchats_total) || 0;
+            const engagementScore = calculateStreamEngagement(stream);
 
             return (
               <div
@@ -456,15 +472,24 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                       <div className="text-[10px] text-gray-500">TOTALES</div>
                     </div>
 
-                    {/*(superchatsTotal > 0 || sortBy === 'superchats') && (
-                      <div className="text-center min-w-[90px]">
-                        <div className="text-xs text-emerald-600 font-bold mb-0.5">SUPERCHATS</div>
-                        <div className="font-extrabold text-2xl text-emerald-600">
-                          ${formatNumber(superchatsTotal)}
-                        </div>
-                        <div className="text-[10px] text-gray-500 font-medium">ARS</div>
+                    <div className="text-center min-w-[95px]">
+                      <div className="text-xs text-gray-400 font-semibold mb-0.5 whitespace-nowrap">USUARIOS CHAT</div>
+                      <div className="font-extrabold text-2xl text-emerald-600">
+                        {formatNumber(Math.max(0, stream.unique_commentators || 0))}
                       </div>
-                    )*/}
+                      <div className="text-[10px] text-gray-500">ÚNICOS</div>
+                    </div>
+
+                    <div
+                      className="text-center min-w-[85px] bg-indigo-50/70 px-3 py-1.5 rounded-xl border border-indigo-100"
+                      title="Índice de Engagement del stream (0-100): combina espectadores (75%), % usuarios en chat (13%), % likes (6%) y mensajes/espectador (6%)"
+                    >
+                      <div className="text-[11px] text-indigo-600 font-bold mb-0.5">ENGAGEMENT</div>
+                      <div className="font-black text-2xl text-indigo-700">
+                        {engagementScore.toFixed(1)}
+                      </div>
+                      <div className="text-[10px] text-indigo-500 font-semibold">PUNTOS</div>
+                    </div>
                   </div>
                 </div>
 
@@ -526,6 +551,14 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
 
                         <div className="text-xs text-gray-500">
                           💬 {formatNumber(stream.comments_count || 0)}
+                        </div>
+
+                        <div className="text-xs text-emerald-700 font-semibold" title="Usuarios únicos en el chat">
+                          👥 {formatNumber(Math.max(0, stream.unique_commentators || 0))}
+                        </div>
+
+                        <div className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 rounded-md" title="Índice de Engagement (0-100)">
+                          ⚡ {engagementScore.toFixed(1)} pts
                         </div>
 
                         {(superchatsTotal > 0 || sortBy === 'superchats') && (

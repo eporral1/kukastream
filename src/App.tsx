@@ -18,6 +18,8 @@ import { isOctober2026OrLater, formatArgentinaTime } from './utils/dateFilter';
 import { RefreshCw, Radio, Sparkles, Clock, AlertCircle, X } from 'lucide-react';
 import { SITE_NAME } from './config/site';
 import { initAnalytics, trackPageView, trackEvent, updateSeoMeta } from './utils/analytics';
+import { calculateStreamEngagement } from './utils/engagement';
+import { isStreamTitleBlocked } from './config/streamFilters';
 
 export interface InitialPrerenderData {
   streams?: Stream[];
@@ -43,8 +45,12 @@ export default function App({ initialData }: AppProps) {
   });
 
   const [activeCategory, setActiveCategory] = useState<CategoryTag>('all');
-  const [streams, setStreams] = useState<Stream[]>(() => resolvedInitialData?.streams || []);
-  const [recentStreams, setRecentStreams] = useState<Stream[]>(() => resolvedInitialData?.recentStreams || []);
+  const [streams, setStreams] = useState<Stream[]>(() =>
+    (resolvedInitialData?.streams || []).filter((s) => !isStreamTitleBlocked(s?.video_title))
+  );
+  const [recentStreams, setRecentStreams] = useState<Stream[]>(() =>
+    (resolvedInitialData?.recentStreams || []).filter((s) => !isStreamTitleBlocked(s?.video_title))
+  );
   const [channelsList, setChannelsList] = useState<Channel[]>(() => resolvedInitialData?.channelsList || []);
   const [lastUpdate, setLastUpdate] = useState<string>(() => resolvedInitialData?.lastUpdate || 'En vivo');
   const [autoRefresh, setAutoRefresh] = useState<boolean>(true);
@@ -54,7 +60,7 @@ export default function App({ initialData }: AppProps) {
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [dbError, setDbError] = useState<string | null>(null);
   const [isDbErrorDismissed, setIsDbErrorDismissed] = useState<boolean>(false);
-  const [homeSortBy, setHomeSortBy] = useState<'viewers' | 'likes_pct' | 'comments_per_viewer' | 'chat_users_pct'>('viewers');
+  const [homeSortBy, setHomeSortBy] = useState<'engagement' | 'viewers' | 'likes_pct' | 'comments_per_viewer' | 'chat_users_pct'>('engagement');
 
   const sortedLiveStreams = useMemo(() => {
     const getMetrics = (stream: Stream) => {
@@ -69,12 +75,18 @@ export default function App({ initialData }: AppProps) {
       const likesRatio = peakViewers > 0 ? currentLikes / peakViewers : 0;
       const commentsRatio = peakViewers > 0 ? commentsCount / peakViewers : 0;
       const uniqueRatio = peakViewers > 0 ? uniqueCommentators / peakViewers : 0;
-      return { viewers, likesRatio, commentsRatio, uniqueRatio };
+      const engagement = calculateStreamEngagement(stream);
+      return { viewers, likesRatio, commentsRatio, uniqueRatio, engagement };
     };
 
-    return [...streams].sort((a, b) => {
+    return [...streams]
+      .filter((s) => !isStreamTitleBlocked(s?.video_title))
+      .sort((a, b) => {
       const ma = getMetrics(a);
       const mb = getMetrics(b);
+      if (homeSortBy === 'viewers') {
+        return mb.viewers - ma.viewers || mb.engagement - ma.engagement;
+      }
       if (homeSortBy === 'likes_pct') {
         return mb.likesRatio - ma.likesRatio || mb.viewers - ma.viewers;
       }
@@ -84,7 +96,7 @@ export default function App({ initialData }: AppProps) {
       if (homeSortBy === 'chat_users_pct') {
         return mb.uniqueRatio - ma.uniqueRatio || mb.viewers - ma.viewers;
       }
-      return mb.viewers - ma.viewers;
+      return mb.engagement - ma.engagement || mb.viewers - ma.viewers;
     });
   }, [streams, homeSortBy]);
 
@@ -110,10 +122,10 @@ export default function App({ initialData }: AppProps) {
 
       if (res.ok && data?.success) {
         const liveList = (Array.isArray(data.streams) ? data.streams : [])
-          .filter((s: Stream) => s.channel !== '@Radio10am')
+          .filter((s: Stream) => s.channel !== '@Radio10am' && !isStreamTitleBlocked(s.video_title))
           .filter((s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date));
         const recentList = (Array.isArray(data.recent_streams) ? data.recent_streams : [])
-          .filter((s: Stream) => s.channel !== '@Radio10am')
+          .filter((s: Stream) => s.channel !== '@Radio10am' && !isStreamTitleBlocked(s.video_title))
           .filter((s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date));
         setStreams(liveList);
         setRecentStreams(recentList);
@@ -593,7 +605,7 @@ export default function App({ initialData }: AppProps) {
                       )}
                     </div>
                     <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-                      Canales ordenados por audiencia actual
+                      {/*Canales ordenados por índice de engagement y audiencia*/}
                     </p>
                   </div>
 
@@ -605,12 +617,13 @@ export default function App({ initialData }: AppProps) {
                       id="home-sort-select"
                       value={homeSortBy}
                       onChange={(e) => {
-                        const val = e.target.value as 'viewers' | 'likes_pct' | 'comments_per_viewer' | 'chat_users_pct';
+                        const val = e.target.value as 'engagement' | 'viewers' | 'likes_pct' | 'comments_per_viewer' | 'chat_users_pct';
                         setHomeSortBy(val);
                         trackEvent('sort_home_streams', { sort_by: val });
                       }}
                       className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-bold text-gray-800 shadow-2xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none cursor-pointer"
                     >
+                      <option value="engagement">Engagement (general)</option>
                       <option value="viewers">Espectadores (actual)</option>
                       <option value="likes_pct">% de likes</option>
                       <option value="comments_per_viewer">Mensajes por espectador</option>
@@ -693,6 +706,7 @@ export default function App({ initialData }: AppProps) {
                       const rLikesRatio = rPeak > 0 ? (rLikes / rPeak) : 0;
                       const rCommentsRatio = rPeak > 0 ? (rComments / rPeak) : 0;
                       const rUniqueRatio = rPeak > 0 ? (rUniqueUsers / rPeak) : 0;
+                      const rEngagement = calculateStreamEngagement(stream);
 
                       return (
                         <div
@@ -805,6 +819,17 @@ export default function App({ initialData }: AppProps) {
                               <div className="text-[10px] text-gray-500 font-medium" title="Usuarios únicos en el chat por espectador pico">
                                 {rUniqueRatio > 0 ? `${(rUniqueRatio*100).toFixed(2)} % esp.` : '0%'}
                               </div>
+                            </div>
+
+                            <div
+                              className="text-center min-w-[75px] bg-indigo-50/70 px-2.5 py-1 rounded-xl border border-indigo-100"
+                              title="Índice de Engagement (0-100)"
+                            >
+                              <div className="text-[10px] text-indigo-600 font-bold">ENGAGEMENT</div>
+                              <div className="text-base sm:text-lg font-black text-indigo-700">
+                                {rEngagement.toFixed(1)}
+                              </div>
+                              <div className="text-[9px] text-indigo-500 font-semibold">PUNTOS</div>
                             </div>
 
                             {stream.video_id && (

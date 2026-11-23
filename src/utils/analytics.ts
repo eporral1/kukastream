@@ -104,10 +104,12 @@ export function updateSeoMeta({
   title,
   description,
   canonicalPath,
+  faviconUrl,
 }: {
   title?: string;
   description?: string;
   canonicalPath?: string;
+  faviconUrl?: string;
 }): void {
   if (typeof document === 'undefined') return;
 
@@ -133,6 +135,24 @@ export function updateSeoMeta({
 
     const twDesc = document.querySelector('meta[name="twitter:description"]');
     if (twDesc) twDesc.setAttribute('content', description);
+  }
+
+  if (faviconUrl !== undefined) {
+    let linkIcon = document.querySelector('link[rel="icon"]') as HTMLLinkElement | null;
+    if (!linkIcon) {
+      linkIcon = document.createElement('link');
+      linkIcon.setAttribute('rel', 'icon');
+      document.head.appendChild(linkIcon);
+    }
+    linkIcon.setAttribute('href', faviconUrl || '/favicon.ico');
+
+    let shortcutIcon = document.querySelector('link[rel="shortcut icon"]') as HTMLLinkElement | null;
+    if (!shortcutIcon) {
+      shortcutIcon = document.createElement('link');
+      shortcutIcon.setAttribute('rel', 'shortcut icon');
+      document.head.appendChild(shortcutIcon);
+    }
+    shortcutIcon.setAttribute('href', faviconUrl || '/favicon.ico');
   }
 
   if (typeof window !== 'undefined' && window.location?.origin) {

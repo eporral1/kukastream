@@ -1,6 +1,7 @@
 import React from 'react';
 import { Stream } from '../types';
 import { formatNumber } from '../data/mockData';
+import { calculateStreamEngagement } from '../utils/engagement';
 
 interface RankingStreamCardProps {
   stream: Stream;
@@ -39,6 +40,7 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
   const likesRatio = peakViewers > 0 ? (currentLikes / peakViewers) : 0;
   const commentsRatio = peakViewers > 0 ? (commentsCount / peakViewers) : 0;
   const uniqueRatio = peakViewers > 0 ? (uniqueCommentators / peakViewers) : 0;
+  const engagementScore = calculateStreamEngagement(stream);
 
   return (
     <div
@@ -187,6 +189,20 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                 {uniqueRatio > 0 ? `${(uniqueRatio*100).toFixed(2)}` : '0'}% esp.
               </div>
             </div>
+
+            {/* Engagement Score */}
+            <div
+              className="text-center min-w-[85px] bg-indigo-50/70 px-3 py-1.5 rounded-xl border border-indigo-100"
+              title="Índice de Engagement (0-100): combina espectadores (75%), % usuarios en chat (13%), % likes (6%) y mensajes/espectador (6%)"
+            >
+              <div className="text-[11px] text-indigo-600 font-bold mb-0.5">ENGAGEMENT</div>
+              <div className="font-black text-2xl text-indigo-700">
+                {engagementScore.toFixed(1)}
+              </div>
+              <div className="text-[10px] text-indigo-500 font-semibold">
+                PUNTOS
+              </div>
+            </div>
           </div>
         </div>
 
@@ -269,6 +285,14 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                 >
                   <span>👥</span>
                   <span>{formatNumber(uniqueCommentators)} usuarios chat</span>
+                </div>
+
+                <div
+                  className="flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md text-xs font-bold border border-indigo-200/80"
+                  title="Índice de Engagement (0-100)"
+                >
+                  <span>⚡</span>
+                  <span>{engagementScore.toFixed(1)} pts</span>
                 </div>
 
                 {onOpenComments && (

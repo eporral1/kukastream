@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getPool, executeQuery, getCachedResponse, setCachedResponse } from '../src/utils/serverDb.ts';
+import { isStreamTitleBlocked, getBlockedTitleSqlClause } from '../src/config/streamFilters.ts';
 
 const OCT_2026_CUTOFF = '2026-10-31 23:59:59';
 
@@ -458,7 +459,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const cleanParam = channelParam.startsWith('@') ? channelParam.substring(1) : channelParam;
   const withAtParam = channelParam.startsWith('@') ? channelParam : `@${channelParam}`;
 
-  const cacheKey = `api:channel:v3:${cleanParam.toLowerCase()}`;
+  const cacheKey = `api:channel:v5:${cleanParam.toLowerCase()}`;
   const cached = getCachedResponse(cacheKey);
   if (cached) {
     res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
@@ -586,6 +587,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Sort descending by end_time so the most recent broadcast session is first
         titleGroups.sort(
           (a, b) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime()
+        );
+
+        const latestEternalGroup = titleGroups[0];
+        if (
+          latestEternalGroup &&
+          (isStreamTitleBlocked(latestEternalGroup.video_title) ||
+            (Array.isArray(latestEternalGroup.titles) &&
+              latestEternalGroup.titles.some((t: string) => isStreamTitleBlocked(t))))
+        ) {
+          isChannelLive = false;
+        }
+        if (liveRow && isStreamTitleBlocked(liveRow.video_title)) {
+          isChannelLive = false;
+        }
+
+        titleGroups = titleGroups.filter(
+          (g: any) =>
+            !isStreamTitleBlocked(g.video_title) &&
+            !(Array.isArray(g.titles) && g.titles.some((t: string) => isStreamTitleBlocked(t)))
         );
       } catch (e) {
         console.warn('Error querying title groups for eternal channel:', e);
@@ -882,12 +902,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         channel.avg_comments = Math.round(channel.total_comments / titleGroups.length);
       }
 
+      let eternalHourDayData: any[] = [];
+      try {
+        const heatmapRes = await executeQuery(
+          `SELECT
+            hour,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 1 THEN concurrent_viewers END)), 0)::int AS mon_viewers,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 1 THEN likes END)), 0)::int AS mon_likes,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 2 THEN concurrent_viewers END)), 0)::int AS tue_viewers,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 2 THEN likes END)), 0)::int AS tue_likes,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 3 THEN concurrent_viewers END)), 0)::int AS wed_viewers,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 3 THEN likes END)), 0)::int AS wed_likes,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 4 THEN concurrent_viewers END)), 0)::int AS thu_viewers,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 4 THEN likes END)), 0)::int AS thu_likes,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 5 THEN concurrent_viewers END)), 0)::int AS fri_viewers,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 5 THEN likes END)), 0)::int AS fri_likes,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 6 THEN concurrent_viewers END)), 0)::int AS sat_viewers,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 6 THEN likes END)), 0)::int AS sat_likes,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 0 THEN concurrent_viewers END)), 0)::int AS sun_viewers,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 0 THEN likes END)), 0)::int AS sun_likes
+          FROM (
+            SELECT
+              DATE_PART('hour', scrape_date)::int AS hour,
+              EXTRACT(DOW FROM scrape_date) AS dow,
+              concurrent_viewers,
+              likes
+            FROM public.minute
+            WHERE channel_id = $1
+              AND scrape_date >= '${OCT_2026_CUTOFF}'
+              AND concurrent_viewers > 0
+              ${getBlockedTitleSqlClause('video_title')}
+          ) t
+          GROUP BY hour
+          ORDER BY hour;`,
+          [channelId]
+        );
+        if (heatmapRes.rows.length > 0) {
+          eternalHourDayData = heatmapRes.rows;
+        }
+      } catch {
+        eternalHourDayData = [];
+      }
+
       const eternalPayload = {
         success: true,
         channel,
         live: liveStreamObj,
         streams: finishedStreamsList,
-        hour_day_data: [],
+        hour_day_data: eternalHourDayData,
         avg_data: [],
       };
       setCachedResponse(cacheKey, eternalPayload, 10000);
@@ -906,6 +968,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
              COALESCE((ARRAY_AGG(m.authors_count ORDER BY m.scrape_date DESC, m.id DESC) FILTER (WHERE m.authors_count IS NOT NULL))[1], 0)::int AS last_authors_count
            FROM public.minute m
            WHERE m.channel_id = $1 AND m.scrape_date >= '${OCT_2026_CUTOFF}'
+             ${getBlockedTitleSqlClause('m.video_title')}
+             AND NOT EXISTS (
+               SELECT 1 FROM public.live bl
+               WHERE bl.video_id = m.video_id
+                 AND NOT (1=1 ${getBlockedTitleSqlClause('bl.video_title')})
+             )
            GROUP BY m.video_id
            HAVING MAX(m.concurrent_viewers) > 0
          ),
@@ -918,6 +986,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
            WHERE channel_id = $1 
              AND scrape_date >= '${OCT_2026_CUTOFF}' 
              AND concurrent_viewers > 0
+             ${getBlockedTitleSqlClause('video_title')}
            GROUP BY video_id
          )
          SELECT 
@@ -964,7 +1033,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
          JOIN public.live l ON s.video_id = l.video_id
          WHERE l.channel_id = $1
            AND (s.currency = 'ARS' OR s.currency ILIKE '%ARS%')
-           AND s.created_at >= '${OCT_2026_CUTOFF}'`,
+           AND s.created_at >= '${OCT_2026_CUTOFF}'
+           ${getBlockedTitleSqlClause('l.video_title')}`,
         [channelId]
       );
       if (scStatsRes.rows && scStatsRes.rows.length > 0) {
@@ -988,6 +1058,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
        JOIN public.channels c ON l.channel_id = c.channel_id
        WHERE c.channel_id = $1 AND l.live = 'live' AND l.concurrent_viewers > 0 
          AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+         ${getBlockedTitleSqlClause('l.video_title')}
        ORDER BY l.concurrent_viewers DESC, l.scrape_date DESC LIMIT 1`,
       [channelId]
     );
@@ -1001,6 +1072,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
          JOIN public.channels c ON l.channel_id = c.channel_id
          WHERE c.channel_id = $1 AND l.live = 'live' 
            AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+           ${getBlockedTitleSqlClause('l.video_title')}
          ORDER BY l.scrape_date DESC LIMIT 1`,
         [channelId]
       );
@@ -1057,7 +1129,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     */
 
     let live = liveRes.rows[0] || null;
-    if (live && live.live !== 'live') {
+    if (live && (live.live !== 'live' || isStreamTitleBlocked(live.video_title))) {
       live = null;
     }
 
@@ -1165,6 +1237,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
          JOIN public.channels c ON l.channel_id = c.channel_id
          WHERE l.live <> 'live' AND c.channel_id = $1 
            AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+           ${getBlockedTitleSqlClause('l.video_title')}
          ORDER BY l.scrape_date DESC, l.video_id LIMIT 10`,
         [channelId]
       );
@@ -1172,6 +1245,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const seenVideoIds = new Set<string>();
       const uniqueStreams: any[] = [];
       for (const stream of finishedRes.rows) {
+        if (isStreamTitleBlocked(stream.video_title)) continue;
         if (stream.video_id && !seenVideoIds.has(stream.video_id)) {
           seenVideoIds.add(stream.video_id);
           if (channel.type === 'eternal') {
@@ -1316,35 +1390,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // ignore
     }
 
-    // Heatmap data (desactivado temporalmente ya que no se muestra en la UI)
-    const hourDayData: any[] = [];
-    /*
+    // Heatmap data
+    let hourDayData: any[] = [];
     try {
       const heatmapRes = await executeQuery(
         `SELECT
           hour,
-          AVG(CASE WHEN dow = 1 THEN concurrent_viewers END) AS mon_viewers,
-          AVG(CASE WHEN dow = 1 THEN likes END) AS mon_likes,
-          AVG(CASE WHEN dow = 2 THEN concurrent_viewers END) AS tue_viewers,
-          AVG(CASE WHEN dow = 2 THEN likes END) AS tue_likes,
-          AVG(CASE WHEN dow = 3 THEN concurrent_viewers END) AS wed_viewers,
-          AVG(CASE WHEN dow = 3 THEN likes END) AS wed_likes,
-          AVG(CASE WHEN dow = 4 THEN concurrent_viewers END) AS thu_viewers,
-          AVG(CASE WHEN dow = 4 THEN likes END) AS thu_likes,
-          AVG(CASE WHEN dow = 5 THEN concurrent_viewers END) AS fri_viewers,
-          AVG(CASE WHEN dow = 5 THEN likes END) AS fri_likes,
-          AVG(CASE WHEN dow = 6 THEN concurrent_viewers END) AS sat_viewers,
-          AVG(CASE WHEN dow = 6 THEN likes END) AS sat_likes,
-          AVG(CASE WHEN dow = 0 THEN concurrent_viewers END) AS sun_viewers,
-          AVG(CASE WHEN dow = 0 THEN likes END) AS sun_likes
+          COALESCE(ROUND(AVG(CASE WHEN dow = 1 THEN concurrent_viewers END)), 0)::int AS mon_viewers,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 1 THEN likes END)), 0)::int AS mon_likes,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 2 THEN concurrent_viewers END)), 0)::int AS tue_viewers,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 2 THEN likes END)), 0)::int AS tue_likes,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 3 THEN concurrent_viewers END)), 0)::int AS wed_viewers,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 3 THEN likes END)), 0)::int AS wed_likes,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 4 THEN concurrent_viewers END)), 0)::int AS thu_viewers,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 4 THEN likes END)), 0)::int AS thu_likes,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 5 THEN concurrent_viewers END)), 0)::int AS fri_viewers,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 5 THEN likes END)), 0)::int AS fri_likes,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 6 THEN concurrent_viewers END)), 0)::int AS sat_viewers,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 6 THEN likes END)), 0)::int AS sat_likes,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 0 THEN concurrent_viewers END)), 0)::int AS sun_viewers,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 0 THEN likes END)), 0)::int AS sun_likes
         FROM (
           SELECT
-            DATE_PART('hour', scrape_date) AS hour,
+            DATE_PART('hour', scrape_date)::int AS hour,
             EXTRACT(DOW FROM scrape_date) AS dow,
             concurrent_viewers,
             likes
           FROM public.minute
-          WHERE channel_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
+          WHERE channel_id = $1
+            AND scrape_date >= '${OCT_2026_CUTOFF}'
+            AND concurrent_viewers > 0
+            ${getBlockedTitleSqlClause('video_title')}
         ) t
         GROUP BY hour
         ORDER BY hour;`,
@@ -1356,7 +1432,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch {
       hourDayData = [];
     }
-    */
 
     // 24h Average data (desactivado temporalmente ya que no se muestra en la UI)
     const avgData: any[] = [];

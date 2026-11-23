@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 import { SITE_NAME } from './src/config/site.ts';
-import { isStreamTitleBlocked } from './src/config/streamFilters.ts';
+import { isStreamTitleBlocked, getBlockedTitleSqlClause } from './src/config/streamFilters.ts';
 import { getPool, executeQuery, getCachedResponse, setCachedResponse } from './src/utils/serverDb.ts';
 import {
   generateSitemapXml,
@@ -15,7 +15,8 @@ import {
   applySeoToHtml,
 } from './src/utils/sitemap.ts';
 import { fetchGlobalCrossChannelCommentators } from './src/utils/serverCommentators.ts';
-import { generateVideoPoliticalAnalysis } from './src/utils/serverPoliticalAnalysis.ts';
+import { generateVideoHateSpeechAnalysis } from './src/utils/serverPoliticalAnalysis.ts';
+import { calculateChannelEngagement, calculateStreamEngagement } from './src/utils/engagement.ts';
 
 dotenv.config();
 
@@ -560,6 +561,11 @@ async function enrichEternalChannels(channels: any[], p: any) {
       let titleGroups = byChannel.get(channel.channel_id) || [];
       titleGroups = clusterEternalTitleGroups(titleGroups);
       titleGroups = chainEternalTitleDeltas(titleGroups);
+      titleGroups = titleGroups.filter(
+        (g: any) =>
+          !isStreamTitleBlocked(g.video_title) &&
+          !(Array.isArray(g.titles) && g.titles.some((t: string) => isStreamTitleBlocked(t)))
+      );
 
       if (titleGroups.length > 0) {
         channel.avg_viewers = Math.round(
@@ -665,6 +671,7 @@ app.get('/api/live', async (req: Request, res: Response) => {
         AND l.live = 'live' 
         AND l.concurrent_viewers > 0
         AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+        AND (c.type = 'eternal' OR (1=1 ${getBlockedTitleSqlClause('l.video_title')}))
     `;
 
     const liveParams: any[] = [];
@@ -701,6 +708,7 @@ app.get('/api/live', async (req: Request, res: Response) => {
         AND l.live <> 'live'
         AND l.scrape_date >= '${OCT_2026_CUTOFF}'
         AND l.scrape_date >= NOW() - INTERVAL '24 hours'
+        ${getBlockedTitleSqlClause('l.video_title')}
     `;
 
     const recentParams: any[] = [];
@@ -785,10 +793,17 @@ app.get('/api/live', async (req: Request, res: Response) => {
     await enrichEternalStreams(liveResult.rows, p);
     await enrichEternalStreams(recentResult.rows, p);
 
+    const filteredLiveStreams = (liveResult.rows || []).filter(
+      (s: any) => !isStreamTitleBlocked(s.video_title)
+    );
+    const filteredRecentStreams = (recentResult.rows || []).filter(
+      (s: any) => !isStreamTitleBlocked(s.video_title)
+    );
+
     res.json({
       success: true,
-      streams: liveResult.rows,
-      recent_streams: recentResult.rows,
+      streams: filteredLiveStreams,
+      recent_streams: filteredRecentStreams,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message, fallback: false });
@@ -819,8 +834,8 @@ app.get('/api/channels', async (req: Request, res: Response) => {
     return;
   }
 
-  const sortParam = (((req.query.sort || '') as string) || 'viewers').toLowerCase();
-  const cacheKey = `channels:${sortParam}`;
+  const sortParam = (((req.query.sort || '') as string) || 'engagement').toLowerCase();
+  const cacheKey = `channels:v3:${sortParam}`;
   const cachedPayload = getCachedResponse(cacheKey);
   if (cachedPayload) {
     res.json(cachedPayload);
@@ -849,6 +864,12 @@ app.get('/api/channels', async (req: Request, res: Response) => {
         FROM public.minute m
         WHERE m.scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
           AND m.scrape_date::date IN (SELECT bday FROM last_7_business_days)
+          ${getBlockedTitleSqlClause('m.video_title')}
+          AND NOT EXISTS (
+            SELECT 1 FROM public.live bl
+            WHERE bl.video_id = m.video_id
+              AND NOT (1=1 ${getBlockedTitleSqlClause('bl.video_title')})
+          )
         GROUP BY m.channel_id, m.video_id
         HAVING MAX(m.concurrent_viewers) > 0
       ),
@@ -860,6 +881,7 @@ app.get('/api/channels', async (req: Request, res: Response) => {
         WHERE scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
           AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
           AND GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) > 0
+          ${getBlockedTitleSqlClause('video_title')}
         GROUP BY video_id, channel_id
       ),
       all_channel_videos AS (
@@ -923,6 +945,7 @@ app.get('/api/channels', async (req: Request, res: Response) => {
           WHERE scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
             AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
             AND GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) > 0
+            ${getBlockedTitleSqlClause('video_title')}
           GROUP BY channel_id, video_id
         ),
         channel_ratios AS (
@@ -952,11 +975,15 @@ app.get('/api/channels', async (req: Request, res: Response) => {
     }
     if (result && result.rows) {
       await enrichEternalChannels(result.rows, p);
+      for (const ch of result.rows) {
+        ch.engagement_score = calculateChannelEngagement(ch);
+      }
       result.rows.sort((a: any, b: any) => {
+        if (sortParam === 'viewers') return (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
         if (sortParam === 'likes') return (Number(b.avg_likes) || 0) - (Number(a.avg_likes) || 0);
         if (sortParam === 'comments') return (Number(b.avg_comments) || 0) - (Number(a.avg_comments) || 0);
         if (sortParam === 'chat_users') return (Number(b.avg_unique_commentators) || 0) - (Number(a.avg_unique_commentators) || 0);
-        return (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
+        return (Number(b.engagement_score) || 0) - (Number(a.engagement_score) || 0) || (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
       });
     }
     const payload = { success: true, channels: result.rows };
@@ -1009,6 +1036,7 @@ app.get('/api/streams', async (req: Request, res: Response) => {
         sub.video_title,
         c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter, c.type,
         COALESCE(comm.comments_count, 0)::int as comments_count,
+        COALESCE(comm.unique_commentators, 0)::int as unique_commentators,
         0::numeric as superchats_total,
         0::int as superchats_count
       FROM (
@@ -1019,6 +1047,7 @@ app.get('/api/streams', async (req: Request, res: Response) => {
         FROM public.live
         WHERE scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
           AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
+          ${getBlockedTitleSqlClause('video_title')}
         ${!searchParam ? 'AND GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) > 0' : ''}
         ORDER BY video_id, (CASE WHEN video_title IS NOT NULL AND video_title <> '' THEN 1 ELSE 0 END) DESC, GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) DESC
       ) sub
@@ -1045,7 +1074,8 @@ app.get('/api/streams', async (req: Request, res: Response) => {
         FROM m_pts
       ) v_avg ON true
       LEFT JOIN LATERAL (
-        SELECT COALESCE(m.comments_count, 0) as comments_count
+        SELECT COALESCE(m.comments_count, 0) as comments_count,
+               COALESCE(m.authors_count, 0) as unique_commentators
         FROM public.minute m 
         WHERE m.video_id = sub.video_id 
           AND m.scrape_date >= '${OCT_2026_CUTOFF}'
@@ -1068,7 +1098,7 @@ app.get('/api/streams', async (req: Request, res: Response) => {
       paramIndex++;
     }
 
-    const sortParam = (((req.query.sort || '') as string) || 'viewers').toLowerCase();
+    const sortParam = (((req.query.sort || '') as string) || 'engagement').toLowerCase();
 
     if (sortParam === 'likes') {
       standardQuery += ` ORDER BY COALESCE(sub.current_likes, sub.old_likes, 0) DESC;`;
@@ -1128,7 +1158,7 @@ app.get('/api/streams', async (req: Request, res: Response) => {
             LIMIT 7
           ),
           m_filtered AS (
-            SELECT video_title, video_id, channel_id, scrape_date, concurrent_viewers, likes, comments_count,
+            SELECT video_title, video_id, channel_id, scrape_date, concurrent_viewers, likes, comments_count, authors_count,
                    MAX(concurrent_viewers) OVER (PARTITION BY video_title, video_id, channel_id) AS peak_v
             FROM public.minute
             WHERE channel_id = ANY($1) 
@@ -1163,6 +1193,8 @@ app.get('/api/streams', async (req: Request, res: Response) => {
                  MAX(likes) AS max_likes,
                  MIN(comments_count) AS min_comments,
                  MAX(comments_count) AS max_comments,
+                 MIN(COALESCE(authors_count, 0)) AS min_authors,
+                 MAX(COALESCE(authors_count, 0)) AS max_authors,
                  COUNT(*) AS point_count
           FROM m_filtered
           GROUP BY video_title, video_id, channel_id
@@ -1181,6 +1213,8 @@ app.get('/api/streams', async (req: Request, res: Response) => {
           const minLikes = Number(row.min_likes || 0);
           const maxComm = Number(row.max_comments || 0);
           const minComm = Number(row.min_comments || 0);
+          const maxAuth = Number(row.max_authors || 0);
+          const minAuth = Number(row.min_authors || 0);
 
           chGroupsMap.get(row.channel_id)!.push({
             video_title: row.video_title,
@@ -1196,6 +1230,9 @@ app.get('/api/streams', async (req: Request, res: Response) => {
             min_comments: minComm,
             max_comments: maxComm,
             comm_delta: Math.max(0, maxComm - minComm),
+            min_authors: minAuth,
+            max_authors: maxAuth,
+            authors_delta: Math.max(0, maxAuth - minAuth),
             point_count: Number(row.point_count || 0),
           });
         }
@@ -1212,6 +1249,12 @@ app.get('/api/streams', async (req: Request, res: Response) => {
 
           chained.forEach((group: any, idx: number) => {
             const isLiveShow = isChannelLive && idx === 0;
+            if (
+              isStreamTitleBlocked(group.video_title) ||
+              (Array.isArray(group.titles) && group.titles.some((t: string) => isStreamTitleBlocked(t)))
+            ) {
+              return;
+            }
             // Check if matches searchParam if searchParam is for channel
             if (searchParam) {
               const qLower = searchParam.toLowerCase();
@@ -1239,9 +1282,11 @@ app.get('/api/streams', async (req: Request, res: Response) => {
               concurrent_viewers: isLiveShow ? (liveRow.concurrent_viewers || group.max_viewers) : group.max_viewers,
               old_viewers: group.avg_viewers,
               avg_viewers: group.avg_viewers,
+              max_viewers: group.max_viewers,
               current_likes: group.likes_delta,
               old_likes: group.min_likes,
               comments_count: group.comm_delta,
+              unique_commentators: Number(group.authors_delta || 0),
               start_date: group.start_time,
               scrape_date: group.end_time,
               superchats_total: 0,
@@ -1327,8 +1372,17 @@ app.get('/api/streams', async (req: Request, res: Response) => {
     // Filter out @Radio10am if present and any streams with blocked title keywords (e.g. "DALE MATCH")
     const filtered = allStreams.filter((s: any) => s.channel !== '@Radio10am' && !isStreamTitleBlocked(s.video_title));
 
-    // 6. Sort according to requested sort option (default: avg_viewers)
+    // 6. Compute engagement_score and sort according to requested sort option (default: engagement)
+    for (const s of filtered) {
+      s.engagement_score = calculateStreamEngagement(s);
+    }
+
     filtered.sort((a: any, b: any) => {
+      if (sortParam === 'viewers') {
+        const aAvg = Number(a.avg_viewers ?? a.old_viewers ?? a.concurrent_viewers) || 0;
+        const bAvg = Number(b.avg_viewers ?? b.old_viewers ?? b.concurrent_viewers) || 0;
+        return bAvg - aAvg;
+      }
       if (sortParam === 'likes') {
         const aLikes = Number(a.current_likes ?? a.max_likes ?? a.old_likes) || 0;
         const bLikes = Number(b.current_likes ?? b.max_likes ?? b.old_likes) || 0;
@@ -1339,6 +1393,11 @@ app.get('/api/streams', async (req: Request, res: Response) => {
         const bComm = Number(b.comments_count) || 0;
         return bComm - aComm;
       }
+      if (sortParam === 'chat_users') {
+        const aUsers = Math.max(0, Number(a.unique_commentators || 0));
+        const bUsers = Math.max(0, Number(b.unique_commentators || 0));
+        return bUsers - aUsers;
+      }
       if (sortParam === 'superchats') {
         const aSc = Number(a.superchats_total) || 0;
         const bSc = Number(b.superchats_total) || 0;
@@ -1346,7 +1405,7 @@ app.get('/api/streams', async (req: Request, res: Response) => {
       }
       const aAvg = Number(a.avg_viewers ?? a.old_viewers ?? a.concurrent_viewers) || 0;
       const bAvg = Number(b.avg_viewers ?? b.old_viewers ?? b.concurrent_viewers) || 0;
-      return bAvg - aAvg;
+      return (Number(b.engagement_score) || 0) - (Number(a.engagement_score) || 0) || bAvg - aAvg;
     });
 
     const returnStreams = filtered;
@@ -1580,6 +1639,25 @@ const channelHandler = async (req: Request, res: Response) => {
         // Sort descending by end_time so the most recent broadcast session is first
         titleGroups.sort(
           (a, b) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime()
+        );
+
+        const latestEternalGroup = titleGroups[0];
+        if (
+          latestEternalGroup &&
+          (isStreamTitleBlocked(latestEternalGroup.video_title) ||
+            (Array.isArray(latestEternalGroup.titles) &&
+              latestEternalGroup.titles.some((t: string) => isStreamTitleBlocked(t))))
+        ) {
+          isChannelLive = false;
+        }
+        if (liveRow && isStreamTitleBlocked(liveRow.video_title)) {
+          isChannelLive = false;
+        }
+
+        titleGroups = titleGroups.filter(
+          (g: any) =>
+            !isStreamTitleBlocked(g.video_title) &&
+            !(Array.isArray(g.titles) && g.titles.some((t: string) => isStreamTitleBlocked(t)))
         );
       } catch (e) {
         console.warn('Error querying title groups for eternal channel:', e);
@@ -1865,12 +1943,54 @@ const channelHandler = async (req: Request, res: Response) => {
         channel.avg_comments = Math.round(channel.total_comments / titleGroups.length);
       }
 
+      let eternalHourDayData: any[] = [];
+      try {
+        const heatmapRes = await p.query(
+          `SELECT
+            hour,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 1 THEN concurrent_viewers END)), 0)::int AS mon_viewers,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 1 THEN likes END)), 0)::int AS mon_likes,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 2 THEN concurrent_viewers END)), 0)::int AS tue_viewers,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 2 THEN likes END)), 0)::int AS tue_likes,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 3 THEN concurrent_viewers END)), 0)::int AS wed_viewers,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 3 THEN likes END)), 0)::int AS wed_likes,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 4 THEN concurrent_viewers END)), 0)::int AS thu_viewers,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 4 THEN likes END)), 0)::int AS thu_likes,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 5 THEN concurrent_viewers END)), 0)::int AS fri_viewers,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 5 THEN likes END)), 0)::int AS fri_likes,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 6 THEN concurrent_viewers END)), 0)::int AS sat_viewers,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 6 THEN likes END)), 0)::int AS sat_likes,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 0 THEN concurrent_viewers END)), 0)::int AS sun_viewers,
+            COALESCE(ROUND(AVG(CASE WHEN dow = 0 THEN likes END)), 0)::int AS sun_likes
+          FROM (
+            SELECT
+              DATE_PART('hour', scrape_date)::int AS hour,
+              EXTRACT(DOW FROM scrape_date) AS dow,
+              concurrent_viewers,
+              likes
+            FROM public.minute
+            WHERE channel_id = $1
+              AND scrape_date >= '${OCT_2026_CUTOFF}'
+              AND concurrent_viewers > 0
+              ${getBlockedTitleSqlClause('video_title')}
+          ) t
+          GROUP BY hour
+          ORDER BY hour;`,
+          [channelId]
+        );
+        if (heatmapRes.rows.length > 0) {
+          eternalHourDayData = heatmapRes.rows;
+        }
+      } catch {
+        eternalHourDayData = [];
+      }
+
       res.json({
         success: true,
         channel,
         live: liveStreamObj,
         streams: finishedStreamsList,
-        hour_day_data: [],
+        hour_day_data: eternalHourDayData,
         avg_data: [],
       });
       return;
@@ -1889,6 +2009,12 @@ const channelHandler = async (req: Request, res: Response) => {
              COALESCE((ARRAY_AGG(m.authors_count ORDER BY m.scrape_date DESC, m.id DESC) FILTER (WHERE m.authors_count IS NOT NULL))[1], 0)::int AS last_authors_count
            FROM public.minute m
            WHERE m.channel_id = $1 AND m.scrape_date >= '${OCT_2026_CUTOFF}'
+             ${getBlockedTitleSqlClause('m.video_title')}
+             AND NOT EXISTS (
+               SELECT 1 FROM public.live bl
+               WHERE bl.video_id = m.video_id
+                 AND NOT (1=1 ${getBlockedTitleSqlClause('bl.video_title')})
+             )
            GROUP BY m.video_id
            HAVING MAX(m.concurrent_viewers) > 0
          ),
@@ -1901,6 +2027,7 @@ const channelHandler = async (req: Request, res: Response) => {
            WHERE channel_id = $1 
              AND scrape_date >= '${OCT_2026_CUTOFF}' 
              AND concurrent_viewers > 0
+             ${getBlockedTitleSqlClause('video_title')}
            GROUP BY video_id
          )
          SELECT 
@@ -1947,7 +2074,8 @@ const channelHandler = async (req: Request, res: Response) => {
          JOIN public.live l ON s.video_id = l.video_id
          WHERE l.channel_id = $1
            AND (s.currency = 'ARS' OR s.currency ILIKE '%ARS%')
-           AND s.created_at >= '${OCT_2026_CUTOFF}'`,
+           AND s.created_at >= '${OCT_2026_CUTOFF}'
+           ${getBlockedTitleSqlClause('l.video_title')}`,
         [channelId]
       );
       if (scStatsRes.rows && scStatsRes.rows.length > 0) {
@@ -1970,6 +2098,7 @@ const channelHandler = async (req: Request, res: Response) => {
        JOIN public.channels c ON l.channel_id = c.channel_id
        WHERE c.channel_id = $1 AND l.live = 'live' AND l.concurrent_viewers > 0 
          AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+         ${getBlockedTitleSqlClause('l.video_title')}
        ORDER BY l.concurrent_viewers DESC LIMIT 1`,
       [channelId]
     );
@@ -1984,6 +2113,7 @@ const channelHandler = async (req: Request, res: Response) => {
          JOIN public.channels c ON l.channel_id = c.channel_id
          WHERE c.channel_id = $1 AND l.live = 'live' 
            AND l.scrape_date >= '${OCT_2026_CUTOFF}'
+           ${getBlockedTitleSqlClause('l.video_title')}
          ORDER BY l.scrape_date DESC LIMIT 1`,
         [channelId]
       );
@@ -2040,7 +2170,7 @@ const channelHandler = async (req: Request, res: Response) => {
     */
 
     let live = liveRes.rows[0] || null;
-    if (live && live.live !== 'live') {
+    if (live && (live.live !== 'live' || isStreamTitleBlocked(live.video_title))) {
       live = null;
     }
     console.log('[DEBUG] Live stream data for comments:', live ? { video_id: live.video_id, comments_count: live.comments_count } : 'no live stream');
@@ -2146,6 +2276,7 @@ const channelHandler = async (req: Request, res: Response) => {
          JOIN public.channels c ON l.channel_id = c.channel_id
          WHERE l.live <> 'live' AND c.channel_id = $1 
            AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+           ${getBlockedTitleSqlClause('l.video_title')}
          ORDER BY l.scrape_date DESC, l.video_id LIMIT 10`,
         [channelId]
       );
@@ -2153,6 +2284,7 @@ const channelHandler = async (req: Request, res: Response) => {
       const seenVideoIds = new Set<string>();
       const uniqueStreams: any[] = [];
       for (const stream of finishedRes.rows) {
+        if (isStreamTitleBlocked(stream.video_title)) continue;
         if (stream.video_id && !seenVideoIds.has(stream.video_id)) {
           seenVideoIds.add(stream.video_id);
           if (channel.type === 'eternal') {
@@ -2312,39 +2444,48 @@ const channelHandler = async (req: Request, res: Response) => {
       // ignore
     }
 
-    // Heatmap hour-day data (desactivado temporalmente ya que no se muestra en la UI)
-    const hourDayData: any[] = [];
-    /*
-    const heatmapRes = await p.query(`
-      SELECT
-        hour,
-        AVG(CASE WHEN dow = 1 THEN concurrent_viewers END) AS mon_viewers,
-        AVG(CASE WHEN dow = 1 THEN likes END) AS mon_likes,
-        AVG(CASE WHEN dow = 2 THEN concurrent_viewers END) AS tue_viewers,
-        AVG(CASE WHEN dow = 2 THEN likes END) AS tue_likes,
-        AVG(CASE WHEN dow = 3 THEN concurrent_viewers END) AS wed_viewers,
-        AVG(CASE WHEN dow = 3 THEN likes END) AS wed_likes,
-        AVG(CASE WHEN dow = 4 THEN concurrent_viewers END) AS thu_viewers,
-        AVG(CASE WHEN dow = 4 THEN likes END) AS thu_likes,
-        AVG(CASE WHEN dow = 5 THEN concurrent_viewers END) AS fri_viewers,
-        AVG(CASE WHEN dow = 5 THEN likes END) AS fri_likes,
-        AVG(CASE WHEN dow = 6 THEN concurrent_viewers END) AS sat_viewers,
-        AVG(CASE WHEN dow = 6 THEN likes END) AS sat_likes,
-        AVG(CASE WHEN dow = 0 THEN concurrent_viewers END) AS sun_viewers,
-        AVG(CASE WHEN dow = 0 THEN likes END) AS sun_likes
-      FROM (
-        SELECT
-          DATE_PART('hour', scrape_date) AS hour,
-          EXTRACT(DOW FROM scrape_date) AS dow,
-          concurrent_viewers,
-          likes
-        FROM public.minute
-        WHERE channel_id = $1 AND scrape_date >= '${OCT_2026_CUTOFF}'
-      ) t
-      GROUP BY hour
-      ORDER BY hour;
-    `, [channelId]);
-    */
+    // Heatmap hour-day data
+    let hourDayData: any[] = [];
+    try {
+      const heatmapRes = await p.query(
+        `SELECT
+          hour,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 1 THEN concurrent_viewers END)), 0)::int AS mon_viewers,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 1 THEN likes END)), 0)::int AS mon_likes,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 2 THEN concurrent_viewers END)), 0)::int AS tue_viewers,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 2 THEN likes END)), 0)::int AS tue_likes,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 3 THEN concurrent_viewers END)), 0)::int AS wed_viewers,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 3 THEN likes END)), 0)::int AS wed_likes,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 4 THEN concurrent_viewers END)), 0)::int AS thu_viewers,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 4 THEN likes END)), 0)::int AS thu_likes,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 5 THEN concurrent_viewers END)), 0)::int AS fri_viewers,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 5 THEN likes END)), 0)::int AS fri_likes,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 6 THEN concurrent_viewers END)), 0)::int AS sat_viewers,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 6 THEN likes END)), 0)::int AS sat_likes,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 0 THEN concurrent_viewers END)), 0)::int AS sun_viewers,
+          COALESCE(ROUND(AVG(CASE WHEN dow = 0 THEN likes END)), 0)::int AS sun_likes
+        FROM (
+          SELECT
+            DATE_PART('hour', scrape_date)::int AS hour,
+            EXTRACT(DOW FROM scrape_date) AS dow,
+            concurrent_viewers,
+            likes
+          FROM public.minute
+          WHERE channel_id = $1
+            AND scrape_date >= '${OCT_2026_CUTOFF}'
+            AND concurrent_viewers > 0
+            ${getBlockedTitleSqlClause('video_title')}
+        ) t
+        GROUP BY hour
+        ORDER BY hour;`,
+        [channelId]
+      );
+      if (heatmapRes.rows.length > 0) {
+        hourDayData = heatmapRes.rows;
+      }
+    } catch {
+      hourDayData = [];
+    }
 
     // 24h Average data (desactivado temporalmente ya que no se muestra en la UI)
     const avgData: any[] = [];
@@ -2469,6 +2610,7 @@ app.get('/api/superchats-ranking', async (_req: Request, res: Response) => {
         AND COALESCE(c.enable_comments, 1) <> 0 
         AND (s.currency = 'ARS' OR s.currency ILIKE '%ARS%')
         AND s.created_at >= '${OCT_2026_CUTOFF}'
+        ${getBlockedTitleSqlClause('l.video_title')}
       GROUP BY c.channel_id, c.channel, c.channel_name, c.thumb
       ORDER BY total_ars DESC
       LIMIT 20;
@@ -2493,6 +2635,7 @@ app.get('/api/superchats-ranking', async (_req: Request, res: Response) => {
         AND COALESCE(c.enable_comments, 1) <> 0 
         AND (s.currency = 'ARS' OR s.currency ILIKE '%ARS%')
         AND s.created_at >= '${OCT_2026_CUTOFF}'
+        ${getBlockedTitleSqlClause('l.video_title')}
       GROUP BY s.video_id
       ORDER BY total_ars DESC
       LIMIT 20;
@@ -2510,14 +2653,16 @@ app.get('/api/superchats-ranking', async (_req: Request, res: Response) => {
       avg_per_superchat: Number(row.avg_per_superchat || 0),
     }));
 
-    const topVideos = videosRes.rows.map((row: any, index: number) => ({
-      rank: index + 1,
-      video_id: row.video_id,
-      video_title: row.video_title,
-      channel: row.channel,
-      channel_name: row.channel_name,
-      channel_thumb: row.channel_thumb,
-      total_ars: Number(row.total_ars || 0),
+    const topVideos = videosRes.rows
+      .filter((row: any) => !isStreamTitleBlocked(row.video_title))
+      .map((row: any, index: number) => ({
+        rank: index + 1,
+        video_id: row.video_id,
+        video_title: row.video_title,
+        channel: row.channel,
+        channel_name: row.channel_name,
+        channel_thumb: row.channel_thumb,
+        total_ars: Number(row.total_ars || 0),
       superchats_count: Number(row.superchats_count || 0),
       avg_per_superchat: Number(row.avg_per_superchat || 0),
       last_date: row.last_date,
@@ -3154,6 +3299,8 @@ app.get('/api/top-commentators', async (req: Request, res: Response) => {
            FROM public.minute m
            JOIN public.live l ON m.video_id = l.video_id
            WHERE l.channel_id = $1 AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+             ${getBlockedTitleSqlClause('l.video_title')}
+             ${getBlockedTitleSqlClause('m.video_title')}
            ORDER BY m.video_id, m.scrape_date DESC, m.id DESC
          )
          SELECT 
@@ -3179,6 +3326,7 @@ app.get('/api/top-commentators', async (req: Request, res: Response) => {
              AND c.created_at >= '${OCT_2026_CUTOFF}'
              AND c.author_id IS NOT NULL 
              AND TRIM(c.author_id) != ''
+             ${getBlockedTitleSqlClause('l.video_title')}
            GROUP BY c.author_id
            ORDER BY comment_count DESC
            LIMIT $2
@@ -3190,6 +3338,7 @@ app.get('/api/top-commentators', async (req: Request, res: Response) => {
              FROM public.comments sub_c
              JOIN public.live sub_l ON sub_c.video_id = sub_l.video_id
              WHERE sub_l.channel_id = $1 AND sub_c.author_id = ta.author_id AND sub_c.created_at >= '${OCT_2026_CUTOFF}'
+               ${getBlockedTitleSqlClause('sub_l.video_title')}
              ORDER BY sub_c.created_at DESC 
              LIMIT 1
            ) AS latest_comment
@@ -3436,7 +3585,7 @@ Instrucciones:
   }
 });
 
-// POST /api/generate-captions - Análisis de Tendencia Política y Compás Ideológico (Análisis de publicidad comentado)
+// POST /api/generate-captions - Análisis de Mensajes de Odio y Lista Completa de Mensajes del Video (Tendencia Política y Publicidad comentados)
 app.post('/api/generate-captions', async (req: Request, res: Response) => {
   const p = getPool();
   if (!p) {
@@ -3444,13 +3593,34 @@ app.post('/api/generate-captions', async (req: Request, res: Response) => {
     return;
   }
 
-  const { video_id, force } = req.body;
+  const { video_id, force, start_date, end_date, is_live, video_title } = req.body || {};
   if (!video_id) {
     res.status(400).json({ success: false, error: 'video_id is required.' });
     return;
   }
 
   try {
+    const { analysis, cached } = await generateVideoHateSpeechAnalysis({
+      video_id: String(video_id),
+      force: Boolean(force),
+      start_date: start_date ? String(start_date) : null,
+      end_date: end_date ? String(end_date) : null,
+      is_live: Boolean(is_live),
+      video_title: video_title ? String(video_title) : undefined,
+    });
+    res.json({
+      success: true,
+      hate_speech_analysis: analysis,
+      messages: analysis.messages,
+      total_messages: analysis.summary.total_messages,
+      cached,
+    });
+    return;
+
+    /*
+    // =========================================================================
+    // COMENTADO: Análisis de Tendencia Política y Compás Ideológico
+    // =========================================================================
     const { analysis, cached } = await generateVideoPoliticalAnalysis(String(video_id), Boolean(force));
     res.json({
       success: true,
@@ -3458,6 +3628,7 @@ app.post('/api/generate-captions', async (req: Request, res: Response) => {
       cached,
     });
     return;
+    */
 
     /*
     // =========================================================================
@@ -3466,7 +3637,7 @@ app.post('/api/generate-captions', async (req: Request, res: Response) => {
     await p.query(`ALTER TABLE public.live ADD COLUMN IF NOT EXISTS captions TEXT;`);
     */
   } catch (err: any) {
-    console.error('Error generating political analysis:', err);
+    console.error('Error generating hate speech analysis:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

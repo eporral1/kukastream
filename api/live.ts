@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getPool, executeQuery, getCachedResponse, setCachedResponse } from '../src/utils/serverDb.ts';
+import { isStreamTitleBlocked, getBlockedTitleSqlClause } from '../src/config/streamFilters.ts';
 
 const OCT_2026_CUTOFF = '2026-10-31 23:59:59';
 
@@ -356,7 +357,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     tag = tagParam.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
 
-  const cacheKey = `api:live:v2:${tag || 'all'}`;
+  const cacheKey = `api:live:v3:${tag || 'all'}`;
   const cached = getCachedResponse(cacheKey);
   if (cached) {
     res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
@@ -388,6 +389,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       WHERE l.live = 'live' 
         AND l.concurrent_viewers > 0
         AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+        AND (c.type = 'eternal' OR (1=1 ${getBlockedTitleSqlClause('l.video_title')}))
     `;
 
     const liveParams: any[] = [];
@@ -491,6 +493,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       WHERE l.live <> 'live'
         AND l.scrape_date >= '${OCT_2026_CUTOFF}'
         AND l.scrape_date >= NOW() - INTERVAL '24 hours'
+        ${getBlockedTitleSqlClause('l.video_title')}
     `;
 
     const recentParams: any[] = [];
@@ -574,10 +577,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Enrich eternal streams with session metrics so likes and comments reflect the current show delta
     await enrichEternalStreams([...liveResult.rows, ...recentResult.rows]);
 
+    const filteredLiveStreams = (liveResult.rows || []).filter(
+      (s: any) => !isStreamTitleBlocked(s.video_title)
+    );
+    const filteredRecentStreams = (recentResult.rows || []).filter(
+      (s: any) => !isStreamTitleBlocked(s.video_title)
+    );
+
     const payload = {
       success: true,
-      streams: liveResult.rows,
-      recent_streams: recentResult.rows,
+      streams: filteredLiveStreams,
+      recent_streams: filteredRecentStreams,
     };
 
     setCachedResponse(cacheKey, payload, 10000);

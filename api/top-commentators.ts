@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getPool, executeQuery } from '../src/utils/serverDb.ts';
 import { fetchGlobalCrossChannelCommentators } from '../src/utils/serverCommentators.ts';
+import { getBlockedTitleSqlClause } from '../src/config/streamFilters.ts';
 
 const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
 
@@ -245,6 +246,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
            FROM public.minute m
            JOIN public.live l ON m.video_id = l.video_id
            WHERE l.channel_id = $1 AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
+             ${getBlockedTitleSqlClause('l.video_title')}
+             ${getBlockedTitleSqlClause('m.video_title')}
            ORDER BY m.video_id, m.scrape_date DESC, m.id DESC
          )
          SELECT 
@@ -270,6 +273,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
              AND c.created_at >= '${OCT_2026_CUTOFF}'
              AND c.author_id IS NOT NULL 
              AND TRIM(c.author_id) != ''
+             ${getBlockedTitleSqlClause('l.video_title')}
            GROUP BY c.author_id
            ORDER BY comment_count DESC
            LIMIT $2
@@ -281,6 +285,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
              FROM public.comments sub_c
              JOIN public.live sub_l ON sub_c.video_id = sub_l.video_id
              WHERE sub_l.channel_id = $1 AND sub_c.author_id = ta.author_id AND sub_c.created_at >= '${OCT_2026_CUTOFF}'
+               ${getBlockedTitleSqlClause('sub_l.video_title')}
              ORDER BY sub_c.created_at DESC 
              LIMIT 1
            ) AS latest_comment

@@ -39,8 +39,8 @@ export const HeatmapTable: React.FC<HeatmapTableProps> = ({ data }) => {
     let max = -Infinity;
     data.forEach((row) => {
       DAYS.forEach((d) => {
-        const val = row[d.key as keyof HourDayData] as number | undefined;
-        if (typeof val === 'number') {
+        const val = Number(row[d.key as keyof HourDayData] || 0);
+        if (!Number.isNaN(val)) {
           if (val > 0 && val < min) min = val;
           if (val > max) max = val;
         }
@@ -115,14 +115,14 @@ export const HeatmapTable: React.FC<HeatmapTableProps> = ({ data }) => {
           </thead>
           <tbody className="divide-y divide-gray-200">
             {data.map((row) => {
-              const formattedHour = `${row.hour.toString().padStart(2, '0')}:00`;
+              const formattedHour = `${Number(row.hour || 0).toString().padStart(2, '0')}:00`;
               return (
                 <tr key={row.hour} className="hover:opacity-95 transition-opacity">
                   <td className="px-3 sm:px-4 py-2 font-bold text-center bg-gray-50 text-gray-700 border-r border-gray-200">
                     {formattedHour}
                   </td>
                   {DAYS.map((d) => {
-                    const val = (row[d.key as keyof HourDayData] as number) || 0;
+                    const val = Math.round(Number(row[d.key as keyof HourDayData] || 0));
                     const { bg, color } = getColor(val);
                     return (
                       <td

@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getPool, executeQuery, getCachedResponse, setCachedResponse } from '../src/utils/serverDb.ts';
+import { isStreamTitleBlocked, getBlockedTitleSqlClause } from '../src/config/streamFilters.ts';
 
 const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
 
@@ -54,6 +55,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         AND COALESCE(c.enable_comments, 1) <> 0 
         AND (s.currency = 'ARS' OR s.currency ILIKE '%ARS%')
         AND s.created_at >= '${OCT_2026_CUTOFF}'
+        ${getBlockedTitleSqlClause('l.video_title')}
       GROUP BY c.channel_id, c.channel, c.channel_name, c.thumb
       ORDER BY total_ars DESC
       LIMIT 20;
@@ -78,6 +80,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         AND COALESCE(c.enable_comments, 1) <> 0 
         AND (s.currency = 'ARS' OR s.currency ILIKE '%ARS%')
         AND s.created_at >= '${OCT_2026_CUTOFF}'
+        ${getBlockedTitleSqlClause('l.video_title')}
       GROUP BY s.video_id
       ORDER BY total_ars DESC
       LIMIT 20;
@@ -95,18 +98,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       avg_per_superchat: Number(row.avg_per_superchat || 0),
     }));
 
-    const topVideos = (videosRes.rows || []).map((row: any, index: number) => ({
-      rank: index + 1,
-      video_id: row.video_id,
-      video_title: row.video_title,
-      channel: row.channel,
-      channel_name: row.channel_name,
-      channel_thumb: row.channel_thumb,
-      total_ars: Number(row.total_ars || 0),
-      superchats_count: Number(row.superchats_count || 0),
-      avg_per_superchat: Number(row.avg_per_superchat || 0),
-      last_date: row.last_date,
-    }));
+    const topVideos = (videosRes.rows || [])
+      .filter((row: any) => !isStreamTitleBlocked(row.video_title))
+      .map((row: any, index: number) => ({
+        rank: index + 1,
+        video_id: row.video_id,
+        video_title: row.video_title,
+        channel: row.channel,
+        channel_name: row.channel_name,
+        channel_thumb: row.channel_thumb,
+        total_ars: Number(row.total_ars || 0),
+        superchats_count: Number(row.superchats_count || 0),
+        avg_per_superchat: Number(row.avg_per_superchat || 0),
+        last_date: row.last_date,
+      }));
 
     return res.status(200).json({
       success: true,

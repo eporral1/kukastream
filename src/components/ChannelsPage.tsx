@@ -5,6 +5,7 @@ import { ChannelCommentsModal } from './ChannelCommentsModal';
 import { Search, ExternalLink, BarChart2, Radio, Heart, MessageSquare, DollarSign, Sparkles } from 'lucide-react';
 import { SITE_NAME } from '../config/site';
 import { trackEvent, updateSeoMeta } from '../utils/analytics';
+import { calculateChannelEngagement } from '../utils/engagement';
 
 interface ChannelsPageProps {
   channels?: Channel[];
@@ -13,7 +14,7 @@ interface ChannelsPageProps {
   onNavigateContact?: () => void;
 }
 
-type ChannelSortOption = 'viewers' | 'likes' | 'comments' | 'chat_users';
+type ChannelSortOption = 'engagement' | 'viewers' | 'likes' | 'comments' | 'chat_users';
 
 export const ChannelsPage: React.FC<ChannelsPageProps> = ({
   channels: initialChannels,
@@ -31,7 +32,7 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
   const [selectedTag, setSelectedTag] = useState<string>('all');
   const [selectedCommentsChannel, setSelectedCommentsChannel] = useState<Channel | null>(null);
   const [filterSuperchatsOnly, setFilterSuperchatsOnly] = useState<boolean>(false);
-  const [sortBy, setSortBy] = useState<ChannelSortOption>('viewers');
+  const [sortBy, setSortBy] = useState<ChannelSortOption>('engagement');
 
   const fetchChannels = useCallback(
     async (sort: ChannelSortOption) => {
@@ -105,6 +106,9 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
     });
 
     return list.sort((a, b) => {
+      if (sortBy === 'viewers') {
+        return (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
+      }
       if (sortBy === 'likes') {
         return (Number(b.avg_likes) || 0) - (Number(a.avg_likes) || 0);
       }
@@ -114,8 +118,11 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
       if (sortBy === 'chat_users') {
         return (Number(b.avg_unique_commentators) || 0) - (Number(a.avg_unique_commentators) || 0);
       }
-      // default: 'viewers' (espectador promedio mayor a menor)
-      return (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
+      // default: 'engagement'
+      return (
+        calculateChannelEngagement(b) - calculateChannelEngagement(a) ||
+        (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0)
+      );
     });
   }, [channels, searchQuery, selectedTag, filterSuperchatsOnly, sortBy]);
 
@@ -210,6 +217,7 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
               }}
               className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-bold text-gray-800 shadow-2xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none cursor-pointer"
             >
+              <option value="engagement">Engagement (mayor a menor)</option>
               <option value="viewers">Espectador promedio (mayor a menor)</option>
               <option value="likes">Likes por emisión (mayor a menor)</option>
               <option value="comments">Mensajes por emisión (mayor a menor)</option>
@@ -243,6 +251,7 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
             {filteredChannels.slice(0, 10).map((channel, index) => {
             const hasSuperchats = (channel.superchats_count && channel.superchats_count > 0) ||
               (channel.comments_sample && channel.comments_sample.some(c => c.is_superchat));
+            const engagementScore = calculateChannelEngagement(channel);
 
             return (
               <div
@@ -375,6 +384,18 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
                         </div>
                         <div className="text-[10px] text-gray-500 font-medium">POR EMISIÓN</div>
                       </div>
+
+                      {/* Engagement Score */}
+                      <div
+                        className="text-center min-w-[85px] bg-indigo-50/70 px-3 py-1.5 rounded-xl border border-indigo-100"
+                        title="Índice de Engagement del canal (0-100): combina espectadores (75%), % usuarios en chat (13%), % likes (6%) y mensajes/espectador (6%)"
+                      >
+                        <div className="text-[11px] text-indigo-600 font-bold mb-0.5">ENGAGEMENT</div>
+                        <div className="text-2xl font-black text-indigo-700">
+                          {engagementScore.toFixed(1)}
+                        </div>
+                        <div className="text-[10px] text-indigo-500 font-semibold">PUNTOS</div>
+                      </div>
                     </div>
                   </div>
 
@@ -435,6 +456,9 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
                             </div>
                             <div className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60" title="Usuarios en el chat promedio por emisión">
                               👥 {formatNumber(Math.max(0, channel.avg_unique_commentators || 0))}
+                            </div>
+                            <div className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200/80" title="Índice de Engagement del canal (0-100)">
+                              ⚡ {engagementScore.toFixed(1)} pts
                             </div>
                           </div>
 

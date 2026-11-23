@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getPool } from '../src/utils/serverDb.ts';
-import { generateVideoPoliticalAnalysis } from '../src/utils/serverPoliticalAnalysis.ts';
+import { generateVideoHateSpeechAnalysis } from '../src/utils/serverPoliticalAnalysis.ts';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -20,14 +20,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ success: false, error: 'DB not connected.' });
   }
 
-  const { video_id, force } = req.body || {};
+  const { video_id, force, start_date, end_date, is_live, video_title } = req.body || {};
   if (!video_id) {
     return res.status(400).json({ success: false, error: 'video_id is required.' });
   }
 
   try {
     // =========================================================================
-    // NUEVO: Análisis de Tendencia Política y Compás Ideológico
+    // NUEVO: Análisis de Mensajes de Odio y Lista Completa de Mensajes del Video
+    // (Considera canales eternal mediante su ventana start_date / end_date)
+    // =========================================================================
+    const { analysis, cached } = await generateVideoHateSpeechAnalysis({
+      video_id: String(video_id),
+      force: Boolean(force),
+      start_date: start_date ? String(start_date) : null,
+      end_date: end_date ? String(end_date) : null,
+      is_live: Boolean(is_live),
+      video_title: video_title ? String(video_title) : undefined,
+    });
+
+    return res.json({
+      success: true,
+      hate_speech_analysis: analysis,
+      messages: analysis.messages,
+      total_messages: analysis.summary.total_messages,
+      cached,
+    });
+
+    /*
+    // =========================================================================
+    // COMENTADO: Análisis de Tendencia Política y Compás Ideológico
     // (Identifica sectores defendidos o atacados: Milei, Kirchnerismo,
     // Cristina Kirchner, PRO, Macri, Peronismo, UCR, Izquierda)
     // =========================================================================
@@ -37,28 +59,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       political_analysis: analysis,
       cached,
     });
+    */
 
     /*
     // =========================================================================
     // COMENTADO: Análisis y Detección de Publicidad / Transcripción de Anuncios
     // =========================================================================
     await p.query(`ALTER TABLE public.live ADD COLUMN IF NOT EXISTS captions TEXT;`);
-
-    const checkRes = await p.query(
-      `SELECT l.captions, l.video_title, l.channel_id, l.start_date, l.scrape_date,
-              c.channel_name, c.channel, c.description AS channel_description
-       FROM public.live l
-       LEFT JOIN public.channels c ON c.channel_id = l.channel_id
-       WHERE l.video_id = $1 LIMIT 1`,
-      [video_id]
-    );
-
-    if (!force && checkRes.rows.length > 0 && checkRes.rows[0].captions) {
-      return res.json({ success: true, captions: checkRes.rows[0].captions, cached: true });
-    }
     */
   } catch (err: any) {
-    console.error('Error generating political analysis in serverless:', err);
+    console.error('Error generating hate speech analysis in serverless:', err);
     return res.status(500).json({ success: false, error: err.message });
   }
 }

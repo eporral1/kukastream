@@ -4,6 +4,7 @@ import {
   CrossChannelUserItem,
   UserChannelBreakdown,
 } from './botAnalysis.ts';
+import { getBlockedTitleSqlClause } from '../config/streamFilters.ts';
 
 const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
 
@@ -22,7 +23,7 @@ export interface GlobalCommentatorsResponse {
 export async function fetchGlobalCrossChannelCommentators(
   limit = 20
 ): Promise<GlobalCommentatorsResponse> {
-  const cacheKey = `top-commentators:global:${limit}`;
+  const cacheKey = `top-commentators:global:v2:${limit}`;
   const cached = getCachedResponse<GlobalCommentatorsResponse>(cacheKey);
   if (cached) {
     return cached;
@@ -53,6 +54,7 @@ export async function fetchGlobalCrossChannelCommentators(
       JOIN public.channels ch ON l.channel_id = ch.channel_id
       WHERE ch.active::text IN ('1', 'true')
         AND ch.channel <> '@Radio10am'
+        ${getBlockedTitleSqlClause('l.video_title')}
       ORDER BY l.video_id, l.scrape_date DESC
     ),
     user_ch_counts AS (
@@ -93,6 +95,7 @@ export async function fetchGlobalCrossChannelCommentators(
       JOIN public.channels ch ON l.channel_id = ch.channel_id
       WHERE ch.active::text IN ('1', 'true')
         AND ch.channel <> '@Radio10am'
+        ${getBlockedTitleSqlClause('l.video_title')}
       ORDER BY l.video_id, l.scrape_date DESC
     ),
     author_channel_stats AS (

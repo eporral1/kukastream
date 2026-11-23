@@ -3,8 +3,10 @@ import { Stream, DbComment, DbSuperchat } from '../types';
 import { formatNumber } from '../data/mockData';
 import { isOctober2026OrLater } from '../utils/dateFilter';
 import { TopCommentatorsList } from './TopCommentatorsList';
-import { PoliticalCompassView } from './PoliticalCompassView';
-import { PoliticalAnalysisResult } from '../utils/politicalAnalysis';
+// import { PoliticalCompassView } from './PoliticalCompassView';
+// import { PoliticalAnalysisResult } from '../utils/politicalAnalysis';
+import { HateSpeechAnalysisView } from './HateSpeechAnalysisView';
+import { HateSpeechAnalysisResult } from '../utils/hateSpeechAnalysis';
 import { trackEvent } from '../utils/analytics';
 import {
   MessageSquare,
@@ -16,15 +18,12 @@ import {
   User,
   Search,
   Sparkles,
-  Send,
-  HelpCircle,
-  ChevronDown,
-  ChevronUp,
   CheckCircle2,
+  ChevronDown,
   Copy,
   Crown,
   Filter,
-  Compass,
+  ShieldAlert,
 } from 'lucide-react';
 
 // Variable booleana para ocultar/comentar temporalmente la consulta con IA
@@ -68,7 +67,59 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
     }
   }, [isOpen, stream]);
 
-  // Political Tendency & Compass state (Análisis de publicidad comentado)
+  // Hate Speech Analysis & All Video Messages state (Tendencia Política y Publicidad comentados)
+  const [hateSpeechAnalysis, setHateSpeechAnalysis] = useState<HateSpeechAnalysisResult | null>(null);
+  const [captionsLoading, setCaptionsLoading] = useState(false);
+  const [captionsError, setCaptionsError] = useState<string | null>(null);
+
+  const handleGenerateHateSpeechAnalysis = useCallback(async (force = false) => {
+    if (!stream.video_id || captionsLoading) return;
+    trackEvent('generate_hate_speech_analysis', {
+      video_id: stream.video_id,
+      channel: stream.channel,
+      force,
+    });
+    setCaptionsLoading(true);
+    setCaptionsError(null);
+    try {
+      const res = await fetch('/api/generate-captions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_id: stream.video_id,
+          force,
+          start_date: stream.type === 'eternal' ? stream.start_date : undefined,
+          end_date: stream.type === 'eternal' ? stream.scrape_date : undefined,
+          is_live: stream.live === 'live',
+          video_title: stream.video_title,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.hate_speech_analysis) {
+        setHateSpeechAnalysis(data.hate_speech_analysis);
+      } else {
+        setCaptionsError(data.error || 'Error al obtener el análisis de mensajes de odio.');
+      }
+    } catch (err: any) {
+      setCaptionsError(err.message || 'Error de conexión.');
+    } finally {
+      setCaptionsLoading(false);
+    }
+  }, [
+    stream.video_id,
+    stream.channel,
+    stream.type,
+    stream.start_date,
+    stream.scrape_date,
+    stream.live,
+    stream.video_title,
+    captionsLoading,
+  ]);
+
+  /*
+  // =========================================================================
+  // COMENTADO: Political Tendency & Compass state
+  // =========================================================================
   const [politicalAnalysis, setPoliticalAnalysis] = useState<PoliticalAnalysisResult | null>(() => {
     if (!stream.political_analysis) return null;
     try {
@@ -85,38 +136,7 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
     return null;
   });
   const [politicalCached, setPoliticalCached] = useState<boolean>(Boolean(stream.political_analysis));
-  // const [captions, setCaptions] = useState<string | null>(stream.captions || null);
-  const [captionsLoading, setCaptionsLoading] = useState(false);
-  const [captionsError, setCaptionsError] = useState<string | null>(null);
-
-  const handleGeneratePoliticalAnalysis = useCallback(async (force = false) => {
-    if (!stream.video_id || captionsLoading) return;
-    trackEvent('generate_political_analysis', {
-      video_id: stream.video_id,
-      channel: stream.channel,
-      force,
-    });
-    setCaptionsLoading(true);
-    setCaptionsError(null);
-    try {
-      const res = await fetch('/api/generate-captions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_id: stream.video_id, force }),
-      });
-      const data = await res.json();
-      if (data.success && data.political_analysis) {
-        setPoliticalAnalysis(data.political_analysis);
-        setPoliticalCached(Boolean(data.cached));
-      } else {
-        setCaptionsError(data.error || 'Error al obtener el análisis de tendencia política.');
-      }
-    } catch (err: any) {
-      setCaptionsError(err.message || 'Error de conexión.');
-    } finally {
-      setCaptionsLoading(false);
-    }
-  }, [stream.video_id, stream.channel, captionsLoading]);
+  */
 
   // AI Query state
   const [aiQuestion, setAiQuestion] = useState('');
@@ -432,6 +452,7 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
           </button>
           */}
 
+          {/* Botón de Análisis de Tendencia Política comentado por pedido del usuario:
           <button
             onClick={() => {
               setActiveTab('captions');
@@ -448,6 +469,26 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
             <Compass className="w-4 h-4 text-indigo-600" />
             <span>Tendencia Política & Compás</span>
           </button>
+          */}
+
+          {/* Botón de Análisis de Mensajes de Odio comentado temporalmente por pedido del usuario:
+          <button
+            onClick={() => {
+              setActiveTab('captions');
+              if (!hateSpeechAnalysis && !captionsLoading) {
+                handleGenerateHateSpeechAnalysis(false);
+              }
+            }}
+            className={`py-3 px-3.5 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'captions'
+                ? 'border-rose-600 text-rose-700 bg-white shadow-2xs rounded-t-lg -mb-px'
+                : 'border-transparent text-gray-600 hover:text-rose-700 hover:bg-rose-50/40'
+            }`}
+          >
+            <ShieldAlert className="w-4 h-4 text-rose-600" />
+            <span>Análisis de Mensajes de Odio</span>
+          </button>
+          */}
 
           {/* Consulta con IA comentada temporalmente por pedido del usuario */}
           {SHOW_AI_COMMENTS_QUERY && (
@@ -855,8 +896,26 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
           </div>
         )}
 
-        {/* Tab 4: Análisis de Tendencia Política y Compás (Análisis de publicidad comentado) */}
+        {/*
+        // =====================================================================
+        // COMENTADO: Análisis de Mensajes de Odio
+        // =====================================================================
         {activeTab === 'captions' && (
+          <HateSpeechAnalysisView
+            analysis={hateSpeechAnalysis}
+            loading={captionsLoading}
+            error={captionsError}
+            onAnalyze={(force) => handleGenerateHateSpeechAnalysis(Boolean(force))}
+            onSelectAuthor={handleSelectAuthor}
+          />
+        )}
+        */}
+
+        {/*
+        // =====================================================================
+        // COMENTADO: Tab de Análisis de Tendencia Política y Compás
+        // =====================================================================
+        {activeTab === 'captions_political_disabled' && (
           <PoliticalCompassView
             analysis={politicalAnalysis}
             cached={politicalCached}
@@ -865,6 +924,7 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
             onAnalyze={(force) => handleGeneratePoliticalAnalysis(Boolean(force))}
           />
         )}
+        */}
 
         {/*
         // =====================================================================

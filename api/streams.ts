@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { isStreamTitleBlocked } from '../src/config/streamFilters.ts';
+import { isStreamTitleBlocked, getBlockedTitleSqlClause } from '../src/config/streamFilters.ts';
 import { getPool, executeQuery, getCachedResponse, setCachedResponse } from '../src/utils/serverDb.ts';
+import { calculateStreamEngagement } from '../src/utils/engagement.ts';
 
 const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
 
@@ -81,6 +82,9 @@ function clusterEternalTitleGroups(rawGroups: any[]): any[] {
           cluster.min_comments = Math.min(cluster.min_comments, group.min_comments);
           cluster.max_comments = Math.max(cluster.max_comments, group.max_comments);
           cluster.comm_delta = Math.max(0, cluster.max_comments - cluster.min_comments);
+          cluster.min_authors = Math.min(cluster.min_authors ?? 0, group.min_authors ?? 0);
+          cluster.max_authors = Math.max(cluster.max_authors ?? 0, group.max_authors ?? 0);
+          cluster.authors_delta = Math.max(0, cluster.max_authors - cluster.min_authors);
           cluster.point_count += group.point_count;
 
           if (group.video_title.length > cluster.video_title.length) {
@@ -132,6 +136,7 @@ function chainEternalTitleDeltas(groups: any[]): any[] {
 
     let prevLastLikes: number | null = null;
     let prevLastComments: number | null = null;
+    let prevLastAuthors: number | null = null;
 
     for (let i = 0; i < videoGroups.length; i++) {
       const g = videoGroups[i];
@@ -139,6 +144,8 @@ function chainEternalTitleDeltas(groups: any[]): any[] {
       const curMinLikes = Number(g.min_likes || 0);
       const curMaxComm = Number(g.max_comments || 0);
       const curMinComm = Number(g.min_comments || 0);
+      const curMaxAuth = Number(g.max_authors || 0);
+      const curMinAuth = Number(g.min_authors || 0);
 
       let baselineLikes: number;
       if (i === 0 || prevLastLikes === null) {
@@ -154,13 +161,23 @@ function chainEternalTitleDeltas(groups: any[]): any[] {
         baselineComments = curMaxComm >= prevLastComments ? prevLastComments : curMinComm;
       }
 
+      let baselineAuthors: number;
+      if (i === 0 || prevLastAuthors === null) {
+        baselineAuthors = curMinAuth;
+      } else {
+        baselineAuthors = curMaxAuth >= prevLastAuthors ? prevLastAuthors : curMinAuth;
+      }
+
       g.baseline_likes = baselineLikes;
       g.baseline_comments = baselineComments;
+      g.baseline_authors = baselineAuthors;
       g.likes_delta = Math.max(0, curMaxLikes - baselineLikes);
       g.comm_delta = Math.max(0, curMaxComm - baselineComments);
+      g.authors_delta = Math.max(0, curMaxAuth - baselineAuthors);
 
       prevLastLikes = curMaxLikes;
       prevLastComments = curMaxComm;
+      prevLastAuthors = curMaxAuth;
     }
   }
 
@@ -321,9 +338,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const rawSearch = (((req.query.q || req.query.search || '') as string) || '').trim();
   // Strip enclosing quotes like "la trinchera" or 'la trinchera'
   const searchParam = rawSearch.replace(/^["'«»“”„]+|["'«»“”„]+$/g, '').trim();
-  const sortParamReq = (((req.query.sort || '') as string) || 'viewers').toLowerCase();
+  const sortParamReq = (((req.query.sort || '') as string) || 'engagement').toLowerCase();
 
-  const cached = getCachedResponse(`api:streams:v3:7bdays:${tag || 'all'}:${searchParam}:${sortParamReq}`);
+  const cached = getCachedResponse(`api:streams:v5:7bdays:${tag || 'all'}:${searchParam}:${sortParamReq}`);
   if (cached) {
     res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
     return res.status(200).json(cached);
@@ -353,6 +370,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         sub.video_title,
         c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter, c.type,
         COALESCE(comm.comments_count, 0)::int as comments_count,
+        COALESCE(comm.unique_commentators, 0)::int as unique_commentators,
         0::numeric as superchats_total,
         0::int as superchats_count
       FROM (
@@ -363,6 +381,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         FROM public.live
         WHERE scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
           AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
+          ${getBlockedTitleSqlClause('video_title')}
         ${!searchParam ? 'AND GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) > 0' : ''}
         ORDER BY video_id, (CASE WHEN video_title IS NOT NULL AND video_title <> '' THEN 1 ELSE 0 END) DESC, GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) DESC
       ) sub
@@ -389,7 +408,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         FROM m_pts
       ) v_avg ON true
       LEFT JOIN LATERAL (
-        SELECT COALESCE(m.comments_count, 0) as comments_count
+        SELECT COALESCE(m.comments_count, 0) as comments_count,
+               COALESCE(m.authors_count, 0) as unique_commentators
         FROM public.minute m 
         WHERE m.video_id = sub.video_id 
           AND m.scrape_date >= '${OCT_2026_CUTOFF}'
@@ -470,7 +490,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             LIMIT 7
           ),
           m_filtered AS (
-            SELECT video_title, video_id, channel_id, scrape_date, concurrent_viewers, likes, comments_count,
+            SELECT video_title, video_id, channel_id, scrape_date, concurrent_viewers, likes, comments_count, authors_count,
                    MAX(concurrent_viewers) OVER (PARTITION BY video_title, video_id, channel_id) AS peak_v
             FROM public.minute
             WHERE channel_id = ANY($1) 
@@ -505,6 +525,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                  MAX(likes) AS max_likes,
                  MIN(comments_count) AS min_comments,
                  MAX(comments_count) AS max_comments,
+                 MIN(COALESCE(authors_count, 0)) AS min_authors,
+                 MAX(COALESCE(authors_count, 0)) AS max_authors,
                  COUNT(*) AS point_count
           FROM m_filtered
           GROUP BY video_title, video_id, channel_id
@@ -522,6 +544,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const minLikes = Number(row.min_likes || 0);
           const maxComm = Number(row.max_comments || 0);
           const minComm = Number(row.min_comments || 0);
+          const maxAuth = Number(row.max_authors || 0);
+          const minAuth = Number(row.min_authors || 0);
 
           chGroupsMap.get(row.channel_id)!.push({
             video_title: row.video_title,
@@ -537,6 +561,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             min_comments: minComm,
             max_comments: maxComm,
             comm_delta: Math.max(0, maxComm - minComm),
+            min_authors: minAuth,
+            max_authors: maxAuth,
+            authors_delta: Math.max(0, maxAuth - minAuth),
             point_count: Number(row.point_count || 0),
           });
         }
@@ -553,6 +580,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           chained.forEach((group: any, idx: number) => {
             const isLiveShow = isChannelLive && idx === 0;
+            if (
+              isStreamTitleBlocked(group.video_title) ||
+              (Array.isArray(group.titles) && group.titles.some((t: string) => isStreamTitleBlocked(t)))
+            ) {
+              return;
+            }
             if (searchParam) {
               const qLower = searchParam.toLowerCase();
               const titleMatch = (group.video_title || '').toLowerCase().includes(qLower);
@@ -579,9 +612,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               concurrent_viewers: isLiveShow ? (liveRow.concurrent_viewers || group.max_viewers) : group.max_viewers,
               old_viewers: group.avg_viewers,
               avg_viewers: group.avg_viewers,
+              max_viewers: group.max_viewers,
               current_likes: group.likes_delta,
               old_likes: group.min_likes,
               comments_count: group.comm_delta,
+              unique_commentators: Number(group.authors_delta || 0),
               start_date: group.start_time,
               scrape_date: group.end_time,
               superchats_total: 0,
@@ -667,8 +702,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Filter out @Radio10am if present and any streams with blocked title keywords (e.g. "DALE MATCH")
     const filtered = allStreams.filter((s: any) => s.channel !== '@Radio10am' && !isStreamTitleBlocked(s.video_title));
 
-    // 6. Sort according to requested sort option (default: avg_viewers)
+    // 6. Compute engagement_score and sort according to requested sort option (default: engagement)
+    for (const s of filtered) {
+      s.engagement_score = calculateStreamEngagement(s);
+    }
+
     filtered.sort((a: any, b: any) => {
+      if (sortParam === 'viewers') {
+        const aAvg = Number(a.avg_viewers ?? a.old_viewers ?? a.concurrent_viewers) || 0;
+        const bAvg = Number(b.avg_viewers ?? b.old_viewers ?? b.concurrent_viewers) || 0;
+        return bAvg - aAvg;
+      }
       if (sortParam === 'likes') {
         const aLikes = Number(a.current_likes ?? a.max_likes ?? a.old_likes) || 0;
         const bLikes = Number(b.current_likes ?? b.max_likes ?? b.old_likes) || 0;
@@ -679,6 +723,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const bComm = Number(b.comments_count) || 0;
         return bComm - aComm;
       }
+      if (sortParam === 'chat_users') {
+        const aUsers = Math.max(0, Number(a.unique_commentators || 0));
+        const bUsers = Math.max(0, Number(b.unique_commentators || 0));
+        return bUsers - aUsers;
+      }
       if (sortParam === 'superchats') {
         const aSc = Number(a.superchats_total) || 0;
         const bSc = Number(b.superchats_total) || 0;
@@ -686,7 +735,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       const aAvg = Number(a.avg_viewers ?? a.old_viewers ?? a.concurrent_viewers) || 0;
       const bAvg = Number(b.avg_viewers ?? b.old_viewers ?? b.concurrent_viewers) || 0;
-      return bAvg - aAvg;
+      return (Number(b.engagement_score) || 0) - (Number(a.engagement_score) || 0) || bAvg - aAvg;
     });
 
     const returnStreams = filtered;
@@ -697,7 +746,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       total_found: filtered.length,
       is_search: Boolean(searchParam),
     };
-    setCachedResponse(`api:streams:v3:7bdays:${tag || 'all'}:${searchParam}:${sortParam}`, payload, 12000);
+    setCachedResponse(`api:streams:v5:7bdays:${tag || 'all'}:${searchParam}:${sortParam}`, payload, 12000);
     res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
     return res.status(200).json(payload);
   } catch (err: any) {

@@ -118,6 +118,8 @@ export interface Stream {
   data?: MinuteDataPoint[];
   type?: string;
   avg_viewers?: number;
+  subs?: number;
+  engagement_score?: number;
   captions?: string;
   political_analysis?: any;
 }
@@ -137,6 +139,7 @@ export interface Channel {
   avg_unique_commentators?: number;
   likes_per_viewer?: number;
   comments_per_viewer?: number;
+  engagement_score?: number;
   type?: string;
   banner?: string;
   superchats_count?: number;

@@ -1,5 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getPool, executeQuery, getCachedResponse, setCachedResponse } from '../src/utils/serverDb.ts';
+import { calculateChannelEngagement } from '../src/utils/engagement.ts';
+import { isStreamTitleBlocked, getBlockedTitleSqlClause } from '../src/config/streamFilters.ts';
 
 const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
 
@@ -259,6 +261,11 @@ async function enrichEternalChannels(channels: any[]) {
       let titleGroups = byChannel.get(channel.channel_id) || [];
       titleGroups = clusterEternalTitleGroups(titleGroups);
       titleGroups = chainEternalTitleDeltas(titleGroups);
+      titleGroups = titleGroups.filter(
+        (g: any) =>
+          !isStreamTitleBlocked(g.video_title) &&
+          !(Array.isArray(g.titles) && g.titles.some((t: string) => isStreamTitleBlocked(t)))
+      );
 
       if (titleGroups.length > 0) {
         channel.avg_viewers = Math.round(
@@ -339,15 +346,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  const sortParam = (((req.query.sort || '') as string) || 'viewers').toLowerCase();
-  const cacheKey = 'api:channels:v4:7bdays';
+  const sortParam = (((req.query.sort || '') as string) || 'engagement').toLowerCase();
+  const cacheKey = 'api:channels:v6:7bdays';
   const cached = getCachedResponse(cacheKey);
   if (cached && Array.isArray(cached.channels)) {
     const sortedChannels = [...cached.channels].sort((a: any, b: any) => {
+      if (sortParam === 'viewers') return (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
       if (sortParam === 'likes') return (Number(b.avg_likes) || 0) - (Number(a.avg_likes) || 0);
       if (sortParam === 'comments') return (Number(b.avg_comments) || 0) - (Number(a.avg_comments) || 0);
       if (sortParam === 'chat_users') return (Number(b.avg_unique_commentators) || 0) - (Number(a.avg_unique_commentators) || 0);
-      return (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
+      return (Number(b.engagement_score) || 0) - (Number(a.engagement_score) || 0) || (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
     });
     res.setHeader('Cache-Control', 'public, s-maxage=20, stale-while-revalidate=40');
     return res.status(200).json({ ...cached, channels: sortedChannels });
@@ -375,6 +383,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         FROM public.minute m
         WHERE m.scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
           AND m.scrape_date::date IN (SELECT bday FROM last_7_business_days)
+          ${getBlockedTitleSqlClause('m.video_title')}
+          AND NOT EXISTS (
+            SELECT 1 FROM public.live bl
+            WHERE bl.video_id = m.video_id
+              AND NOT (1=1 ${getBlockedTitleSqlClause('bl.video_title')})
+          )
         GROUP BY m.channel_id, m.video_id
         HAVING MAX(m.concurrent_viewers) > 0
       ),
@@ -386,6 +400,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         WHERE scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
           AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
           AND GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) > 0
+          ${getBlockedTitleSqlClause('video_title')}
         GROUP BY video_id, channel_id
       ),
       all_channel_videos AS (
@@ -449,6 +464,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           WHERE scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
             AND scrape_date::date IN (SELECT bday FROM last_7_business_days)
             AND GREATEST(COALESCE(concurrent_viewers, 0), COALESCE(old_viewers, 0)) > 0
+            ${getBlockedTitleSqlClause('video_title')}
           GROUP BY channel_id, video_id
         ),
         channel_ratios AS (
@@ -478,11 +494,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (result && result.rows) {
       await enrichEternalChannels(result.rows);
+      for (const ch of result.rows) {
+        ch.engagement_score = calculateChannelEngagement(ch);
+      }
       result.rows.sort((a: any, b: any) => {
+        if (sortParam === 'viewers') return (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
         if (sortParam === 'likes') return (Number(b.avg_likes) || 0) - (Number(a.avg_likes) || 0);
         if (sortParam === 'comments') return (Number(b.avg_comments) || 0) - (Number(a.avg_comments) || 0);
         if (sortParam === 'chat_users') return (Number(b.avg_unique_commentators) || 0) - (Number(a.avg_unique_commentators) || 0);
-        return (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
+        return (Number(b.engagement_score) || 0) - (Number(a.engagement_score) || 0) || (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
       });
     }
     const payload = { success: true, channels: result.rows };

@@ -11,6 +11,7 @@ import { isOctober2026OrLater, formatArgentinaDateTime } from '../utils/dateFilt
 import { ArrowLeft, ExternalLink, Calendar, Heart, Eye, MessageSquare, Users, Radio, RefreshCw, AlertCircle, Swords } from 'lucide-react';
 import { SITE_NAME } from '../config/site';
 import { trackEvent, updateSeoMeta } from '../utils/analytics';
+import { isStreamTitleBlocked } from '../config/streamFilters';
 
 interface ChannelDetailPageProps {
   channel: Channel;
@@ -58,7 +59,7 @@ function sortTimelineChronologically<T extends { scrape_date: string; raw_date?:
 }
 
 // Variables booleanas para controlar la visibilidad temporal del Heatmap y Métricas Promedio
-const SHOW_HEATMAP = false;
+const SHOW_HEATMAP = true;
 const SHOW_AVG_METRICS = false;
 
 export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
@@ -68,7 +69,9 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
 }) => {
   const [channel, setChannel] = useState<Channel>(initialChannel);
   const [liveStream, setLiveStream] = useState<Stream | undefined>(
-    initialLiveStream?.live === 'live' ? initialLiveStream : undefined
+    initialLiveStream?.live === 'live' && !isStreamTitleBlocked(initialLiveStream?.video_title)
+      ? initialLiveStream
+      : undefined
   );
   const [pastStreams, setPastStreams] = useState<Stream[]>([]);
   const [heatmapData, setHeatmapData] = useState<HourDayData[]>([]);
@@ -80,12 +83,17 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
 
   useEffect(() => {
     const label = channel?.channel_name || channel?.channel || 'Canal';
-    const desc = (channel?.description || '').replace(/\s+/g, ' ').trim();
+    const currentEmission = liveStream?.video_title || pastStreams[0]?.video_title;
+    const descBase = (channel?.description || '').replace(/\s+/g, ' ').trim();
+    const desc = currentEmission
+      ? `Transmitiendo / Última emisión: "${currentEmission}". ${descBase}`
+      : descBase;
     updateSeoMeta({
       title: `${SITE_NAME} - ${label}`,
       ...(desc ? { description: desc } : {}),
+      ...(channel?.thumb ? { faviconUrl: channel.thumb } : {}),
     });
-  }, [channel?.channel_name, channel?.channel, channel?.description]);
+  }, [channel?.channel_name, channel?.channel, channel?.description, channel?.thumb, liveStream?.video_title, pastStreams]);
 
   const tryFetchChannel = React.useCallback(async (channelIdentifier: string) => {
     if (lastFetchedId.current === channelIdentifier) return;
@@ -110,6 +118,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
             updateSeoMeta({
               title: `${SITE_NAME} - ${label}`,
               ...(desc ? { description: desc } : {}),
+              ...(data.channel.thumb ? { faviconUrl: data.channel.thumb } : {}),
             });
             trackEvent('view_channel_detail', {
               channel: data.channel.channel,
@@ -118,9 +127,16 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
             });
           }
           const liveData = data.live;
-          const activeLive = liveData?.live === 'live' && (isOctober2026OrLater(liveData.scrape_date) || isOctober2026OrLater(liveData.start_date)) ? liveData : undefined;
+          const activeLive =
+            liveData?.live === 'live' &&
+            !isStreamTitleBlocked(liveData.video_title) &&
+            (isOctober2026OrLater(liveData.scrape_date) || isOctober2026OrLater(liveData.start_date))
+              ? liveData
+              : undefined;
           const streamList: Stream[] = (data.streams || data.history || []).filter(
-            (s: Stream) => isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date)
+            (s: Stream) =>
+              !isStreamTitleBlocked(s.video_title) &&
+              (isOctober2026OrLater(s.scrape_date) || isOctober2026OrLater(s.start_date))
           );
           setLiveStream(activeLive);
           setPastStreams(streamList);
@@ -209,8 +225,8 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
         </button>
 
         {isLoadingChannel && (
-          <div className="flex items-center gap-1.5 text-xs text-blue-600 font-medium bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
-            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+          <div className="flex items-center gap-2 text-xs text-gray-500 font-medium bg-gray-100 px-3.5 py-2 rounded-xl border border-gray-200 animate-pulse">
+            <div className="w-2.5 h-2.5 rounded-full bg-gray-400"></div>
             <span>Consultando datos en vivo de {channel.channel}...</span>
           </div>
         )}
@@ -249,9 +265,13 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                   <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">
                     {channel.channel_name}
                   </h1>
-                  <span className="bg-blue-100 text-blue-800 text-xs sm:text-sm font-semibold px-2.5 py-0.5 rounded-full">
-                    {formatSubs(channel.subs)} suscriptores
-                  </span>
+                  {isLoadingChannel ? (
+                    <div className="h-6 w-28 bg-gray-200 rounded-full animate-pulse"></div>
+                  ) : channel.subs && channel.subs > 0 ? (
+                    <span className="bg-blue-100 text-blue-800 text-xs sm:text-sm font-semibold px-2.5 py-0.5 rounded-full">
+                      {formatSubs(channel.subs)} suscriptores
+                    </span>
+                  ) : null}
                 </div>
                 <p className="text-sm text-gray-600 max-w-2xl leading-relaxed mb-3">
                   {channel.description}
