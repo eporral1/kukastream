@@ -69,6 +69,7 @@ interface VideoAdsPanelProps {
   onAdjustAdTimestamp?: (adId: string, deltaSec: number) => void;
   onAdjustAdClockOffset?: (adId: string, deltaSec: number | null) => void;
   onRenameAdBrand?: (adId: string, newBrand: string) => void;
+  onDeleteSingleAd?: (adId: string) => void;
   onDeleteAds?: () => void;
   deletingAds?: boolean;
 }
@@ -125,6 +126,7 @@ export const VideoAdsPanel: React.FC<VideoAdsPanelProps> = ({
   onAdjustAdTimestamp,
   onAdjustAdClockOffset,
   onRenameAdBrand,
+  onDeleteSingleAd,
   onDeleteAds,
   deletingAds = false,
 }) => {
@@ -132,6 +134,7 @@ export const VideoAdsPanel: React.FC<VideoAdsPanelProps> = ({
   const [editingBrandAdId, setEditingBrandAdId] = useState<string | null>(null);
   const [editingBrandValue, setEditingBrandValue] = useState<string>('');
   const [confirmingDelete, setConfirmingDelete] = useState<boolean>(false);
+  const [confirmDeleteAdId, setConfirmDeleteAdId] = useState<string | null>(null);
   const isDark = variant === 'dark';
 
   const brandCounts = useMemo(() => {
@@ -853,6 +856,51 @@ export const VideoAdsPanel: React.FC<VideoAdsPanelProps> = ({
                           </span>
                         )}
                       </span>
+                    )}
+
+                    {onDeleteSingleAd && (
+                      confirmDeleteAdId === ad.id ? (
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setConfirmDeleteAdId(null);
+                              onDeleteSingleAd(ad.id);
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-rose-600 hover:bg-rose-700 text-white border border-rose-700 transition-colors cursor-pointer whitespace-nowrap"
+                            title="Confirmar borrado de este PNT"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Borrar</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteAdId(null)}
+                            className={`p-1 rounded border transition-colors cursor-pointer ${
+                              isDark
+                                ? 'bg-gray-800 text-gray-300 border-gray-700 hover:text-white'
+                                : 'bg-white text-black border-gray-300 hover:bg-gray-100'
+                            }`}
+                            title="Cancelar"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteAdId(ad.id)}
+                          className={`inline-flex items-center justify-center p-1 rounded border transition-colors cursor-pointer ${
+                            isDark
+                              ? 'bg-gray-900 text-gray-400 border-gray-700 hover:bg-rose-500/20 hover:text-rose-200 hover:border-rose-400/40'
+                              : 'bg-white text-gray-500 border-gray-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300'
+                          }`}
+                          title="Borrar este PNT"
+                          aria-label={`Borrar PNT ${ad.brand}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )
                     )}
                   </div>
                 </div>

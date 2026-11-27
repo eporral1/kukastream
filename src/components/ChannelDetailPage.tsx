@@ -67,7 +67,7 @@ function sortTimelineChronologically<T extends { scrape_date: string; raw_date?:
 }
 
 // Variables booleanas para controlar la visibilidad temporal del Heatmap y Métricas Promedio
-const SHOW_HEATMAP = true;
+const SHOW_HEATMAP = false;
 const SHOW_AVG_METRICS = false;
 
 export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
@@ -170,15 +170,20 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
     });
   }, [channel?.channel_name, channel?.channel, channel?.description, channel?.thumb, liveStream?.video_title, pastStreams]);
 
-  const tryFetchChannel = React.useCallback(async (channelIdentifier: string) => {
-    if (lastFetchedId.current === channelIdentifier) return;
-    lastFetchedId.current = channelIdentifier;
+  const tryFetchChannel = React.useCallback(async (channelIdentifier: string, adminMode: boolean) => {
+    const fetchKey = `${channelIdentifier}::${adminMode ? 'admin' : 'public'}`;
+    if (lastFetchedId.current === fetchKey) return;
+    lastFetchedId.current = fetchKey;
 
     setIsLoadingChannel(true);
     setChannelError(null);
     console.log(`[DEBUG] tryFetchChannel called for: ${channelIdentifier}`);
     try {
-        const res = await fetch(`/api/channel?id=${encodeURIComponent(channelIdentifier)}`, {
+        const queryParams = new URLSearchParams({ id: channelIdentifier });
+        if (adminMode) {
+          queryParams.set('token', CHANNEL_ADMIN_TOKEN);
+        }
+        const res = await fetch(`/api/channel?${queryParams.toString()}`, {
           headers: {
             'X-App-Client': 'kukastream-web',
           },
@@ -247,9 +252,9 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
       return initialChannel;
     });
     if (channelIdentifier) {
-      tryFetchChannel(channelIdentifier);
+      tryFetchChannel(channelIdentifier, isAdminMode);
     }
-  }, [initialChannel, tryFetchChannel]);
+  }, [initialChannel, isAdminMode, tryFetchChannel]);
 
 
   // Minute points for active live stream chart (only real data)
@@ -711,7 +716,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
         </div>
       )}
 
-      {/* 🔥 Heatmap Section (oculto temporalmente con SHOW_HEATMAP) */}
+      {/* 🔥 Heatmap Section (comentado temporalmente)
       {SHOW_HEATMAP && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -722,6 +727,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
           <HeatmapTable data={effectiveHeatmapData} />
         </div>
       )}
+      */}
 
       {/* 📊 Métricas Promedio (24h curve) (oculto temporalmente con SHOW_AVG_METRICS) */}
       {SHOW_AVG_METRICS && (

@@ -680,6 +680,72 @@ export async function updateSingleAdTimestamp(
 }
 
 /**
+ * Removes a single detected ad / PNT from public.video_ads_cache.result_json
+ * and recalculates total_ads, total_ad_seconds, and unique_brands.
+ */
+export async function deleteSingleAd(
+  videoId: string,
+  adId: string
+): Promise<{
+  deleted: boolean;
+  ad_id: string;
+  total_ads?: number;
+  total_ad_seconds?: number;
+  unique_brands?: string[];
+}> {
+  await ensureAdsTable();
+
+  try {
+    const existing: any = await executeQuery(
+      `SELECT result_json FROM public.video_ads_cache WHERE video_id = $1 LIMIT 1`,
+      [videoId]
+    );
+    if (!existing.rows?.length) {
+      return { deleted: false, ad_id: adId };
+    }
+
+    const parsed = JSON.parse(existing.rows[0].result_json) as VideoAdsAnalysisResult;
+    if (!parsed || !Array.isArray(parsed.ads)) {
+      return { deleted: false, ad_id: adId };
+    }
+
+    const prevCount = parsed.ads.length;
+    parsed.ads = parsed.ads.filter((ad) => ad.id !== adId);
+    if (parsed.ads.length === prevCount) {
+      return { deleted: false, ad_id: adId };
+    }
+
+    parsed.total_ads = parsed.ads.length;
+    parsed.unique_brands = Array.from(
+      new Set(
+        parsed.ads
+          .map((a) => String(a.brand || '').trim())
+          .filter((b) => b && b !== 'Anunciante / PNT detectado')
+      )
+    );
+    parsed.total_ad_seconds = parsed.ads.reduce((s, a) => s + (Number(a.duration_sec) || 0), 0);
+
+    await executeQuery(
+      `UPDATE public.video_ads_cache
+       SET result_json = $2, updated_at = NOW()
+       WHERE video_id = $1`,
+      [videoId, JSON.stringify(parsed)]
+    );
+
+    return {
+      deleted: true,
+      ad_id: adId,
+      total_ads: parsed.total_ads,
+      total_ad_seconds: parsed.total_ad_seconds,
+      unique_brands: parsed.unique_brands,
+    };
+  } catch (err) {
+    console.warn('[adDetector] Could not delete single ad:', err);
+    throw err;
+  }
+}
+
+/**
  * Deletes the cached commercial ad measurement for a video_id from PostgreSQL
  * so the broadcast is removed from /brands and resets to unmeasured state.
  */

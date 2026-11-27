@@ -458,11 +458,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const cleanParam = channelParam.startsWith('@') ? channelParam.substring(1) : channelParam;
   const withAtParam = channelParam.startsWith('@') ? channelParam : `@${channelParam}`;
+  const hasAdminToken = String(req.query.token || '').trim() === '31415927';
+  const eternalFinishedLimit = hasAdminToken ? 20 : 10;
+  const eternalTitleGroupSqlLimit = hasAdminToken ? 60 : 25;
+  const standardFinishedLimit = hasAdminToken ? 20 : 5;
+  const standardSqlLimit = hasAdminToken ? 60 : 15;
 
-  const cacheKey = `api:channel:v5:${cleanParam.toLowerCase()}`;
+  const cacheKey = `api:channel:v6:${cleanParam.toLowerCase()}:${hasAdminToken ? 'admin20' : 'default'}`;
   const cached = getCachedResponse(cacheKey);
   if (cached) {
-    res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
+    res.setHeader(
+      'Cache-Control',
+      hasAdminToken ? 'private, max-age=10' : 'public, s-maxage=15, stale-while-revalidate=30'
+    );
     return res.status(200).json(cached);
   }
 
@@ -548,8 +556,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
              AND video_title IS NOT NULL AND video_title <> ''
            GROUP BY video_title, video_id
            ORDER BY MAX(scrape_date) DESC
-           LIMIT 25`,
-          [channelId]
+           LIMIT $2`,
+          [channelId, eternalTitleGroupSqlLimit]
         );
 
         titleGroups = titleGroupsRes.rows.map((row: any) => {
@@ -668,7 +676,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const eternalVideoFirstMeasurementMap: Record<string, string> = {};
       try {
         const eternalVidIds = Array.from(
-          new Set(titleGroups.slice(0, 12).map((g: any) => g.video_id).filter(Boolean))
+          new Set(titleGroups.slice(0, eternalFinishedLimit + 2).map((g: any) => g.video_id).filter(Boolean))
         );
         if (eternalVidIds.length > 0) {
           const firstMeasRes = await executeQuery(
@@ -695,7 +703,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (isChannelLive && titleGroups.length > 0) {
         // The most recent group by video_title is the live stream
         const topLiveGroup = titleGroups[0];
-        finishedGroups = titleGroups.slice(1, 11);
+        finishedGroups = titleGroups.slice(1, 1 + eternalFinishedLimit);
 
         // Fetch minute points for live stream
         let liveMinutePoints: any[] = [];
@@ -804,7 +812,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           superchats_count: liveScCount,
         };
       } else {
-        finishedGroups = titleGroups.slice(0, 10);
+        finishedGroups = titleGroups.slice(0, eternalFinishedLimit);
       }
 
       // Populate finished streams
@@ -928,7 +936,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         channel.avg_comments = Math.round(channel.total_comments / titleGroups.length);
       }
 
-      let eternalHourDayData: any[] = [];
+      // Heatmap data (comentado temporalmente ya que no se muestra en la UI)
+      const eternalHourDayData: any[] = [];
+      /*
       try {
         const heatmapRes = await executeQuery(
           `SELECT
@@ -969,6 +979,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch {
         eternalHourDayData = [];
       }
+      */
 
       const eternalPayload = {
         success: true,
@@ -979,7 +990,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         avg_data: [],
       };
       setCachedResponse(cacheKey, eternalPayload, 10000);
-      res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
+      res.setHeader(
+        'Cache-Control',
+        hasAdminToken ? 'private, max-age=10' : 'public, s-maxage=15, stale-while-revalidate=30'
+      );
       return res.status(200).json(eternalPayload);
     }
     try {
@@ -1264,8 +1278,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
          WHERE l.live <> 'live' AND c.channel_id = $1 
            AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
            ${getBlockedTitleSqlClause('l.video_title')}
-         ORDER BY l.scrape_date DESC, l.video_id LIMIT 10`,
-        [channelId]
+         ORDER BY l.scrape_date DESC, l.video_id LIMIT $2`,
+        [channelId, standardSqlLimit]
       );
 
       const seenVideoIds = new Set<string>();
@@ -1280,7 +1294,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           uniqueStreams.push(stream);
         }
       }
-      finishedStreams = uniqueStreams.slice(0, 5);
+      finishedStreams = uniqueStreams.slice(0, standardFinishedLimit);
 
       // Batch load minute timeline and superchats in 2 single queries instead of serial N+1 loop
       const videoIds = [...new Set(finishedStreams.map((s) => s.video_id).filter(Boolean))];
@@ -1416,8 +1430,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // ignore
     }
 
-    // Heatmap data
-    let hourDayData: any[] = [];
+    // Heatmap data (comentado temporalmente ya que no se muestra en la UI)
+    const hourDayData: any[] = [];
+    /*
     try {
       const heatmapRes = await executeQuery(
         `SELECT
@@ -1458,6 +1473,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch {
       hourDayData = [];
     }
+    */
 
     // 24h Average data (desactivado temporalmente ya que no se muestra en la UI)
     const avgData: any[] = [];
@@ -1503,7 +1519,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       avg_data: avgData,
     };
     setCachedResponse(cacheKey, standardPayload, 10000);
-    res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=30');
+    res.setHeader(
+      'Cache-Control',
+      hasAdminToken ? 'private, max-age=10' : 'public, s-maxage=15, stale-while-revalidate=30'
+    );
     return res.status(200).json(standardPayload);
   } catch (err: any) {
     console.error(`Error fetching channel ${channelParam}:`, err);

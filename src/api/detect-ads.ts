@@ -5,6 +5,7 @@ import {
   getCachedVideoAds,
   updateVideoAdsClockOffset,
   updateSingleAd,
+  deleteSingleAd,
   deleteVideoAdsCache,
 } from '../utils/serverAdDetector.ts';
 
@@ -37,8 +38,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  // DELETE or action=delete: remove ad measurement from public.video_ads_cache (removes from /brands)
+  // DELETE or action=delete: remove a single ad (if ad_id provided) or the whole measurement from public.video_ads_cache
   if (req.method === 'DELETE' || sourceParams.action === 'delete') {
+    if (sourceParams.ad_id) {
+      const adId = String(sourceParams.ad_id).trim();
+      try {
+        const deleted = await deleteSingleAd(videoId, adId);
+        return res.status(200).json({
+          success: true,
+          video_id: videoId,
+          ...deleted,
+        });
+      } catch (err: any) {
+        return res.status(500).json({
+          success: false,
+          error: err.message || 'Error al borrar el anuncio.',
+        });
+      }
+    }
+
     try {
       const deleted = await deleteVideoAdsCache(videoId);
       return res.status(200).json({

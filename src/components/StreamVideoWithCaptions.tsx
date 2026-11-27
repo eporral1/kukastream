@@ -595,6 +595,51 @@ export const StreamVideoWithCaptions: React.FC<StreamVideoWithCaptionsProps> = (
     [videoId]
   );
 
+  // Per-row delete single PNT / ad persisted to PostgreSQL
+  const handleDeleteSingleAd = useCallback(
+    (adId: string) => {
+      if (!adId) return;
+      const current = adsAnalysisRef.current;
+      if (!current || !Array.isArray(current.ads)) return;
+
+      const nextAds = current.ads.filter((ad) => ad.id !== adId);
+      if (nextAds.length === current.ads.length) return;
+
+      const nextUniqueBrands = Array.from(
+        new Set(
+          nextAds
+            .map((a) => String(a.brand || '').trim())
+            .filter((b) => b && b !== 'Anunciante / PNT detectado')
+        )
+      );
+      const nextTotalSeconds = nextAds.reduce((sum, a) => sum + (Number(a.duration_sec) || 0), 0);
+      const nextAnalysis: VideoAdsAnalysis = {
+        ...current,
+        ads: nextAds,
+        total_ads: nextAds.length,
+        total_ad_seconds: nextTotalSeconds,
+        unique_brands: nextUniqueBrands,
+      };
+
+      adsAnalysisRef.current = nextAnalysis;
+      setAdsAnalysis(nextAnalysis);
+
+      if (!videoId) return;
+      fetch(
+        `/api/detect-ads?video_id=${encodeURIComponent(videoId)}&ad_id=${encodeURIComponent(adId)}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'X-App-Client': 'kukastream-web',
+          },
+        }
+      ).catch(() => {
+        // ignore background persistence error
+      });
+    },
+    [videoId]
+  );
+
   const applyServerCaptionResponse = useCallback((data: any) => {
     if (!data?.success) return;
     if (Array.isArray(data.cues)) {
@@ -1570,6 +1615,7 @@ export const StreamVideoWithCaptions: React.FC<StreamVideoWithCaptionsProps> = (
               onAdjustAdTimestamp={allowAdTimestampAdjust ? handleAdjustAdTimestamp : undefined}
               onAdjustAdClockOffset={allowAdTimestampAdjust ? handleAdjustAdClockOffset : undefined}
               onRenameAdBrand={allowAdTimestampAdjust ? handleRenameAdBrand : undefined}
+              onDeleteSingleAd={allowAdTimestampAdjust ? handleDeleteSingleAd : undefined}
               onDeleteAds={allowDeleteAds ? handleDeleteAds : undefined}
               deletingAds={deletingAds}
             />
@@ -1637,6 +1683,7 @@ export const StreamVideoWithCaptions: React.FC<StreamVideoWithCaptionsProps> = (
               onAdjustAdTimestamp={allowAdTimestampAdjust ? handleAdjustAdTimestamp : undefined}
               onAdjustAdClockOffset={allowAdTimestampAdjust ? handleAdjustAdClockOffset : undefined}
               onRenameAdBrand={allowAdTimestampAdjust ? handleRenameAdBrand : undefined}
+              onDeleteSingleAd={allowAdTimestampAdjust ? handleDeleteSingleAd : undefined}
               onDeleteAds={allowDeleteAds ? handleDeleteAds : undefined}
               deletingAds={deletingAds}
             />

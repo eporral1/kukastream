@@ -23,6 +23,7 @@ import {
   getCachedVideoAds,
   updateVideoAdsClockOffset,
   updateSingleAd,
+  deleteSingleAd,
   deleteVideoAdsCache,
 } from './src/utils/serverAdDetector.ts';
 import {
@@ -1592,6 +1593,11 @@ const channelHandler = async (req: Request, res: Response) => {
   }
 
   channelParam = channelParam.trim();
+  const hasAdminToken = String(req.query.token || '').trim() === '31415927';
+  const eternalFinishedLimit = hasAdminToken ? 20 : 10;
+  const eternalTitleGroupSqlLimit = hasAdminToken ? 60 : 25;
+  const standardFinishedLimit = hasAdminToken ? 20 : 5;
+  const standardSqlLimit = hasAdminToken ? 60 : 15;
 
   if (!p) {
     res.json({ success: false, fallback: true, message: 'DB not connected.' });
@@ -1664,8 +1670,8 @@ const channelHandler = async (req: Request, res: Response) => {
              AND video_title IS NOT NULL AND video_title <> ''
            GROUP BY video_title, video_id
            ORDER BY MAX(scrape_date) DESC
-           LIMIT 25`,
-          [channelId]
+           LIMIT $2`,
+          [channelId, eternalTitleGroupSqlLimit]
         );
 
         titleGroups = titleGroupsRes.rows.map((row: any) => {
@@ -1773,7 +1779,7 @@ const channelHandler = async (req: Request, res: Response) => {
       const eternalVideoFirstMeasurementMap: Record<string, string> = {};
       try {
         const eternalVidIds = Array.from(
-          new Set(titleGroups.slice(0, 12).map((g: any) => g.video_id).filter(Boolean))
+          new Set(titleGroups.slice(0, eternalFinishedLimit + 2).map((g: any) => g.video_id).filter(Boolean))
         );
         if (eternalVidIds.length > 0) {
           const firstMeasRes = await p.query(
@@ -1800,7 +1806,7 @@ const channelHandler = async (req: Request, res: Response) => {
       if (isChannelLive && titleGroups.length > 0) {
         // The most recent group by video_title is the live stream
         const topLiveGroup = titleGroups[0];
-        finishedGroups = titleGroups.slice(1, 11);
+        finishedGroups = titleGroups.slice(1, 1 + eternalFinishedLimit);
 
         // Fetch minute points for live stream
         let liveMinutePoints: any[] = [];
@@ -1909,7 +1915,7 @@ const channelHandler = async (req: Request, res: Response) => {
           superchats_count: liveScCount,
         };
       } else {
-        finishedGroups = titleGroups.slice(0, 10);
+        finishedGroups = titleGroups.slice(0, eternalFinishedLimit);
       }
 
       // Populate finished streams
@@ -2033,7 +2039,9 @@ const channelHandler = async (req: Request, res: Response) => {
         channel.avg_comments = Math.round(channel.total_comments / titleGroups.length);
       }
 
-      let eternalHourDayData: any[] = [];
+      // Heatmap data (comentado temporalmente ya que no se muestra en la UI)
+      const eternalHourDayData: any[] = [];
+      /*
       try {
         const heatmapRes = await p.query(
           `SELECT
@@ -2074,6 +2082,7 @@ const channelHandler = async (req: Request, res: Response) => {
       } catch {
         eternalHourDayData = [];
       }
+      */
 
       res.json({
         success: true,
@@ -2367,8 +2376,8 @@ const channelHandler = async (req: Request, res: Response) => {
          WHERE l.live <> 'live' AND c.channel_id = $1 
            AND (l.scrape_date >= '${OCT_2026_CUTOFF}' OR l.start_date >= '${OCT_2026_CUTOFF}')
            ${getBlockedTitleSqlClause('l.video_title')}
-         ORDER BY l.scrape_date DESC, l.video_id LIMIT 10`,
-        [channelId]
+         ORDER BY l.scrape_date DESC, l.video_id LIMIT $2`,
+        [channelId, standardSqlLimit]
       );
 
       const seenVideoIds = new Set<string>();
@@ -2383,7 +2392,7 @@ const channelHandler = async (req: Request, res: Response) => {
           uniqueStreams.push(stream);
         }
       }
-      finishedStreams = uniqueStreams.slice(0, 5);
+      finishedStreams = uniqueStreams.slice(0, standardFinishedLimit);
 
       const videoIds = [...new Set(finishedStreams.map((s) => s.video_id).filter(Boolean))];
       if (videoIds.length > 0) {
@@ -2534,8 +2543,9 @@ const channelHandler = async (req: Request, res: Response) => {
       // ignore
     }
 
-    // Heatmap hour-day data
-    let hourDayData: any[] = [];
+    // Heatmap hour-day data (comentado temporalmente ya que no se muestra en la UI)
+    const hourDayData: any[] = [];
+    /*
     try {
       const heatmapRes = await p.query(
         `SELECT
@@ -2576,6 +2586,7 @@ const channelHandler = async (req: Request, res: Response) => {
     } catch {
       hourDayData = [];
     }
+    */
 
     // 24h Average data (desactivado temporalmente ya que no se muestra en la UI)
     const avgData: any[] = [];
@@ -3818,6 +3829,24 @@ const detectAdsHandler = async (req: Request, res: Response) => {
   }
 
   if (req.method === 'DELETE' || sourceParams.action === 'delete') {
+    if (sourceParams.ad_id) {
+      const adId = String(sourceParams.ad_id).trim();
+      try {
+        const deleted = await deleteSingleAd(videoId, adId);
+        res.json({
+          success: true,
+          video_id: videoId,
+          ...deleted,
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          error: err.message || 'Error al borrar el anuncio.',
+        });
+      }
+      return;
+    }
+
     try {
       const deleted = await deleteVideoAdsCache(videoId);
       res.json({
