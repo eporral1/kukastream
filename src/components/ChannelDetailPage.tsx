@@ -13,13 +13,7 @@ import { ArrowLeft, ExternalLink, Calendar, Heart, Eye, MessageSquare, Users, Ra
 import { SITE_NAME } from '../config/site';
 import { trackEvent, updateSeoMeta } from '../utils/analytics';
 import { isStreamTitleBlocked } from '../config/streamFilters';
-
-const CHANNEL_ADMIN_TOKEN = '31415927';
-
-function hasChannelAdminToken(): boolean {
-  if (typeof window === 'undefined') return false;
-  return new URLSearchParams(window.location.search).get('token') === CHANNEL_ADMIN_TOKEN;
-}
+import { CHANNEL_ADMIN_TOKEN, hasChannelAdminToken } from '../utils/channelAdminToken';
 
 interface ChannelDetailPageProps {
   channel: Channel;

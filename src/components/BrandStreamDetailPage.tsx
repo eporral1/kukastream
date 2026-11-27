@@ -365,7 +365,7 @@ export const BrandStreamDetailPage: React.FC<BrandStreamDetailPageProps> = ({
             </div>
           </div>
 
-          {/* Video Embed, Synchronized Captions & Separated White/Black Ads List */}
+          {/* Video Embed & Separated White/Black Ads List (subtitles hidden on /brands) */}
           {detail.stream.video_id && (
             <StreamVideoWithCaptions
               videoId={detail.stream.video_id}
@@ -381,6 +381,8 @@ export const BrandStreamDetailPage: React.FC<BrandStreamDetailPageProps> = ({
               separateLightAdsPanel={true}
               alwaysShowAdsPanel={true}
               hideReanalyze={true}
+              hideSubtitles={true}
+              hideTranscriptButton={true}
             />
           )}
 

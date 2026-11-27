@@ -469,11 +469,19 @@ export async function listMeasuredBrandStreams(): Promise<{
       }
 
       if (matchedItems.length > 0) {
-        streams.push(...matchedItems);
-        for (const item of matchedItems) {
-          for (const b of item.unique_brands) {
-            globalBrandCount.set(b, (globalBrandCount.get(b) || 0) + 1);
-          }
+        // Keep only the single title emission with the most detected ads for this eternal video_id
+        matchedItems.sort((a, b) => {
+          if (b.ads_count !== a.ads_count) return b.ads_count - a.ads_count;
+          if (b.total_ad_seconds !== a.total_ad_seconds) return b.total_ad_seconds - a.total_ad_seconds;
+          if (b.peak_viewers !== a.peak_viewers) return b.peak_viewers - a.peak_viewers;
+          const aMs = parseDbTimestampMs(a.start_date) || 0;
+          const bMs = parseDbTimestampMs(b.start_date) || 0;
+          return bMs - aMs;
+        });
+        const bestItem = matchedItems[0];
+        streams.push(bestItem);
+        for (const b of bestItem.unique_brands) {
+          globalBrandCount.set(b, (globalBrandCount.get(b) || 0) + 1);
         }
       } else if (allAds.length > 0) {
         // Fallback: attach full video's measured ads to its most recent program group (or live row)

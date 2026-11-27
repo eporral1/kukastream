@@ -52,6 +52,7 @@ interface StreamVideoWithCaptionsProps {
   allowAnalyzeAds?: boolean;
   allowCaptionDownload?: boolean;
   hideTranscriptButton?: boolean;
+  hideSubtitles?: boolean;
   transcribeTriggerSeq?: number;
   onAdsStateChange?: (state: { count: number | null; loading: boolean }) => void;
   onCaptionsStateChange?: (state: {
@@ -316,6 +317,7 @@ export const StreamVideoWithCaptions: React.FC<StreamVideoWithCaptionsProps> = (
   allowAnalyzeAds = false,
   allowCaptionDownload = false,
   hideTranscriptButton = false,
+  hideSubtitles = false,
   transcribeTriggerSeq = 0,
   onAdsStateChange,
   onCaptionsStateChange,
@@ -913,7 +915,9 @@ export const StreamVideoWithCaptions: React.FC<StreamVideoWithCaptionsProps> = (
         setClockOffsetSec(0);
       }
     }
-    fetchCachedCaptions(false);
+    if (!hideSubtitles) {
+      fetchCachedCaptions(false);
+    }
 
     // Hydrate cached PNT analysis + DB-persisted clock_offset_sec if already analyzed (skip if parent already hydrated it)
     if (videoId && !initialAdsAnalysis) {
@@ -952,7 +956,7 @@ export const StreamVideoWithCaptions: React.FC<StreamVideoWithCaptionsProps> = (
         offsetSaveTimerRef.current = null;
       }
     };
-  }, [fetchCachedCaptions, videoId, defaultShowAdsPanel, initialAdsAnalysis]);
+  }, [fetchCachedCaptions, videoId, defaultShowAdsPanel, initialAdsAnalysis, hideSubtitles]);
 
   // Captions are loaded from DB cache on mount; fresh transcription downloads are ONLY triggered explicitly via admin button.
 
@@ -1036,7 +1040,7 @@ export const StreamVideoWithCaptions: React.FC<StreamVideoWithCaptionsProps> = (
         playerVars: {
           rel: 0,
           modestbranding: 1,
-          cc_load_policy: 1,
+          cc_load_policy: hideSubtitles ? 0 : 1,
           hl: 'es',
           playsinline: 1,
           enablejsapi: 1,
@@ -1095,7 +1099,7 @@ export const StreamVideoWithCaptions: React.FC<StreamVideoWithCaptionsProps> = (
         playerInstanceRef.current = null;
       }
     };
-  }, [videoId, isVideoVisible]);
+  }, [videoId, isVideoVisible, hideSubtitles]);
 
   // Build YouTube-width rolling caption lines once whenever downloaded cues update
   const captionLines = useMemo(() => buildYouTubeCaptionLines(cues), [cues]);
@@ -1370,7 +1374,7 @@ export const StreamVideoWithCaptions: React.FC<StreamVideoWithCaptionsProps> = (
           </div>
 
           {/* YouTube-Identical 2-Line Rolling Closed-Caption Stage directly attached below the video */}
-          {(cues.length > 0 || captionStatus === 'downloading' || allowCaptionDownload) && (
+          {!hideSubtitles && (cues.length > 0 || captionStatus === 'downloading' || allowCaptionDownload) && (
             <div className="px-4 py-3.5 min-h-[78px] flex flex-col items-center justify-center text-center bg-[#0f0f0f] border-t border-white/10">
               {rollingWindow.bottomLine ? (
                 <div className="flex flex-col items-center justify-center gap-0.5 max-w-3xl">
@@ -1568,7 +1572,8 @@ export const StreamVideoWithCaptions: React.FC<StreamVideoWithCaptionsProps> = (
                   </button>
                 )}
 
-              {!hideTranscriptButton &&
+              {!hideSubtitles &&
+                !hideTranscriptButton &&
                 (captionLines.length > 0 ? (
                   <button
                     type="button"
@@ -1622,7 +1627,7 @@ export const StreamVideoWithCaptions: React.FC<StreamVideoWithCaptionsProps> = (
           )}
 
           {/* Optional Expandable Full Synchronized Transcript */}
-          {showTranscriptList && captionLines.length > 0 && (
+          {!hideSubtitles && showTranscriptList && captionLines.length > 0 && (
             <div
               ref={captionsListRef}
               className="max-h-48 overflow-y-auto divide-y divide-gray-800/80 bg-gray-950 border-t border-white/10"

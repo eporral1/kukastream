@@ -71,7 +71,7 @@ export const BrandsPage: React.FC<BrandsPageProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<BrandsSortOption>('recent');
+  const [sortBy, setSortBy] = useState<BrandsSortOption>('ads');
   const [heroImgFailed, setHeroImgFailed] = useState<boolean>(false);
 
   const fetchMeasuredStreams = useCallback(async () => {
@@ -278,7 +278,7 @@ export const BrandsPage: React.FC<BrandsPageProps> = ({
         </div>
       </section>
 
-      {/* 2. Agency Benefits (Asymmetric Bento Grid, clean editorial numbering) */}
+      {/* 2. Agency Benefits (comentado temporalmente)
       <section className="space-y-6">
         <div className="max-w-2xl space-y-2">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
@@ -290,7 +290,6 @@ export const BrandsPage: React.FC<BrandsPageProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Card 01 (Wide) */}
           <div className="md:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 sm:p-7 flex flex-col justify-between space-y-4">
             <div className="space-y-2.5">
               <div className="text-xs font-mono font-bold text-blue-700">01.</div>
@@ -309,7 +308,6 @@ export const BrandsPage: React.FC<BrandsPageProps> = ({
             </div>
           </div>
 
-          {/* Card 02 (Narrow) */}
           <div className="md:col-span-1 bg-slate-950 text-white border border-slate-900 rounded-2xl p-6 sm:p-7 flex flex-col justify-between space-y-4">
             <div className="space-y-2.5">
               <div className="text-xs font-mono font-bold text-amber-400">02.</div>
@@ -327,7 +325,6 @@ export const BrandsPage: React.FC<BrandsPageProps> = ({
             </div>
           </div>
 
-          {/* Card 03 (Narrow) */}
           <div className="md:col-span-1 bg-white border border-slate-200 rounded-2xl p-6 sm:p-7 flex flex-col justify-between space-y-4">
             <div className="space-y-2.5">
               <div className="text-xs font-mono font-bold text-blue-700">03.</div>
@@ -344,7 +341,6 @@ export const BrandsPage: React.FC<BrandsPageProps> = ({
             </div>
           </div>
 
-          {/* Card 04 (Wide) */}
           <div className="md:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 sm:p-7 flex flex-col justify-between space-y-4">
             <div className="space-y-2.5">
               <div className="text-xs font-mono font-bold text-blue-700">04.</div>
@@ -364,6 +360,7 @@ export const BrandsPage: React.FC<BrandsPageProps> = ({
           </div>
         </div>
       </section>
+      */}
 
       {/* 3. Measured Emissions List (Stream cards with ONLY Avg Viewers & Ads Count) */}
       <section id="emisiones-auditadas" className="space-y-5 scroll-mt-20">
@@ -431,9 +428,9 @@ export const BrandsPage: React.FC<BrandsPageProps> = ({
             onChange={(e) => setSortBy(e.target.value as BrandsSortOption)}
             className="bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 shadow-2xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none cursor-pointer shrink-0"
           >
+            <option value="ads">Más anuncios medidos</option>
             <option value="recent">Más recientes</option>
             <option value="viewers">Mayor audiencia promedio</option>
-            <option value="ads">Más anuncios medidos</option>
           </select>
         </div>
 

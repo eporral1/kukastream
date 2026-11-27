@@ -512,407 +512,414 @@ export const VideoAdsPanel: React.FC<VideoAdsPanelProps> = ({
               : null;
             const isEditingBrand = editingBrandAdId === ad.id;
 
+            const hasAudienceViewers =
+              audience?.viewers !== null && audience?.viewers !== undefined;
+
             return (
               <div
                 key={ad.id}
                 className={
                   isDark
-                    ? `px-3.5 py-2.5 transition-colors ${
+                    ? `px-3.5 py-3 transition-colors ${
                         isActive
                           ? 'bg-amber-500/15 border-l-2 border-amber-400'
                           : 'hover:bg-gray-900/70'
                       }`
-                    : `p-3.5 rounded-xl border transition-colors ${
+                    : `p-3.5 sm:px-4 sm:py-3.5 rounded-xl border transition-colors ${
                         isActive
                           ? 'bg-amber-50 border-amber-300'
                           : 'bg-white border-gray-200 hover:border-gray-300'
                       }`
                 }
               >
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* Timestamp button (with optional per-row -10s / +10s adjustment) or YouTube link */}
-                    {onSeekToSecond ? (
-                      <div className="inline-flex items-center gap-1 shrink-0">
-                        {onAdjustAdTimestamp && (
-                          <button
-                            type="button"
-                            onClick={() => onAdjustAdTimestamp(ad.id, -10)}
-                            className={`font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded border transition-colors cursor-pointer whitespace-nowrap ${
-                              isDark
-                                ? 'bg-gray-900 hover:bg-gray-800 text-gray-300 border-gray-700'
-                                : 'bg-white hover:bg-gray-100 text-black border-gray-300'
-                            }`}
-                            title="Atrasar este anuncio 10 segundos (solo este renglón)"
-                          >
-                            -10s
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => onSeekToSecond(ad.start_sec)}
-                          className={`inline-flex items-center gap-1 font-mono text-[11px] font-bold px-2 py-0.5 rounded cursor-pointer transition-colors tabular-nums whitespace-nowrap ${
-                            isActive
-                              ? 'bg-amber-500 text-gray-950'
-                              : isDark
-                              ? 'bg-amber-500/20 hover:bg-amber-500/35 text-amber-200 border border-amber-400/30'
-                              : 'bg-amber-100 hover:bg-amber-200 text-black border border-amber-300'
-                          }`}
-                          title={`Ir al segundo ${formatOffsetTime(ad.start_sec)} en el video`}
-                        >
-                          <Play className="w-2.5 h-2.5 fill-current" />
-                          <span>{formatOffsetTime(ad.start_sec)}</span>
-                        </button>
-                        {onAdjustAdTimestamp && (
-                          <button
-                            type="button"
-                            onClick={() => onAdjustAdTimestamp(ad.id, 10)}
-                            className={`font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded border transition-colors cursor-pointer whitespace-nowrap ${
-                              isDark
-                                ? 'bg-gray-900 hover:bg-gray-800 text-gray-300 border-gray-700'
-                                : 'bg-white hover:bg-gray-100 text-black border-gray-300'
-                            }`}
-                            title="Adelantar este anuncio 10 segundos (solo este renglón)"
-                          >
-                            +10s
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <a
-                        href={`https://youtube.com/watch?v=${videoId}&t=${Math.max(0, Math.floor(ad.start_sec))}s`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 transition-colors"
-                        title="Abrir este anuncio exacto en YouTube"
-                      >
-                        <Play className="w-2.5 h-2.5 fill-current" />
-                        <span>{formatOffsetTime(ad.start_sec)}</span>
-                        <ExternalLink className="w-2.5 h-2.5 opacity-70" />
-                      </a>
-                    )}
-
-                    {/* Brand Name (inline editable when onRenameAdBrand is provided) */}
-                    {isEditingBrand && onRenameAdBrand ? (
-                      <div className="inline-flex items-center gap-1">
-                        <input
-                          type="text"
-                          value={editingBrandValue}
-                          onChange={(e) => setEditingBrandValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              commitEditingBrand(ad);
-                            } else if (e.key === 'Escape') {
-                              e.preventDefault();
-                              cancelEditingBrand();
-                            }
-                          }}
-                          autoFocus
-                          maxLength={120}
-                          aria-label="Editar nombre de marca"
-                          className={`text-xs sm:text-sm font-bold px-2 py-0.5 rounded border outline-none w-40 sm:w-52 ${
-                            isDark
-                              ? 'bg-gray-900 text-white border-amber-400 focus:ring-1 focus:ring-amber-400'
-                              : 'bg-white text-black border-blue-500 focus:ring-1 focus:ring-blue-500'
-                          }`}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => commitEditingBrand(ad)}
-                          className={`p-1 rounded border transition-colors cursor-pointer ${
-                            isDark
-                              ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/40 hover:bg-emerald-500/30'
-                              : 'bg-black text-white border-black hover:bg-neutral-800'
-                          }`}
-                          title="Guardar nombre de marca"
-                        >
-                          <Check className="w-3 h-3" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={cancelEditingBrand}
-                          className={`p-1 rounded border transition-colors cursor-pointer ${
-                            isDark
-                              ? 'bg-gray-800 text-gray-300 border-gray-700 hover:text-white'
-                              : 'bg-white text-black border-gray-300 hover:bg-gray-100'
-                          }`}
-                          title="Cancelar edición"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ) : onRenameAdBrand ? (
-                      <button
-                        type="button"
-                        onClick={() => startEditingBrand(ad)}
-                        className={`group/brand inline-flex items-center gap-1.5 text-sm font-bold text-left rounded px-1 -mx-1 transition-colors cursor-pointer ${
-                          isDark
-                            ? 'text-white hover:bg-white/10'
-                            : 'text-black hover:bg-gray-100'
-                        }`}
-                        title="Clic para editar el nombre de la marca"
-                      >
-                        <span>{ad.brand}</span>
-                        <Pencil
-                          className={`w-3 h-3 shrink-0 transition-opacity ${
-                            isDark
-                              ? 'text-gray-400 opacity-60 group-hover/brand:opacity-100'
-                              : 'text-neutral-500 opacity-60 group-hover/brand:opacity-100'
-                          }`}
-                        />
-                      </button>
-                    ) : (
-                      <span
-                        className={`text-sm font-bold ${
-                          isDark ? 'text-white' : 'text-black'
-                        }`}
-                      >
-                        {ad.brand}
-                      </span>
-                    )}
-
-                    {/* Ad Type Badge */}
-                    <span
-                      className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${getAdTypeStyle(
-                        ad.ad_type
-                      )}`}
-                    >
-                      {ad.ad_type}
-                    </span>
-
-                    {/* Category */}
-                    <span
-                      className={`inline-flex items-center gap-1 text-xs ${
-                        isDark ? 'text-gray-400' : 'text-neutral-700'
-                      }`}
-                    >
-                      <Tag className="w-3 h-3 opacity-70" />
-                      <span>{ad.category}</span>
-                    </span>
-                  </div>
-
-                  {/* Right metadata: duration + synced clock (with optional per-row clock controls) + synced audience */}
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span
-                      className={`font-mono ${isDark ? 'text-gray-400' : 'text-neutral-800'}`}
-                      title="Duración estimada del bloque publicitario"
-                    >
-                      ~{ad.duration_sec}s
-                    </span>
-
-                    {audience?.clockTimeLabel && (
-                      <div className="inline-flex items-center gap-1.5 flex-wrap">
-                        <span
-                          className={`inline-flex items-center gap-1 font-mono tabular-nums ${
-                            isDark ? 'text-gray-300' : 'text-black'
-                          }`}
-                          title="Hora real en que salió este anuncio"
-                        >
-                          <Clock className="w-3 h-3 opacity-70" />
-                          <span>{audience.clockTimeLabel}</span>
-                        </span>
-
-                        {onAdjustAdClockOffset && (
-                          <div
-                            className={`inline-flex items-center rounded border overflow-hidden font-mono text-[10px] ${
-                              isDark
-                                ? 'bg-black/50 border-white/10'
-                                : 'bg-white border-gray-300'
-                            }`}
-                            title="Ajustar el horario real y la audiencia únicamente para este anuncio"
-                          >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-5">
+                  {/* Left column: metadata, controls & truncated caption excerpt */}
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                      {/* Timestamp button (with optional per-row -10s / +10s adjustment) or YouTube link */}
+                      {onSeekToSecond ? (
+                        <div className="inline-flex items-center gap-1 shrink-0">
+                          {onAdjustAdTimestamp && (
                             <button
                               type="button"
-                              onClick={() => onAdjustAdClockOffset(ad.id, -3600)}
-                              className={`px-1.5 py-0.5 transition-colors cursor-pointer whitespace-nowrap ${
+                              onClick={() => onAdjustAdTimestamp(ad.id, -10)}
+                              className={`font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded border transition-colors cursor-pointer whitespace-nowrap ${
                                 isDark
-                                  ? 'text-gray-400 hover:text-white hover:bg-white/10'
-                                  : 'text-black hover:bg-gray-100'
+                                  ? 'bg-gray-900 hover:bg-gray-800 text-gray-300 border-gray-700'
+                                  : 'bg-white hover:bg-gray-100 text-black border-gray-300'
                               }`}
-                              title="Restar 1 hora solo a este anuncio"
-                            >
-                              -1h
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onAdjustAdClockOffset(ad.id, -60)}
-                              className={`px-1.5 py-0.5 border-l transition-colors cursor-pointer whitespace-nowrap ${
-                                isDark
-                                  ? 'border-white/10 text-gray-400 hover:text-white hover:bg-white/10'
-                                  : 'border-gray-200 text-black hover:bg-gray-100'
-                              }`}
-                              title="Restar 1 minuto solo a este anuncio"
-                            >
-                              -1m
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onAdjustAdClockOffset(ad.id, -10)}
-                              className={`px-1.5 py-0.5 border-l transition-colors cursor-pointer whitespace-nowrap ${
-                                isDark
-                                  ? 'border-white/10 text-gray-400 hover:text-white hover:bg-white/10'
-                                  : 'border-gray-200 text-black hover:bg-gray-100'
-                              }`}
-                              title="Restar 10 segundos solo a este anuncio"
+                              title="Atrasar este anuncio 10 segundos (solo este renglón)"
                             >
                               -10s
                             </button>
-                            {adClockOffset !== 0 && (
-                              <button
-                                type="button"
-                                onClick={() => onAdjustAdClockOffset(ad.id, null)}
-                                className={`px-1.5 py-0.5 border-l font-bold transition-colors cursor-pointer whitespace-nowrap tabular-nums ${
-                                  isDark
-                                    ? 'border-white/10 bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'
-                                    : 'border-gray-200 bg-amber-100 text-black hover:bg-amber-200'
-                                }`}
-                                title="Clic para volver el ajuste horario de este anuncio a 0s"
-                              >
-                                {formatSignedOffset(adClockOffset)}
-                              </button>
-                            )}
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => onSeekToSecond(ad.start_sec)}
+                            className={`inline-flex items-center gap-1 font-mono text-[11px] font-bold px-2 py-0.5 rounded cursor-pointer transition-colors tabular-nums whitespace-nowrap ${
+                              isActive
+                                ? 'bg-amber-500 text-gray-950'
+                                : isDark
+                                ? 'bg-amber-500/20 hover:bg-amber-500/35 text-amber-200 border border-amber-400/30'
+                                : 'bg-amber-100 hover:bg-amber-200 text-black border border-amber-300'
+                            }`}
+                            title={`Ir al segundo ${formatOffsetTime(ad.start_sec)} en el video`}
+                          >
+                            <Play className="w-2.5 h-2.5 fill-current" />
+                            <span>{formatOffsetTime(ad.start_sec)}</span>
+                          </button>
+                          {onAdjustAdTimestamp && (
                             <button
                               type="button"
-                              onClick={() => onAdjustAdClockOffset(ad.id, 10)}
-                              className={`px-1.5 py-0.5 border-l transition-colors cursor-pointer whitespace-nowrap ${
+                              onClick={() => onAdjustAdTimestamp(ad.id, 10)}
+                              className={`font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded border transition-colors cursor-pointer whitespace-nowrap ${
                                 isDark
-                                  ? 'border-white/10 text-gray-400 hover:text-white hover:bg-white/10'
-                                  : 'border-gray-200 text-black hover:bg-gray-100'
+                                  ? 'bg-gray-900 hover:bg-gray-800 text-gray-300 border-gray-700'
+                                  : 'bg-white hover:bg-gray-100 text-black border-gray-300'
                               }`}
-                              title="Sumar 10 segundos solo a este anuncio"
+                              title="Adelantar este anuncio 10 segundos (solo este renglón)"
                             >
                               +10s
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => onAdjustAdClockOffset(ad.id, 60)}
-                              className={`px-1.5 py-0.5 border-l transition-colors cursor-pointer whitespace-nowrap ${
-                                isDark
-                                  ? 'border-white/10 text-gray-400 hover:text-white hover:bg-white/10'
-                                  : 'border-gray-200 text-black hover:bg-gray-100'
-                              }`}
-                              title="Sumar 1 minuto solo a este anuncio"
-                            >
-                              +1m
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onAdjustAdClockOffset(ad.id, 3600)}
-                              className={`px-1.5 py-0.5 border-l transition-colors cursor-pointer whitespace-nowrap ${
-                                isDark
-                                  ? 'border-white/10 text-gray-400 hover:text-white hover:bg-white/10'
-                                  : 'border-gray-200 text-black hover:bg-gray-100'
-                              }`}
-                              title="Sumar 1 hora solo a este anuncio"
-                            >
-                              +1h
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                          )}
+                        </div>
+                      ) : (
+                        <a
+                          href={`https://youtube.com/watch?v=${videoId}&t=${Math.max(0, Math.floor(ad.start_sec))}s`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 transition-colors"
+                          title="Abrir este anuncio exacto en YouTube"
+                        >
+                          <Play className="w-2.5 h-2.5 fill-current" />
+                          <span>{formatOffsetTime(ad.start_sec)}</span>
+                          <ExternalLink className="w-2.5 h-2.5 opacity-70" />
+                        </a>
+                      )}
 
-                    {audience?.viewers !== null && audience?.viewers !== undefined && (
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-bold tabular-nums ${
-                          audience.clampedEdge
-                            ? isDark
-                              ? 'bg-amber-500/15 text-amber-200 border border-amber-400/40'
-                              : 'bg-amber-50 text-amber-900 border border-amber-300'
-                            : isDark
-                            ? 'bg-blue-500/20 text-blue-200 border border-blue-400/30'
-                            : 'bg-white text-black border border-gray-300'
-                        }`}
-                        title={
-                          audience.clampedEdge === 'after'
-                            ? `Sin mediciones registradas después de las ${audience.clampedLabel || audience.rangeEndLabel || ''} hs (curva medida: ${audience.rangeStartLabel || '?'}–${audience.rangeEndLabel || '?'}). Se muestra el último dato disponible.`
-                            : audience.clampedEdge === 'before'
-                            ? `Sin mediciones registradas antes de las ${audience.clampedLabel || audience.rangeStartLabel || ''} hs (curva medida: ${audience.rangeStartLabel || '?'}–${audience.rangeEndLabel || '?'}). Se muestra el primer dato disponible.`
-                            : audience.isInterpolated
-                            ? 'Audiencia estimada por interpolación lineal en el horario indicado'
-                            : 'Audiencia registrada en el horario indicado'
-                        }
-                      >
-                        <Users
-                          className={`w-3 h-3 ${
-                            audience.clampedEdge
-                              ? isDark
-                                ? 'text-amber-300'
-                                : 'text-amber-600'
-                              : isDark
-                              ? ''
-                              : 'text-blue-600'
-                          }`}
-                        />
-                        <span>{formatNumber(audience.viewers)}</span>
-                        {audience.clampedEdge && audience.clampedLabel && (
-                          <span
-                            className={`text-[10px] font-medium ${
-                              isDark ? 'text-amber-300/90' : 'text-amber-700'
-                            }`}
-                          >
-                            ({audience.clampedEdge === 'after' ? 'últ.' : '1er'} {audience.clampedLabel})
-                          </span>
-                        )}
-                      </span>
-                    )}
-
-                    {onDeleteSingleAd && (
-                      confirmDeleteAdId === ad.id ? (
+                      {/* Brand Name (inline editable when onRenameAdBrand is provided) */}
+                      {isEditingBrand && onRenameAdBrand ? (
                         <div className="inline-flex items-center gap-1">
+                          <input
+                            type="text"
+                            value={editingBrandValue}
+                            onChange={(e) => setEditingBrandValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                commitEditingBrand(ad);
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault();
+                                cancelEditingBrand();
+                              }
+                            }}
+                            autoFocus
+                            maxLength={120}
+                            aria-label="Editar nombre de marca"
+                            className={`text-xs sm:text-sm font-bold px-2 py-0.5 rounded border outline-none w-40 sm:w-52 ${
+                              isDark
+                                ? 'bg-gray-900 text-white border-amber-400 focus:ring-1 focus:ring-amber-400'
+                                : 'bg-white text-black border-blue-500 focus:ring-1 focus:ring-blue-500'
+                            }`}
+                          />
                           <button
                             type="button"
-                            onClick={() => {
-                              setConfirmDeleteAdId(null);
-                              onDeleteSingleAd(ad.id);
-                            }}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-rose-600 hover:bg-rose-700 text-white border border-rose-700 transition-colors cursor-pointer whitespace-nowrap"
-                            title="Confirmar borrado de este PNT"
+                            onClick={() => commitEditingBrand(ad)}
+                            className={`p-1 rounded border transition-colors cursor-pointer ${
+                              isDark
+                                ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/40 hover:bg-emerald-500/30'
+                                : 'bg-black text-white border-black hover:bg-neutral-800'
+                            }`}
+                            title="Guardar nombre de marca"
                           >
-                            <Trash2 className="w-3 h-3" />
-                            <span>Borrar</span>
+                            <Check className="w-3 h-3" />
                           </button>
                           <button
                             type="button"
-                            onClick={() => setConfirmDeleteAdId(null)}
+                            onClick={cancelEditingBrand}
                             className={`p-1 rounded border transition-colors cursor-pointer ${
                               isDark
                                 ? 'bg-gray-800 text-gray-300 border-gray-700 hover:text-white'
                                 : 'bg-white text-black border-gray-300 hover:bg-gray-100'
                             }`}
-                            title="Cancelar"
+                            title="Cancelar edición"
                           >
                             <X className="w-3 h-3" />
                           </button>
                         </div>
-                      ) : (
+                      ) : onRenameAdBrand ? (
                         <button
                           type="button"
-                          onClick={() => setConfirmDeleteAdId(ad.id)}
-                          className={`inline-flex items-center justify-center p-1 rounded border transition-colors cursor-pointer ${
+                          onClick={() => startEditingBrand(ad)}
+                          className={`group/brand inline-flex items-center gap-1.5 text-sm font-bold text-left rounded px-1 -mx-1 transition-colors cursor-pointer ${
                             isDark
-                              ? 'bg-gray-900 text-gray-400 border-gray-700 hover:bg-rose-500/20 hover:text-rose-200 hover:border-rose-400/40'
-                              : 'bg-white text-gray-500 border-gray-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300'
+                              ? 'text-white hover:bg-white/10'
+                              : 'text-black hover:bg-gray-100'
                           }`}
-                          title="Borrar este PNT"
-                          aria-label={`Borrar PNT ${ad.brand}`}
+                          title="Clic para editar el nombre de la marca"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>{ad.brand}</span>
+                          <Pencil
+                            className={`w-3 h-3 shrink-0 transition-opacity ${
+                              isDark
+                                ? 'text-gray-400 opacity-60 group-hover/brand:opacity-100'
+                                : 'text-neutral-500 opacity-60 group-hover/brand:opacity-100'
+                            }`}
+                          />
                         </button>
-                      )
-                    )}
-                  </div>
-                </div>
+                      ) : (
+                        <span
+                          className={`text-sm font-bold ${
+                            isDark ? 'text-white' : 'text-black'
+                          }`}
+                        >
+                          {ad.brand}
+                        </span>
+                      )}
 
-                {/* Literal caption excerpt */}
-                <p
-                  className={`text-xs sm:text-sm leading-relaxed italic ${
-                    isDark ? 'text-gray-300' : 'text-black'
-                  }`}
-                >
-                  “{ad.excerpt}”
-                </p>
+                      {/* Ad Type Badge */}
+                      <span
+                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${getAdTypeStyle(
+                          ad.ad_type
+                        )}`}
+                      >
+                        {ad.ad_type}
+                      </span>
+
+                      {/* Category */}
+                      <span
+                        className={`inline-flex items-center gap-1 text-xs ${
+                          isDark ? 'text-gray-400' : 'text-neutral-700'
+                        }`}
+                      >
+                        <Tag className="w-3 h-3 opacity-70" />
+                        <span>{ad.category}</span>
+                      </span>
+
+                      {/* Duration */}
+                      <span
+                        className={`font-mono text-xs ${isDark ? 'text-gray-400' : 'text-neutral-600'}`}
+                        title="Duración estimada del bloque publicitario"
+                      >
+                        ~{ad.duration_sec}s
+                      </span>
+
+                      {/* Real clock + optional per-row clock offset controls */}
+                      {audience?.clockTimeLabel && (
+                        <div className="inline-flex items-center gap-1.5 flex-wrap text-xs">
+                          <span
+                            className={`inline-flex items-center gap-1 font-mono tabular-nums ${
+                              isDark ? 'text-gray-300' : 'text-neutral-800'
+                            }`}
+                            title="Hora real en que salió este anuncio"
+                          >
+                            <Clock className="w-3 h-3 opacity-70" />
+                            <span>{audience.clockTimeLabel}</span>
+                          </span>
+
+                          {onAdjustAdClockOffset && (
+                            <div
+                              className={`inline-flex items-center rounded border overflow-hidden font-mono text-[10px] ${
+                                isDark
+                                  ? 'bg-black/50 border-white/10'
+                                  : 'bg-white border-gray-300'
+                              }`}
+                              title="Ajustar el horario real y la audiencia únicamente para este anuncio"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => onAdjustAdClockOffset(ad.id, -3600)}
+                                className={`px-1.5 py-0.5 transition-colors cursor-pointer whitespace-nowrap ${
+                                  isDark
+                                    ? 'text-gray-400 hover:text-white hover:bg-white/10'
+                                    : 'text-black hover:bg-gray-100'
+                                }`}
+                                title="Restar 1 hora solo a este anuncio"
+                              >
+                                -1h
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onAdjustAdClockOffset(ad.id, -60)}
+                                className={`px-1.5 py-0.5 border-l transition-colors cursor-pointer whitespace-nowrap ${
+                                  isDark
+                                    ? 'border-white/10 text-gray-400 hover:text-white hover:bg-white/10'
+                                    : 'border-gray-200 text-black hover:bg-gray-100'
+                                }`}
+                                title="Restar 1 minuto solo a este anuncio"
+                              >
+                                -1m
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onAdjustAdClockOffset(ad.id, -10)}
+                                className={`px-1.5 py-0.5 border-l transition-colors cursor-pointer whitespace-nowrap ${
+                                  isDark
+                                    ? 'border-white/10 text-gray-400 hover:text-white hover:bg-white/10'
+                                    : 'border-gray-200 text-black hover:bg-gray-100'
+                                }`}
+                                title="Restar 10 segundos solo a este anuncio"
+                              >
+                                -10s
+                              </button>
+                              {adClockOffset !== 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => onAdjustAdClockOffset(ad.id, null)}
+                                  className={`px-1.5 py-0.5 border-l font-bold transition-colors cursor-pointer whitespace-nowrap tabular-nums ${
+                                    isDark
+                                      ? 'border-white/10 bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'
+                                      : 'border-gray-200 bg-amber-100 text-black hover:bg-amber-200'
+                                  }`}
+                                  title="Clic para volver el ajuste horario de este anuncio a 0s"
+                                >
+                                  {formatSignedOffset(adClockOffset)}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => onAdjustAdClockOffset(ad.id, 10)}
+                                className={`px-1.5 py-0.5 border-l transition-colors cursor-pointer whitespace-nowrap ${
+                                  isDark
+                                    ? 'border-white/10 text-gray-400 hover:text-white hover:bg-white/10'
+                                    : 'border-gray-200 text-black hover:bg-gray-100'
+                                }`}
+                                title="Sumar 10 segundos solo a este anuncio"
+                              >
+                                +10s
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onAdjustAdClockOffset(ad.id, 60)}
+                                className={`px-1.5 py-0.5 border-l transition-colors cursor-pointer whitespace-nowrap ${
+                                  isDark
+                                    ? 'border-white/10 text-gray-400 hover:text-white hover:bg-white/10'
+                                    : 'border-gray-200 text-black hover:bg-gray-100'
+                                }`}
+                                title="Sumar 1 minuto solo a este anuncio"
+                              >
+                                +1m
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onAdjustAdClockOffset(ad.id, 3600)}
+                                className={`px-1.5 py-0.5 border-l transition-colors cursor-pointer whitespace-nowrap ${
+                                  isDark
+                                    ? 'border-white/10 text-gray-400 hover:text-white hover:bg-white/10'
+                                    : 'border-gray-200 text-black hover:bg-gray-100'
+                                }`}
+                                title="Sumar 1 hora solo a este anuncio"
+                              >
+                                +1h
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Literal caption excerpt — truncated cleanly before the right edge */}
+                    <p
+                      title={ad.excerpt}
+                      className={`text-xs sm:text-sm leading-snug italic truncate max-w-full sm:max-w-[92%] ${
+                        isDark ? 'text-gray-300' : 'text-neutral-700'
+                      }`}
+                    >
+                      “{ad.excerpt}”
+                    </p>
+                  </div>
+
+                  {/* Right column: Hero Concurrent Viewers metric + optional delete button */}
+                  {(hasAudienceViewers || onDeleteSingleAd) && (
+                    <div
+                      className={`shrink-0 flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 sm:border-l sm:pl-5 ${
+                        isDark ? 'border-white/10' : 'border-gray-200'
+                      }`}
+                    >
+                      {hasAudienceViewers && audience && (
+                        <div
+                          className={`flex flex-col items-start sm:items-end rounded-lg px-2.5 py-1.5 ${
+                            isDark
+                              ? 'bg-blue-500/15 border border-blue-400/30'
+                              : 'bg-blue-50/70 border border-blue-200/80'
+                          }`}
+                          title={
+                            audience.isInterpolated
+                              ? 'Audiencia estimada por interpolación lineal en el horario indicado'
+                              : 'Audiencia registrada en el horario indicado'
+                          }
+                        >
+                          <div className="inline-flex items-center gap-1.5">
+                            <Users
+                              className={`w-4 h-4 shrink-0 ${
+                                isDark ? 'text-blue-300' : 'text-blue-600'
+                              }`}
+                            />
+                            <span
+                              className={`text-xl sm:text-2xl font-black tabular-nums leading-none tracking-tight ${
+                                isDark ? 'text-blue-200' : 'text-blue-700'
+                              }`}
+                            >
+                              {formatNumber(audience.viewers!)}
+                            </span>
+                          </div>
+                          <span
+                            className={`text-[10px] font-semibold uppercase tracking-wide mt-0.5 leading-none ${
+                              isDark ? 'text-blue-300/80' : 'text-slate-500'
+                            }`}
+                          >
+                            espectadores
+                          </span>
+                        </div>
+                      )}
+
+                      {onDeleteSingleAd && (
+                        confirmDeleteAdId === ad.id ? (
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfirmDeleteAdId(null);
+                                onDeleteSingleAd(ad.id);
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-bold bg-rose-600 hover:bg-rose-700 text-white border border-rose-700 transition-colors cursor-pointer whitespace-nowrap"
+                              title="Confirmar borrado de este PNT"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Borrar</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteAdId(null)}
+                              className={`p-1 rounded border transition-colors cursor-pointer ${
+                                isDark
+                                  ? 'bg-gray-800 text-gray-300 border-gray-700 hover:text-white'
+                                  : 'bg-white text-black border-gray-300 hover:bg-gray-100'
+                              }`}
+                              title="Cancelar"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteAdId(ad.id)}
+                            className={`inline-flex items-center justify-center p-1.5 rounded border transition-colors cursor-pointer ${
+                              isDark
+                                ? 'bg-gray-900 text-gray-400 border-gray-700 hover:bg-rose-500/20 hover:text-rose-200 hover:border-rose-400/40'
+                                : 'bg-white text-gray-500 border-gray-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300'
+                            }`}
+                            title="Borrar este PNT"
+                            aria-label={`Borrar PNT ${ad.brand}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}

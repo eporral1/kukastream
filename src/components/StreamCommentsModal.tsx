@@ -9,6 +9,7 @@ import { HateSpeechAnalysisView } from './HateSpeechAnalysisView';
 import { HateSpeechAnalysisResult } from '../utils/hateSpeechAnalysis';
 import { VideoAdsPanel, VideoAdsAnalysis } from './VideoAdsPanel';
 import { trackEvent } from '../utils/analytics';
+import { hasChannelAdminToken } from '../utils/channelAdminToken';
 import {
   MessageSquare,
   X,
@@ -52,7 +53,7 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
       ? allowAnalyzeAds
       : typeof window !== 'undefined' &&
         window.location.pathname.startsWith('/channel/') &&
-        new URLSearchParams(window.location.search).get('token') === '31415927';
+        hasChannelAdminToken();
   const [activeTab, setActiveTab] = useState<ModalNavTab>('comments');
   const [filter, setFilter] = useState<FilterTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
