@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getPool } from '../src/utils/serverDb.ts';
-import { generateVideoHateSpeechAnalysis } from '../src/utils/serverPoliticalAnalysis.ts';
+import { getPool } from '../utils/serverDb.ts';
+import { generateVideoHateSpeechAnalysis } from '../utils/serverPoliticalAnalysis.ts';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');

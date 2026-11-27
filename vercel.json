@@ -5,27 +5,31 @@
   "rewrites": [
     {
       "source": "/sitemap.xml",
-      "destination": "/api/status?type=sitemap"
+      "destination": "/api/index?__endpoint=status&type=sitemap"
     },
     {
       "source": "/robots.txt",
-      "destination": "/api/status?type=robots"
+      "destination": "/api/index?__endpoint=status&type=robots"
     },
     {
       "source": "/api/channel/:id",
-      "destination": "/api/channel?id=:id"
+      "destination": "/api/index?__endpoint=channel&id=:id"
     },
     {
       "source": "/api/brands/:key",
-      "destination": "/api/brands?key=:key"
+      "destination": "/api/index?__endpoint=brands&key=:key"
+    },
+    {
+      "source": "/api/:endpoint",
+      "destination": "/api/index?__endpoint=:endpoint"
     },
     {
       "source": "/channels",
-      "destination": "/api/status?type=seo&route=channels"
+      "destination": "/api/index?__endpoint=status&type=seo&route=channels"
     },
     {
       "source": "/channel/:id*",
-      "destination": "/api/status?type=seo&route=channel&id=:id*"
+      "destination": "/api/index?__endpoint=status&type=seo&route=channel&id=:id*"
     },
     {
       "source": "/((?!api/).*)",

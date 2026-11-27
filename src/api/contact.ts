@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { executeQuery, getPool } from '../src/utils/serverDb.ts';
+import { executeQuery, getPool } from '../utils/serverDb.ts';
 
 function escapeHtml(str: string): string {
   return str

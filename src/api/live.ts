@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getPool, executeQuery, getCachedResponse, setCachedResponse } from '../src/utils/serverDb.ts';
-import { isStreamTitleBlocked, getBlockedTitleSqlClause } from '../src/config/streamFilters.ts';
+import { getPool, executeQuery, getCachedResponse, setCachedResponse } from '../utils/serverDb.ts';
+import { isStreamTitleBlocked, getBlockedTitleSqlClause } from '../config/streamFilters.ts';
 
 const OCT_2026_CUTOFF = '2026-10-31 23:59:59';
 

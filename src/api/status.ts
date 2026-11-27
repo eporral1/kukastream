@@ -1,15 +1,15 @@
 import fs from 'fs';
 import path from 'path';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getPool, executeQuery } from '../src/utils/serverDb.ts';
+import { getPool, executeQuery } from '../utils/serverDb.ts';
 import {
   generateSitemapXml,
   generateRobotsTxt,
   resolveBaseUrl,
   resolveRouteSeoMeta,
   applySeoToHtml,
-} from '../src/utils/sitemap.ts';
-import { INDEX_HTML_TEMPLATE } from '../src/utils/indexHtmlTemplate.ts';
+} from '../utils/sitemap.ts';
+import { INDEX_HTML_TEMPLATE } from '../utils/indexHtmlTemplate.ts';
 
 let cachedBaseHtml: string | null = INDEX_HTML_TEMPLATE || null;
 

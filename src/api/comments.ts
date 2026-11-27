@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getPool, executeQuery } from '../src/utils/serverDb.ts';
+import { getPool, executeQuery } from '../utils/serverDb.ts';
 
 const OCT_2026_CUTOFF = '2026-10-01 00:00:00';
 

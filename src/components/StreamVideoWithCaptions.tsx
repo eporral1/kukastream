@@ -282,6 +282,10 @@ interface SyncedAudienceState {
   clockTimeLabel: string | null;
   viewers: number | null;
   isInterpolated: boolean;
+  clampedEdge?: 'before' | 'after' | null;
+  clampedLabel?: string;
+  rangeStartLabel?: string;
+  rangeEndLabel?: string;
   prevLabel?: string;
   prevViewers?: number;
   nextLabel?: string;
@@ -1160,12 +1164,50 @@ export const StreamVideoWithCaptions: React.FC<StreamVideoWithCaptionsProps> = (
       const first = normalizedMeasurements[0];
       const last = normalizedMeasurements[normalizedMeasurements.length - 1];
 
-      if (targetMs <= first.tMs) {
-        return { targetMs, clockTimeLabel, viewers: Math.round(first.viewers), isInterpolated: false };
+      if (targetMs < first.tMs) {
+        return {
+          targetMs,
+          clockTimeLabel,
+          viewers: Math.round(first.viewers),
+          isInterpolated: false,
+          clampedEdge: 'before',
+          clampedLabel: first.label,
+          rangeStartLabel: first.label,
+          rangeEndLabel: last.label,
+        };
       }
 
-      if (targetMs >= last.tMs) {
-        return { targetMs, clockTimeLabel, viewers: Math.round(last.viewers), isInterpolated: false };
+      if (targetMs === first.tMs) {
+        return {
+          targetMs,
+          clockTimeLabel,
+          viewers: Math.round(first.viewers),
+          isInterpolated: false,
+          clampedEdge: null,
+        };
+      }
+
+      if (targetMs > last.tMs) {
+        return {
+          targetMs,
+          clockTimeLabel,
+          viewers: Math.round(last.viewers),
+          isInterpolated: false,
+          clampedEdge: 'after',
+          clampedLabel: last.label,
+          rangeStartLabel: first.label,
+          rangeEndLabel: last.label,
+        };
+      }
+
+      if (targetMs === last.tMs) {
+        return {
+          targetMs,
+          clockTimeLabel,
+          viewers: Math.round(last.viewers),
+          isInterpolated: false,
+          clampedEdge: null,
+        };
       }
 
       for (let i = 0; i < normalizedMeasurements.length - 1; i++) {

@@ -48,6 +48,10 @@ export interface AdAudienceSnapshot {
   clockTimeLabel: string | null;
   viewers: number | null;
   isInterpolated: boolean;
+  clampedEdge?: 'before' | 'after' | null;
+  clampedLabel?: string;
+  rangeStartLabel?: string;
+  rangeEndLabel?: string;
 }
 
 interface VideoAdsPanelProps {
@@ -809,18 +813,45 @@ export const VideoAdsPanel: React.FC<VideoAdsPanelProps> = ({
                     {audience?.viewers !== null && audience?.viewers !== undefined && (
                       <span
                         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-bold tabular-nums ${
-                          isDark
+                          audience.clampedEdge
+                            ? isDark
+                              ? 'bg-amber-500/15 text-amber-200 border border-amber-400/40'
+                              : 'bg-amber-50 text-amber-900 border border-amber-300'
+                            : isDark
                             ? 'bg-blue-500/20 text-blue-200 border border-blue-400/30'
                             : 'bg-white text-black border border-gray-300'
                         }`}
                         title={
-                          audience.isInterpolated
-                            ? 'Audiencia estimada por interpolación lineal en el inicio del anuncio'
-                            : 'Audiencia registrada en el inicio del anuncio'
+                          audience.clampedEdge === 'after'
+                            ? `Sin mediciones registradas después de las ${audience.clampedLabel || audience.rangeEndLabel || ''} hs (curva medida: ${audience.rangeStartLabel || '?'}–${audience.rangeEndLabel || '?'}). Se muestra el último dato disponible.`
+                            : audience.clampedEdge === 'before'
+                            ? `Sin mediciones registradas antes de las ${audience.clampedLabel || audience.rangeStartLabel || ''} hs (curva medida: ${audience.rangeStartLabel || '?'}–${audience.rangeEndLabel || '?'}). Se muestra el primer dato disponible.`
+                            : audience.isInterpolated
+                            ? 'Audiencia estimada por interpolación lineal en el horario indicado'
+                            : 'Audiencia registrada en el horario indicado'
                         }
                       >
-                        <Users className={`w-3 h-3 ${isDark ? '' : 'text-blue-600'}`} />
+                        <Users
+                          className={`w-3 h-3 ${
+                            audience.clampedEdge
+                              ? isDark
+                                ? 'text-amber-300'
+                                : 'text-amber-600'
+                              : isDark
+                              ? ''
+                              : 'text-blue-600'
+                          }`}
+                        />
                         <span>{formatNumber(audience.viewers)}</span>
+                        {audience.clampedEdge && audience.clampedLabel && (
+                          <span
+                            className={`text-[10px] font-medium ${
+                              isDark ? 'text-amber-300/90' : 'text-amber-700'
+                            }`}
+                          >
+                            ({audience.clampedEdge === 'after' ? 'últ.' : '1er'} {audience.clampedLabel})
+                          </span>
+                        )}
                       </span>
                     )}
                   </div>
