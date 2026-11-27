@@ -280,23 +280,43 @@ async function enrichEternalChannels(channels: any[]) {
         const totalAuthors = titleGroups.reduce((acc: number, g: any) => acc + (g.authors_delta || 0), 0);
         channel.avg_unique_commentators = Math.round(totalAuthors / titleGroups.length);
 
-        const validGroups = titleGroups.filter((g: any) => (g.max_viewers || 0) > 0);
+        const validGroups = titleGroups.filter((g: any) => (g.avg_viewers || g.max_viewers || 0) > 0);
         if (validGroups.length > 0) {
           channel.likes_per_viewer = Number(
             (
-              validGroups.reduce((acc: number, g: any) => acc + (g.likes_delta / g.max_viewers), 0) /
+              validGroups.reduce((acc: number, g: any) => acc + (g.likes_delta / (g.avg_viewers || g.max_viewers)), 0) /
               validGroups.length
-            ).toFixed(2)
+            ).toFixed(4)
           );
           channel.comments_per_viewer = Number(
             (
-              validGroups.reduce((acc: number, g: any) => acc + (g.comm_delta / g.max_viewers), 0) /
+              validGroups.reduce((acc: number, g: any) => acc + (g.comm_delta / (g.avg_viewers || g.max_viewers)), 0) /
               validGroups.length
-            ).toFixed(2)
+            ).toFixed(4)
           );
+          channel.chatters_per_viewer = Number(
+            (
+              validGroups.reduce((acc: number, g: any) => {
+                const denom = g.avg_viewers || g.max_viewers || 1;
+                return acc + Math.min(1, (g.authors_delta || 0) / denom);
+              }, 0) /
+              validGroups.length
+            ).toFixed(4)
+          );
+          const groupsWithAuthors = validGroups.filter((g: any) => (g.authors_delta || 0) > 0);
+          channel.comments_per_user = groupsWithAuthors.length > 0
+            ? Number(
+                (
+                  groupsWithAuthors.reduce((acc: number, g: any) => acc + (g.comm_delta / g.authors_delta), 0) /
+                  groupsWithAuthors.length
+                ).toFixed(2)
+              )
+            : 0;
         } else {
           channel.likes_per_viewer = 0;
           channel.comments_per_viewer = 0;
+          channel.chatters_per_viewer = 0;
+          channel.comments_per_user = 0;
         }
       } else {
         channel.avg_viewers = 0;
@@ -304,6 +324,8 @@ async function enrichEternalChannels(channels: any[]) {
         channel.avg_comments = 0;
         channel.likes_per_viewer = 0;
         channel.comments_per_viewer = 0;
+        channel.chatters_per_viewer = 0;
+        channel.comments_per_user = 0;
       }
     }
   } catch (err) {
@@ -347,14 +369,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const sortParam = (((req.query.sort || '') as string) || 'engagement').toLowerCase();
-  const cacheKey = 'api:channels:v6:7bdays';
+  const cacheKey = 'api:channels:v7:7bdays';
   const cached = getCachedResponse(cacheKey);
   if (cached && Array.isArray(cached.channels)) {
     const sortedChannels = [...cached.channels].sort((a: any, b: any) => {
       if (sortParam === 'viewers') return (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
       if (sortParam === 'likes') return (Number(b.avg_likes) || 0) - (Number(a.avg_likes) || 0);
-      if (sortParam === 'comments') return (Number(b.avg_comments) || 0) - (Number(a.avg_comments) || 0);
-      if (sortParam === 'chat_users') return (Number(b.avg_unique_commentators) || 0) - (Number(a.avg_unique_commentators) || 0);
+      if (sortParam === 'comments') return (Number(b.comments_per_user) || 0) - (Number(a.comments_per_user) || 0);
+      if (sortParam === 'chat_users') return (Number(b.chatters_per_viewer) || 0) - (Number(a.chatters_per_viewer) || 0);
       return (Number(b.engagement_score) || 0) - (Number(a.engagement_score) || 0) || (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
     });
     res.setHeader('Cache-Control', 'public, s-maxage=20, stale-while-revalidate=40');
@@ -377,9 +399,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           m.channel_id,
           m.video_id,
           MAX(m.concurrent_viewers) AS max_viewers,
+          COALESCE(ROUND(AVG(CASE WHEN m.concurrent_viewers > 0 THEN m.concurrent_viewers END)), MAX(m.concurrent_viewers), 0)::int AS avg_viewers,
           MAX(m.likes) AS max_likes,
           MAX(m.comments_count) AS max_comments,
-          COALESCE((ARRAY_AGG(m.authors_count ORDER BY m.scrape_date DESC, m.id DESC) FILTER (WHERE m.authors_count IS NOT NULL))[1], 0)::int AS last_authors_count
+          COALESCE((ARRAY_AGG(m.authors_count ORDER BY m.scrape_date DESC, m.id DESC) FILTER (WHERE m.authors_count IS NOT NULL))[1], 0)::int AS last_authors_count,
+          COALESCE(ROUND(AVG(CASE WHEN m.concurrent_viewers > 0 AND m.authors_count IS NOT NULL THEN LEAST(1.0, m.authors_count::numeric / m.concurrent_viewers) END), 4), 0)::numeric AS pt_chatters_ratio
         FROM public.minute m
         WHERE m.scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
           AND m.scrape_date::date IN (SELECT bday FROM last_7_business_days)
@@ -408,9 +432,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           COALESCE(rv.channel_id, vs.channel_id) AS channel_id,
           COALESCE(rv.video_id, vs.video_id) AS video_id,
           GREATEST(COALESCE(rv.max_viewers, 0), COALESCE(vs.max_viewers, 0)) AS max_viewers,
+          COALESCE(NULLIF(vs.avg_viewers, 0), GREATEST(COALESCE(rv.max_viewers, 0), COALESCE(vs.max_viewers, 0))) AS avg_viewers,
           GREATEST(COALESCE(vs.max_likes, 0), COALESCE(rv.max_likes, 0)) AS max_likes,
           COALESCE(vs.max_comments, 0) AS max_comments,
-          COALESCE(vs.last_authors_count, 0) AS unique_commentators
+          COALESCE(vs.last_authors_count, 0) AS unique_commentators,
+          COALESCE(vs.pt_chatters_ratio, 0) AS pt_chatters_ratio
         FROM recent_videos rv
         FULL OUTER JOIN video_stats vs
           ON rv.channel_id = vs.channel_id AND rv.video_id = vs.video_id
@@ -422,8 +448,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           COALESCE(ROUND(AVG(acv.max_likes)), 0)::int AS avg_likes,
           COALESCE(ROUND(AVG(acv.max_comments)), 0)::int AS avg_comments,
           COALESCE(ROUND(AVG(acv.unique_commentators)), 0)::int AS avg_unique_commentators,
-          COALESCE(ROUND(AVG(CASE WHEN acv.max_viewers > 0 THEN acv.max_likes::numeric / acv.max_viewers ELSE 0 END), 2), 0)::numeric AS likes_per_viewer,
-          COALESCE(ROUND(AVG(CASE WHEN acv.max_viewers > 0 THEN acv.max_comments::numeric / acv.max_viewers ELSE 0 END), 2), 0)::numeric AS comments_per_viewer
+          COALESCE(ROUND(AVG(CASE WHEN acv.avg_viewers > 0 THEN acv.max_likes::numeric / acv.avg_viewers ELSE 0 END), 4), 0)::numeric AS likes_per_viewer,
+          COALESCE(ROUND(AVG(CASE WHEN acv.avg_viewers > 0 THEN acv.max_comments::numeric / acv.avg_viewers ELSE 0 END), 4), 0)::numeric AS comments_per_viewer,
+          COALESCE(ROUND(AVG(
+            CASE
+              WHEN acv.unique_commentators >= acv.avg_viewers AND acv.pt_chatters_ratio > 0 THEN acv.pt_chatters_ratio
+              WHEN acv.avg_viewers > 0 THEN LEAST(1.0, acv.unique_commentators::numeric / acv.avg_viewers)
+              ELSE 0
+            END
+          ), 4), 0)::numeric AS chatters_per_viewer,
+          COALESCE(ROUND(AVG(CASE WHEN acv.unique_commentators > 0 THEN acv.max_comments::numeric / acv.unique_commentators ELSE NULL END), 2), 0)::numeric AS comments_per_user
         FROM all_channel_videos acv
         GROUP BY acv.channel_id
       )
@@ -434,7 +468,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         COALESCE(cs.avg_comments, 0)::int AS avg_comments,
         COALESCE(cs.avg_unique_commentators, 0)::int AS avg_unique_commentators,
         COALESCE(cs.likes_per_viewer, 0)::numeric AS likes_per_viewer,
-        COALESCE(cs.comments_per_viewer, 0)::numeric AS comments_per_viewer
+        COALESCE(cs.comments_per_viewer, 0)::numeric AS comments_per_viewer,
+        COALESCE(cs.chatters_per_viewer, 0)::numeric AS chatters_per_viewer,
+        COALESCE(cs.comments_per_user, 0)::numeric AS comments_per_user
       FROM public.channels c
       LEFT JOIN channel_stats cs ON cs.channel_id = c.channel_id
       WHERE c.active::text IN ('1', 'true')
@@ -484,7 +520,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           0::int AS avg_comments,
           0::int AS avg_unique_commentators,
           COALESCE(cr.likes_per_viewer, 0)::numeric AS likes_per_viewer,
-          COALESCE(cr.comments_per_viewer, 0)::numeric AS comments_per_viewer
+          COALESCE(cr.comments_per_viewer, 0)::numeric AS comments_per_viewer,
+          0::numeric AS chatters_per_viewer,
+          0::numeric AS comments_per_user
         FROM public.channels c
         LEFT JOIN channel_ratios cr ON cr.channel_id = c.channel_id
         WHERE c.active::text IN ('1', 'true')

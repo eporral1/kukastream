@@ -32,7 +32,7 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
   const [selectedTag, setSelectedTag] = useState<string>('all');
   const [selectedCommentsChannel, setSelectedCommentsChannel] = useState<Channel | null>(null);
   const [filterSuperchatsOnly, setFilterSuperchatsOnly] = useState<boolean>(false);
-  const [sortBy, setSortBy] = useState<ChannelSortOption>('engagement');
+  const [sortBy, setSortBy] = useState<ChannelSortOption>('viewers');
 
   const fetchChannels = useCallback(
     async (sort: ChannelSortOption) => {
@@ -106,23 +106,26 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
     });
 
     return list.sort((a, b) => {
-      if (sortBy === 'viewers') {
-        return (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
-      }
+      const aAvg = Number(a.avg_viewers) || 0;
+      const bAvg = Number(b.avg_viewers) || 0;
+      const aLikesRatio = a.likes_per_viewer !== undefined ? Number(a.likes_per_viewer) : (aAvg > 0 ? (Number(a.avg_likes || 0) / aAvg) : 0);
+      const bLikesRatio = b.likes_per_viewer !== undefined ? Number(b.likes_per_viewer) : (bAvg > 0 ? (Number(b.avg_likes || 0) / bAvg) : 0);
+      const aChatRatio = a.chatters_per_viewer !== undefined ? Math.min(1, Number(a.chatters_per_viewer)) : (aAvg > 0 ? Math.min(1, Number(a.avg_unique_commentators || 0) / aAvg) : 0);
+      const bChatRatio = b.chatters_per_viewer !== undefined ? Math.min(1, Number(b.chatters_per_viewer)) : (bAvg > 0 ? Math.min(1, Number(b.avg_unique_commentators || 0) / bAvg) : 0);
+      const aMsgsPerUser = a.comments_per_user !== undefined ? Number(a.comments_per_user) : (Number(a.avg_unique_commentators || 0) > 0 ? (Number(a.avg_comments || 0) / Number(a.avg_unique_commentators)) : 0);
+      const bMsgsPerUser = b.comments_per_user !== undefined ? Number(b.comments_per_user) : (Number(b.avg_unique_commentators || 0) > 0 ? (Number(b.avg_comments || 0) / Number(b.avg_unique_commentators)) : 0);
+
       if (sortBy === 'likes') {
-        return (Number(b.avg_likes) || 0) - (Number(a.avg_likes) || 0);
-      }
-      if (sortBy === 'comments') {
-        return (Number(b.avg_comments) || 0) - (Number(a.avg_comments) || 0);
+        return bLikesRatio - aLikesRatio || bAvg - aAvg;
       }
       if (sortBy === 'chat_users') {
-        return (Number(b.avg_unique_commentators) || 0) - (Number(a.avg_unique_commentators) || 0);
+        return bChatRatio - aChatRatio || bAvg - aAvg;
       }
-      // default: 'engagement'
-      return (
-        calculateChannelEngagement(b) - calculateChannelEngagement(a) ||
-        (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0)
-      );
+      if (sortBy === 'comments') {
+        return bMsgsPerUser - aMsgsPerUser || bAvg - aAvg;
+      }
+      // default: 'viewers'
+      return bAvg - aAvg;
     });
   }, [channels, searchQuery, selectedTag, filterSuperchatsOnly, sortBy]);
 
@@ -217,11 +220,9 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
               }}
               className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-bold text-gray-800 shadow-2xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none cursor-pointer"
             >
-              <option value="engagement">Engagement (mayor a menor)</option>
-              <option value="viewers">Espectador promedio (mayor a menor)</option>
-              <option value="likes">Likes por emisión (mayor a menor)</option>
-              <option value="comments">Mensajes por emisión (mayor a menor)</option>
-              <option value="chat_users">Usuarios chat por emisión (mayor a menor)</option>
+              <option value="viewers">Espectador promedio</option>
+              <option value="chat_users">Chatters / Espectadores</option>
+              <option value="comments">Mensajes / Usuario</option>
             </select>
           </div>
         </div>
@@ -251,7 +252,15 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
             {filteredChannels.slice(0, 10).map((channel, index) => {
             const hasSuperchats = (channel.superchats_count && channel.superchats_count > 0) ||
               (channel.comments_sample && channel.comments_sample.some(c => c.is_superchat));
-            const engagementScore = calculateChannelEngagement(channel);
+            const avgViewers = Number(channel.avg_viewers || 0);
+            const avgComments = Number(channel.avg_comments || 0);
+            const avgUnique = Number(channel.avg_unique_commentators || 0);
+            const channelChattersRatio = channel.chatters_per_viewer !== undefined
+              ? Math.min(1, Number(channel.chatters_per_viewer))
+              : (avgViewers > 0 ? Math.min(1, avgUnique / avgViewers) : 0);
+            const channelMsgsPerUser = channel.comments_per_user !== undefined
+              ? Number(channel.comments_per_user)
+              : (avgUnique > 0 ? (avgComments / avgUnique) : 0);
 
             return (
               <div
@@ -310,16 +319,6 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
                         </p>
 
                         <div className="mt-2.5 flex items-center space-x-2 flex-wrap gap-y-1">
-                          {/*<a
-                            href={`https://youtube.com/${channel.channel}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full text-xs font-medium transition-colors"
-                          >
-                            <span>{channel.channel}</span>
-                            <ExternalLink className="w-3 h-3" />
-                          </a>*/}
-
                           <button
                             onClick={() => onNavigateChannel(channel.channel)}
                             className="inline-flex items-center gap-1 bg-purple-100 hover:bg-purple-200 text-purple-800 px-3 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer"
@@ -351,50 +350,31 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
                       <div className="text-center min-w-[90px]">
                         <div className="text-xs text-gray-400 font-semibold mb-0.5">ESPECTADORES</div>
                         <div className="text-2xl font-black text-blue-600">
-                          {formatNumber(channel.avg_viewers)}
+                          {formatNumber(avgViewers)}
                         </div>
                         <div className="text-[10px] text-gray-500">PROMEDIO</div>
                       </div>
 
-                      {/* Likes por emisión */}
+                      {/* Chatters / Esp. */}
                       <div className="text-center min-w-[85px]">
-                        <div className="text-xs text-gray-400 font-semibold mb-0.5">LIKES</div>
-                        <div className="text-2xl font-black text-rose-500">
-                          {formatNumber(Math.max(0, channel.avg_likes || 0))}
-                        </div>
-                        <div className="text-[10px] text-gray-500 font-medium">POR EMISIÓN</div>
-                        {/* Decimal ratio comentado: {Number(channel.likes_per_viewer || 0).toFixed(2)}/esp */}
-                      </div>
-
-                      {/* Mensajes por emisión */}
-                      <div className="text-center min-w-[85px]">
-                        <div className="text-xs text-gray-400 font-semibold mb-0.5">MENSAJES</div>
-                        <div className="text-2xl font-black text-amber-500">
-                          {formatNumber(Math.max(0, channel.avg_comments || 0))}
-                        </div>
-                        <div className="text-[10px] text-gray-500 font-medium">POR EMISIÓN</div>
-                        {/* Decimal ratio comentado: {Number(channel.comments_per_viewer || 0).toFixed(2)}/esp */}
-                      </div>
-
-                      {/* Usuarios chat por emisión */}
-                      <div className="text-center min-w-[95px]">
-                        <div className="text-xs text-gray-400 font-semibold mb-0.5 whitespace-nowrap">USUARIOS CHAT</div>
+                        <div className="text-xs text-gray-400 font-semibold mb-0.5" title="Usuarios únicos en el chat / Espectadores">CHATTERS / ESP.</div>
                         <div className="text-2xl font-black text-emerald-600">
-                          {formatNumber(Math.max(0, channel.avg_unique_commentators || 0))}
+                          {channelChattersRatio > 0 ? `${(channelChattersRatio * 100).toFixed(1)}%` : '0%'}
                         </div>
-                        <div className="text-[10px] text-gray-500 font-medium">POR EMISIÓN</div>
+                        <div className="text-[10px] text-gray-500 font-medium">
+                          {formatNumber(avgUnique)} chatters
+                        </div>
                       </div>
 
-                      {/* Engagement Score */}
-                      <div
-                        className="text-center min-w-[85px] bg-indigo-50/70 px-3 py-1.5 rounded-xl border border-indigo-100"
-                        title="Índice de Engagement del canal (0-100): combina espectadores (75%), % usuarios en chat (13%), % likes (6%) y mensajes/espectador (6%)"
-                      >
-                        <div className="text-[11px] text-indigo-600 font-bold mb-0.5">ENGAGEMENT</div>
-                        <div className="text-2xl font-black text-indigo-700">
-                          {engagementScore.toFixed(1)}
+                      {/* Mensajes / Usuario */}
+                      <div className="text-center min-w-[85px]">
+                        <div className="text-xs text-gray-400 font-semibold mb-0.5" title="Mensajes / Usuarios únicos de chat">MENSAJES / ESP.</div>
+                        <div className="text-2xl font-black text-amber-500">
+                          {channelMsgsPerUser > 0 ? channelMsgsPerUser.toFixed(2) : '0.00'}
                         </div>
-                        <div className="text-[10px] text-indigo-500 font-semibold">PUNTOS</div>
+                        <div className="text-[10px] text-gray-500 font-medium">
+                          {formatNumber(avgComments)} mensajes
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -441,24 +421,18 @@ export const ChannelsPage: React.FC<ChannelsPageProps> = ({
                         </p>
 
                         <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-50 flex-wrap gap-2">
-                          <div className="flex items-center space-x-2">
+                          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                             <div className="flex items-center space-x-1 text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200/60">
                               <Radio className="w-3 h-3" />
                               <span className="text-xs font-bold">
-                                {formatNumber(channel.avg_viewers)}
+                                {formatNumber(avgViewers)} esp
                               </span>
                             </div>
-                            <div className="text-xs font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200/60" title="Likes promedio por emisión">
-                              ❤️ {formatNumber(Math.max(0, channel.avg_likes || 0))}
+                            <div className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60" title="Chatters / Espectadores">
+                              👥 {channelChattersRatio > 0 ? `${(channelChattersRatio * 100).toFixed(1)}%` : '0%'} esp ({formatNumber(avgUnique)} chatters)
                             </div>
-                            <div className="text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/60" title="Mensajes promedio por emisión">
-                              💬 {formatNumber(Math.max(0, channel.avg_comments || 0))}
-                            </div>
-                            <div className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60" title="Usuarios en el chat promedio por emisión">
-                              👥 {formatNumber(Math.max(0, channel.avg_unique_commentators || 0))}
-                            </div>
-                            <div className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200/80" title="Índice de Engagement del canal (0-100)">
-                              ⚡ {engagementScore.toFixed(1)} pts
+                            <div className="text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/60" title="Mensajes / Usuario">
+                              💬 {channelMsgsPerUser > 0 ? channelMsgsPerUser.toFixed(2) : '0.00'} msgs/usr ({formatNumber(avgComments)})
                             </div>
                           </div>
 

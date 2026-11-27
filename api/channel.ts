@@ -664,6 +664,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         channel.superchats_count = channel.superchats_count || 0;
       }
 
+      // Fetch first measurement timestamp (MIN(scrape_date)) per video_id so eternal channel captions/ads align to video start
+      const eternalVideoFirstMeasurementMap: Record<string, string> = {};
+      try {
+        const eternalVidIds = Array.from(
+          new Set(titleGroups.slice(0, 12).map((g: any) => g.video_id).filter(Boolean))
+        );
+        if (eternalVidIds.length > 0) {
+          const firstMeasRes = await executeQuery(
+            `SELECT video_id, MIN(scrape_date) AS first_measurement
+             FROM public.minute
+             WHERE channel_id = $1 AND video_id = ANY($2)
+             GROUP BY video_id`,
+            [channelId, eternalVidIds]
+          );
+          for (const row of firstMeasRes.rows || []) {
+            if (row.video_id && row.first_measurement) {
+              eternalVideoFirstMeasurementMap[row.video_id] = row.first_measurement;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Error fetching first measurement per video_id for eternal channel:', e);
+      }
+
       // Separate live stream from past streams
       let liveStreamObj: any = null;
       let finishedGroups: any[] = [];
@@ -772,6 +796,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           comments_count: liveFinalComments,
           unique_commentators: Number(topLiveGroup.authors_delta || 0),
           start_date: topLiveGroup.start_time,
+          video_start_date: eternalVideoFirstMeasurementMap[topLiveGroup.video_id] || topLiveGroup.start_time,
           scrape_date: topLiveGroup.end_time,
           data: liveMinutePoints,
           superchats: liveSuperchats,
@@ -883,6 +908,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           comments_count: finalStreamComments,
           unique_commentators: Number(group.authors_delta || 0),
           start_date: group.start_time,
+          video_start_date: eternalVideoFirstMeasurementMap[group.video_id] || group.start_time,
           scrape_date: group.end_time,
           data: streamPoints,
           superchats: showSuperchats,

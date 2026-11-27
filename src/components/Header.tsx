@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RefreshCw, Radio, Menu, X, Share2, DollarSign, Swords, Bot } from 'lucide-react';
+import { RefreshCw, Radio, Menu, X, Share2, DollarSign, Swords, Bot, Megaphone } from 'lucide-react';
 import { SITE_NAME } from '../config/site';
 
 interface HeaderProps {
@@ -142,6 +142,21 @@ export const Header: React.FC<HeaderProps> = ({
                 <Swords className="w-4 h-4 text-indigo-500" />
                 <span>Face-Off</span>
               </a>
+              {/*<a
+                href="/brands"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleNav('/brands');
+                }}
+                className={`font-medium transition-colors px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+                  currentPath === '/brands' || currentPath.startsWith('/brands/')
+                    ? 'text-slate-950 bg-slate-100 font-bold border border-slate-300 shadow-2xs'
+                    : 'text-gray-700 hover:text-blue-600 hover:bg-gray-50'
+                }`}
+              >
+                <Megaphone className="w-4 h-4 text-amber-600" />
+                <span>Brands</span>
+              </a>*/}
             </nav>
 
             {/* Live Indicator */}
@@ -252,6 +267,17 @@ export const Header: React.FC<HeaderProps> = ({
               <Swords className="w-4 h-4 text-indigo-500" />
               <span>Face-Off (Duelo Cara a Cara)</span>
             </button>
+            {/*<button
+              onClick={() => handleNav('/brands')}
+              className={`w-full text-left block px-3 py-2 rounded-md font-medium text-sm flex items-center gap-2 ${
+                currentPath === '/brands' || currentPath.startsWith('/brands/')
+                  ? 'text-slate-950 bg-slate-100 font-bold'
+                  : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <Megaphone className="w-4 h-4 text-amber-600" />
+              <span>Brands (Auditoría de Pauta)</span>
+            </button>*/}
             <button
               onClick={() => {
                 onOpenSocialModal();

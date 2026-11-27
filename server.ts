@@ -17,6 +17,18 @@ import {
 import { fetchGlobalCrossChannelCommentators } from './src/utils/serverCommentators.ts';
 import { generateVideoHateSpeechAnalysis } from './src/utils/serverPoliticalAnalysis.ts';
 import { calculateChannelEngagement, calculateStreamEngagement } from './src/utils/engagement.ts';
+import { getVideoCaptions } from './src/utils/serverVideoCaptions.ts';
+import {
+  detectVideoAds,
+  getCachedVideoAds,
+  updateVideoAdsClockOffset,
+  updateSingleAd,
+  deleteVideoAdsCache,
+} from './src/utils/serverAdDetector.ts';
+import {
+  listMeasuredBrandStreams,
+  getBrandStreamDetail,
+} from './src/utils/serverBrands.ts';
 
 dotenv.config();
 
@@ -580,23 +592,43 @@ async function enrichEternalChannels(channels: any[], p: any) {
         const totalAuthors = titleGroups.reduce((acc: number, g: any) => acc + (g.authors_delta || 0), 0);
         channel.avg_unique_commentators = Math.round(totalAuthors / titleGroups.length);
 
-        const validGroups = titleGroups.filter((g: any) => (g.max_viewers || 0) > 0);
+        const validGroups = titleGroups.filter((g: any) => (g.avg_viewers || g.max_viewers || 0) > 0);
         if (validGroups.length > 0) {
           channel.likes_per_viewer = Number(
             (
-              validGroups.reduce((acc: number, g: any) => acc + (g.likes_delta / g.max_viewers), 0) /
+              validGroups.reduce((acc: number, g: any) => acc + (g.likes_delta / (g.avg_viewers || g.max_viewers)), 0) /
               validGroups.length
-            ).toFixed(2)
+            ).toFixed(4)
           );
           channel.comments_per_viewer = Number(
             (
-              validGroups.reduce((acc: number, g: any) => acc + (g.comm_delta / g.max_viewers), 0) /
+              validGroups.reduce((acc: number, g: any) => acc + (g.comm_delta / (g.avg_viewers || g.max_viewers)), 0) /
               validGroups.length
-            ).toFixed(2)
+            ).toFixed(4)
           );
+          channel.chatters_per_viewer = Number(
+            (
+              validGroups.reduce((acc: number, g: any) => {
+                const denom = g.avg_viewers || g.max_viewers || 1;
+                return acc + Math.min(1, (g.authors_delta || 0) / denom);
+              }, 0) /
+              validGroups.length
+            ).toFixed(4)
+          );
+          const groupsWithAuthors = validGroups.filter((g: any) => (g.authors_delta || 0) > 0);
+          channel.comments_per_user = groupsWithAuthors.length > 0
+            ? Number(
+                (
+                  groupsWithAuthors.reduce((acc: number, g: any) => acc + (g.comm_delta / g.authors_delta), 0) /
+                  groupsWithAuthors.length
+                ).toFixed(2)
+              )
+            : 0;
         } else {
           channel.likes_per_viewer = 0;
           channel.comments_per_viewer = 0;
+          channel.chatters_per_viewer = 0;
+          channel.comments_per_user = 0;
         }
       } else {
         channel.avg_viewers = 0;
@@ -604,6 +636,8 @@ async function enrichEternalChannels(channels: any[], p: any) {
         channel.avg_comments = 0;
         channel.likes_per_viewer = 0;
         channel.comments_per_viewer = 0;
+        channel.chatters_per_viewer = 0;
+        channel.comments_per_user = 0;
       }
     }
   } catch (err) {
@@ -835,7 +869,7 @@ app.get('/api/channels', async (req: Request, res: Response) => {
   }
 
   const sortParam = (((req.query.sort || '') as string) || 'engagement').toLowerCase();
-  const cacheKey = `channels:v3:${sortParam}`;
+  const cacheKey = `channels:v4:${sortParam}`;
   const cachedPayload = getCachedResponse(cacheKey);
   if (cachedPayload) {
     res.json(cachedPayload);
@@ -858,9 +892,11 @@ app.get('/api/channels', async (req: Request, res: Response) => {
           m.channel_id,
           m.video_id,
           MAX(m.concurrent_viewers) AS max_viewers,
+          COALESCE(ROUND(AVG(CASE WHEN m.concurrent_viewers > 0 THEN m.concurrent_viewers END)), MAX(m.concurrent_viewers), 0)::int AS avg_viewers,
           MAX(m.likes) AS max_likes,
           MAX(m.comments_count) AS max_comments,
-          COALESCE((ARRAY_AGG(m.authors_count ORDER BY m.scrape_date DESC, m.id DESC) FILTER (WHERE m.authors_count IS NOT NULL))[1], 0)::int AS last_authors_count
+          COALESCE((ARRAY_AGG(m.authors_count ORDER BY m.scrape_date DESC, m.id DESC) FILTER (WHERE m.authors_count IS NOT NULL))[1], 0)::int AS last_authors_count,
+          COALESCE(ROUND(AVG(CASE WHEN m.concurrent_viewers > 0 AND m.authors_count IS NOT NULL THEN LEAST(1.0, m.authors_count::numeric / m.concurrent_viewers) END), 4), 0)::numeric AS pt_chatters_ratio
         FROM public.minute m
         WHERE m.scrape_date >= COALESCE((SELECT MIN(bday)::timestamp FROM last_7_business_days), '${OCT_2026_CUTOFF}'::timestamp)
           AND m.scrape_date::date IN (SELECT bday FROM last_7_business_days)
@@ -889,9 +925,11 @@ app.get('/api/channels', async (req: Request, res: Response) => {
           COALESCE(rv.channel_id, vs.channel_id) AS channel_id,
           COALESCE(rv.video_id, vs.video_id) AS video_id,
           GREATEST(COALESCE(rv.max_viewers, 0), COALESCE(vs.max_viewers, 0)) AS max_viewers,
+          COALESCE(NULLIF(vs.avg_viewers, 0), GREATEST(COALESCE(rv.max_viewers, 0), COALESCE(vs.max_viewers, 0))) AS avg_viewers,
           GREATEST(COALESCE(vs.max_likes, 0), COALESCE(rv.max_likes, 0)) AS max_likes,
           COALESCE(vs.max_comments, 0) AS max_comments,
-          COALESCE(vs.last_authors_count, 0) AS unique_commentators
+          COALESCE(vs.last_authors_count, 0) AS unique_commentators,
+          COALESCE(vs.pt_chatters_ratio, 0) AS pt_chatters_ratio
         FROM recent_videos rv
         FULL OUTER JOIN video_stats vs
           ON rv.channel_id = vs.channel_id AND rv.video_id = vs.video_id
@@ -903,8 +941,16 @@ app.get('/api/channels', async (req: Request, res: Response) => {
           COALESCE(ROUND(AVG(acv.max_likes)), 0)::int AS avg_likes,
           COALESCE(ROUND(AVG(acv.max_comments)), 0)::int AS avg_comments,
           COALESCE(ROUND(AVG(acv.unique_commentators)), 0)::int AS avg_unique_commentators,
-          COALESCE(ROUND(AVG(CASE WHEN acv.max_viewers > 0 THEN acv.max_likes::numeric / acv.max_viewers ELSE 0 END), 2), 0)::numeric AS likes_per_viewer,
-          COALESCE(ROUND(AVG(CASE WHEN acv.max_viewers > 0 THEN acv.max_comments::numeric / acv.max_viewers ELSE 0 END), 2), 0)::numeric AS comments_per_viewer
+          COALESCE(ROUND(AVG(CASE WHEN acv.avg_viewers > 0 THEN acv.max_likes::numeric / acv.avg_viewers ELSE 0 END), 4), 0)::numeric AS likes_per_viewer,
+          COALESCE(ROUND(AVG(CASE WHEN acv.avg_viewers > 0 THEN acv.max_comments::numeric / acv.avg_viewers ELSE 0 END), 4), 0)::numeric AS comments_per_viewer,
+          COALESCE(ROUND(AVG(
+            CASE
+              WHEN acv.unique_commentators >= acv.avg_viewers AND acv.pt_chatters_ratio > 0 THEN acv.pt_chatters_ratio
+              WHEN acv.avg_viewers > 0 THEN LEAST(1.0, acv.unique_commentators::numeric / acv.avg_viewers)
+              ELSE 0
+            END
+          ), 4), 0)::numeric AS chatters_per_viewer,
+          COALESCE(ROUND(AVG(CASE WHEN acv.unique_commentators > 0 THEN acv.max_comments::numeric / acv.unique_commentators ELSE NULL END), 2), 0)::numeric AS comments_per_user
         FROM all_channel_videos acv
         GROUP BY acv.channel_id
       )
@@ -915,7 +961,9 @@ app.get('/api/channels', async (req: Request, res: Response) => {
         COALESCE(cs.avg_comments, 0)::int AS avg_comments,
         COALESCE(cs.avg_unique_commentators, 0)::int AS avg_unique_commentators,
         COALESCE(cs.likes_per_viewer, 0)::numeric AS likes_per_viewer,
-        COALESCE(cs.comments_per_viewer, 0)::numeric AS comments_per_viewer
+        COALESCE(cs.comments_per_viewer, 0)::numeric AS comments_per_viewer,
+        COALESCE(cs.chatters_per_viewer, 0)::numeric AS chatters_per_viewer,
+        COALESCE(cs.comments_per_user, 0)::numeric AS comments_per_user
       FROM public.channels c
       LEFT JOIN channel_stats cs ON cs.channel_id = c.channel_id
       WHERE c.active::text IN ('1', 'true')
@@ -965,7 +1013,9 @@ app.get('/api/channels', async (req: Request, res: Response) => {
           0::int AS avg_comments,
           0::int AS avg_unique_commentators,
           COALESCE(cr.likes_per_viewer, 0)::numeric AS likes_per_viewer,
-          COALESCE(cr.comments_per_viewer, 0)::numeric AS comments_per_viewer
+          COALESCE(cr.comments_per_viewer, 0)::numeric AS comments_per_viewer,
+          0::numeric AS chatters_per_viewer,
+          0::numeric AS comments_per_user
         FROM public.channels c
         LEFT JOIN channel_ratios cr ON cr.channel_id = c.channel_id
         WHERE c.active::text IN ('1', 'true')
@@ -981,8 +1031,8 @@ app.get('/api/channels', async (req: Request, res: Response) => {
       result.rows.sort((a: any, b: any) => {
         if (sortParam === 'viewers') return (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
         if (sortParam === 'likes') return (Number(b.avg_likes) || 0) - (Number(a.avg_likes) || 0);
-        if (sortParam === 'comments') return (Number(b.avg_comments) || 0) - (Number(a.avg_comments) || 0);
-        if (sortParam === 'chat_users') return (Number(b.avg_unique_commentators) || 0) - (Number(a.avg_unique_commentators) || 0);
+        if (sortParam === 'comments') return (Number(b.comments_per_user) || 0) - (Number(a.comments_per_user) || 0);
+        if (sortParam === 'chat_users') return (Number(b.chatters_per_viewer) || 0) - (Number(a.chatters_per_viewer) || 0);
         return (Number(b.engagement_score) || 0) - (Number(a.engagement_score) || 0) || (Number(b.avg_viewers) || 0) - (Number(a.avg_viewers) || 0);
       });
     }
@@ -1037,6 +1087,14 @@ app.get('/api/streams', async (req: Request, res: Response) => {
         c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter, c.type,
         COALESCE(comm.comments_count, 0)::int as comments_count,
         COALESCE(comm.unique_commentators, 0)::int as unique_commentators,
+        CASE
+          WHEN COALESCE(comm.unique_commentators, 0) >= COALESCE(NULLIF(v_avg.avg_viewers, 0), sub.old_viewers, sub.concurrent_viewers, 0)
+               AND COALESCE(v_avg.pt_chatters_ratio, 0) > 0
+            THEN v_avg.pt_chatters_ratio
+          WHEN COALESCE(NULLIF(v_avg.avg_viewers, 0), sub.old_viewers, sub.concurrent_viewers, 0) > 0
+            THEN ROUND(LEAST(1.0, COALESCE(comm.unique_commentators, 0)::numeric / COALESCE(NULLIF(v_avg.avg_viewers, 0), sub.old_viewers, sub.concurrent_viewers, 1)), 4)
+          ELSE 0
+        END::numeric as chatters_per_viewer,
         0::numeric as superchats_total,
         0::int as superchats_count
       FROM (
@@ -1061,6 +1119,7 @@ app.get('/api/streams', async (req: Request, res: Response) => {
         -- Promedio con umbral sobre el pico (descarta placa previa / arranque en 0 < 20% del pico):
         WITH m_pts AS (
           SELECT m.concurrent_viewers,
+                 m.authors_count,
                  MAX(m.concurrent_viewers) OVER () AS peak_viewers
           FROM public.minute m 
           WHERE m.video_id = sub.video_id AND m.concurrent_viewers > 0
@@ -1070,7 +1129,11 @@ app.get('/api/streams', async (req: Request, res: Response) => {
           ROUND(AVG(CASE WHEN concurrent_viewers >= (peak_viewers * 0.20) THEN concurrent_viewers END)),
           ROUND(AVG(concurrent_viewers)),
           0
-        )::int AS avg_viewers
+        )::int AS avg_viewers,
+        COALESCE(
+          ROUND(AVG(CASE WHEN concurrent_viewers > 0 AND authors_count IS NOT NULL THEN LEAST(1.0, authors_count::numeric / concurrent_viewers) END), 4),
+          0
+        )::numeric AS pt_chatters_ratio
         FROM m_pts
       ) v_avg ON true
       LEFT JOIN LATERAL (
@@ -1287,6 +1350,7 @@ app.get('/api/streams', async (req: Request, res: Response) => {
               old_likes: group.min_likes,
               comments_count: group.comm_delta,
               unique_commentators: Number(group.authors_delta || 0),
+              chatters_per_viewer: group.avg_viewers > 0 ? Math.min(1, Number((Number(group.authors_delta || 0) / group.avg_viewers).toFixed(4))) : 0,
               start_date: group.start_time,
               scrape_date: group.end_time,
               superchats_total: 0,
@@ -1705,6 +1769,30 @@ const channelHandler = async (req: Request, res: Response) => {
         channel.superchats_count = channel.superchats_count || 0;
       }
 
+      // Fetch first measurement timestamp (MIN(scrape_date)) per video_id so eternal channel captions/ads align to video start
+      const eternalVideoFirstMeasurementMap: Record<string, string> = {};
+      try {
+        const eternalVidIds = Array.from(
+          new Set(titleGroups.slice(0, 12).map((g: any) => g.video_id).filter(Boolean))
+        );
+        if (eternalVidIds.length > 0) {
+          const firstMeasRes = await p.query(
+            `SELECT video_id, MIN(scrape_date) AS first_measurement
+             FROM public.minute
+             WHERE channel_id = $1 AND video_id = ANY($2)
+             GROUP BY video_id`,
+            [channelId, eternalVidIds]
+          );
+          for (const row of firstMeasRes.rows || []) {
+            if (row.video_id && row.first_measurement) {
+              eternalVideoFirstMeasurementMap[row.video_id] = row.first_measurement;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Error fetching first measurement per video_id for eternal channel:', e);
+      }
+
       // Separate live stream from past streams
       let liveStreamObj: any = null;
       let finishedGroups: any[] = [];
@@ -1813,6 +1901,7 @@ const channelHandler = async (req: Request, res: Response) => {
           comments_count: liveFinalComments,
           unique_commentators: Number(topLiveGroup.authors_delta || 0),
           start_date: topLiveGroup.start_time,
+          video_start_date: eternalVideoFirstMeasurementMap[topLiveGroup.video_id] || topLiveGroup.start_time,
           scrape_date: topLiveGroup.end_time,
           data: liveMinutePoints,
           superchats: liveSuperchats,
@@ -1924,6 +2013,7 @@ const channelHandler = async (req: Request, res: Response) => {
           comments_count: finalStreamComments,
           unique_commentators: Number(group.authors_delta || 0),
           start_date: group.start_time,
+          video_start_date: eternalVideoFirstMeasurementMap[group.video_id] || group.start_time,
           scrape_date: group.end_time,
           data: streamPoints,
           superchats: showSuperchats,
@@ -3641,6 +3731,279 @@ app.post('/api/generate-captions', async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// GET & POST /api/video-captions - Download-once full-video synchronized captions
+const videoCaptionsHandler = async (req: Request, res: Response) => {
+  const p = getPool();
+  if (!p) {
+    res.json({ success: false, error: 'DB not connected.', cues: [], status: 'idle', progress: 0 });
+    return;
+  }
+
+  const sourceParams = req.method === 'POST' ? (req.body || {}) : (req.query || {});
+  const videoId = String(sourceParams.video_id || '').trim();
+  if (!videoId) {
+    res.status(400).json({ success: false, error: 'video_id is required.', cues: [], status: 'idle', progress: 0 });
+    return;
+  }
+
+  const startDate = sourceParams.start_date ? String(sourceParams.start_date) : null;
+  const endDate = sourceParams.end_date ? String(sourceParams.end_date) : null;
+  const durationRaw = sourceParams.duration;
+  const duration =
+    durationRaw !== undefined && durationRaw !== null && durationRaw !== ''
+      ? Number(durationRaw)
+      : null;
+  const priorityTimeRaw = sourceParams.priority_time;
+  const priorityTime =
+    priorityTimeRaw !== undefined && priorityTimeRaw !== null && priorityTimeRaw !== ''
+      ? Number(priorityTimeRaw)
+      : null;
+  const isLive =
+    sourceParams.is_live === '1' ||
+    sourceParams.is_live === 'true' ||
+    sourceParams.is_live === true;
+  const downloadAll =
+    req.method === 'POST' ||
+    sourceParams.download_all === '1' ||
+    sourceParams.download_all === 'true' ||
+    sourceParams.download_all === true;
+
+  try {
+    const result = await getVideoCaptions({
+      video_id: videoId,
+      start_date: startDate,
+      end_date: endDate,
+      duration,
+      priority_time: priorityTime,
+      is_live: isLive,
+      download_all: downloadAll,
+    });
+    res.json({
+      success: true,
+      video_id: videoId,
+      ...result,
+    });
+  } catch (err: any) {
+    console.error('[api/video-captions] Error:', err);
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Error fetching video captions.',
+      cues: [],
+      status: 'idle',
+      progress: 0,
+    });
+  }
+};
+
+app.get('/api/video-captions', videoCaptionsHandler);
+app.post('/api/video-captions', videoCaptionsHandler);
+
+// GET, POST & PATCH /api/detect-ads - Commercial ad / PNT / sponsor detector powered by native YouTube captions
+const detectAdsHandler = async (req: Request, res: Response) => {
+  const p = getPool();
+  if (!p) {
+    res.json({ success: false, error: 'DB not connected.' });
+    return;
+  }
+
+  const sourceParams =
+    req.method === 'POST' || req.method === 'PATCH'
+      ? (req.body || {})
+      : { ...(req.query || {}), ...(req.body && typeof req.body === 'object' ? req.body : {}) };
+  const videoId = String(sourceParams.video_id || '').trim();
+  if (!videoId) {
+    res.status(400).json({ success: false, error: 'video_id is required.' });
+    return;
+  }
+
+  if (req.method === 'DELETE' || sourceParams.action === 'delete') {
+    try {
+      const deleted = await deleteVideoAdsCache(videoId);
+      res.json({
+        success: true,
+        ...deleted,
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err.message || 'Error al borrar la medición de anuncios.',
+      });
+    }
+    return;
+  }
+
+  const updateOffsetOnly =
+    req.method === 'PATCH' ||
+    sourceParams.update_offset_only === '1' ||
+    sourceParams.update_offset_only === 'true' ||
+    sourceParams.update_offset_only === true;
+
+  if (updateOffsetOnly) {
+    if (sourceParams.ad_id) {
+      const adId = String(sourceParams.ad_id).trim();
+      const patch: {
+        start_sec?: number;
+        end_sec?: number;
+        clock_offset_sec?: number;
+        brand?: string;
+      } = {};
+      if (sourceParams.start_sec !== undefined && sourceParams.start_sec !== null) {
+        patch.start_sec = Number(sourceParams.start_sec);
+      }
+      if (sourceParams.end_sec !== undefined && sourceParams.end_sec !== null) {
+        patch.end_sec = Number(sourceParams.end_sec);
+      }
+      if (sourceParams.ad_clock_offset_sec !== undefined && sourceParams.ad_clock_offset_sec !== null) {
+        patch.clock_offset_sec = Number(sourceParams.ad_clock_offset_sec);
+      }
+      if (sourceParams.brand !== undefined && sourceParams.brand !== null) {
+        patch.brand = String(sourceParams.brand);
+      }
+      try {
+        const updated = await updateSingleAd(videoId, adId, patch);
+        res.json({
+          success: true,
+          video_id: videoId,
+          ...updated,
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          error: err.message || 'Error al actualizar el anuncio.',
+        });
+      }
+      return;
+    }
+
+    const rawOffset = Number(sourceParams.clock_offset_sec ?? 0);
+    const safeOffset = Number.isFinite(rawOffset) ? Math.round(rawOffset) : 0;
+    try {
+      const updated = await updateVideoAdsClockOffset(videoId, safeOffset);
+      res.json({
+        success: true,
+        video_id: videoId,
+        ...updated,
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err.message || 'Error al guardar el offset horario.',
+      });
+    }
+    return;
+  }
+
+  const cacheOnly =
+    sourceParams.cache_only === '1' ||
+    sourceParams.cache_only === 'true' ||
+    sourceParams.cache_only === true;
+
+  if (cacheOnly) {
+    try {
+      const cached = await getCachedVideoAds(videoId);
+      if (!cached) {
+        res.json({ success: true, found: false });
+        return;
+      }
+      res.json({ success: true, found: true, ...cached });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err.message || 'Error al consultar caché de anuncios.',
+      });
+    }
+    return;
+  }
+
+  const force =
+    sourceParams.force === '1' ||
+    sourceParams.force === 'true' ||
+    sourceParams.force === true;
+  const startDate = sourceParams.start_date ? String(sourceParams.start_date) : null;
+  const endDate = sourceParams.end_date ? String(sourceParams.end_date) : null;
+  const videoTitle = sourceParams.video_title ? String(sourceParams.video_title) : undefined;
+  const clockOffsetRaw = sourceParams.clock_offset_sec;
+  const clockOffsetSec =
+    clockOffsetRaw !== undefined && clockOffsetRaw !== null && clockOffsetRaw !== ''
+      ? Number(clockOffsetRaw)
+      : undefined;
+  const saveOffset =
+    sourceParams.save_offset === '1' ||
+    sourceParams.save_offset === 'true' ||
+    sourceParams.save_offset === true;
+
+  try {
+    const result = await detectVideoAds({
+      video_id: videoId,
+      force,
+      start_date: startDate,
+      end_date: endDate,
+      video_title: videoTitle,
+      clock_offset_sec: clockOffsetSec,
+      save_offset: saveOffset,
+    });
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (err: any) {
+    console.error('[api/detect-ads] Error:', err);
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Error al analizar anuncios en los subtítulos del video.',
+    });
+  }
+};
+
+app.get('/api/detect-ads', detectAdsHandler);
+app.post('/api/detect-ads', detectAdsHandler);
+app.patch('/api/detect-ads', detectAdsHandler);
+app.delete('/api/detect-ads', detectAdsHandler);
+
+// GET /api/brands & /api/brands/:key - Agency Brands showcase of streams with measured commercial ads
+const brandsHandler = async (req: Request, res: Response) => {
+  const p = getPool();
+  if (!p) {
+    res.json({ success: false, error: 'DB not connected.', streams: [] });
+    return;
+  }
+
+  const key = String(req.params?.key || req.query?.key || '').trim();
+
+  try {
+    if (key) {
+      const detail = await getBrandStreamDetail(key);
+      if (!detail) {
+        res.status(404).json({
+          success: false,
+          error: 'Emisión auditada no encontrada.',
+        });
+        return;
+      }
+      res.json({
+        success: true,
+        ...detail,
+      });
+      return;
+    }
+
+    const list = await listMeasuredBrandStreams();
+    res.json({
+      success: true,
+      ...list,
+    });
+  } catch (err: any) {
+    console.error('[api/brands] Error:', err);
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Error al obtener emisiones medidas para Brands.',
+    });
+  }
+};
+
+app.get('/api/brands', brandsHandler);
+app.get('/api/brands/:key', brandsHandler);
 
 // POST /api/contact - Contact form submission (stores in PostgreSQL + Resend / Webhook if configured)
 app.post('/api/contact', async (req: Request, res: Response) => {

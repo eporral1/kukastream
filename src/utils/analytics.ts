@@ -82,6 +82,12 @@ export function getSectionTitle(pathname: string, channelName?: string): { title
   if (cleanPath.startsWith('/face-off')) {
     return { title: `${SITE_NAME} - Face-Off`, section: 'Face-Off' };
   }
+  if (cleanPath === '/brands') {
+    return { title: `${SITE_NAME} - Brands`, section: 'Brands' };
+  }
+  if (cleanPath.startsWith('/brands/')) {
+    return { title: `${SITE_NAME} - Brands · Emisión Auditada`, section: 'Brands Detalle' };
+  }
   if (cleanPath === '/contacto' || cleanPath === '/contact') {
     return { title: `${SITE_NAME} - Contacto`, section: 'Contacto' };
   }

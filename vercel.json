@@ -16,6 +16,10 @@
       "destination": "/api/channel?id=:id"
     },
     {
+      "source": "/api/brands/:key",
+      "destination": "/api/brands?key=:key"
+    },
+    {
       "source": "/channels",
       "destination": "/api/status?type=seo&route=channels"
     },

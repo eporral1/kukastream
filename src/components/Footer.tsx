@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, ExternalLink, Heart, Mail } from 'lucide-react';
+import { ChevronDown, ChevronUp, ExternalLink, Heart, Mail, Megaphone } from 'lucide-react';
 import { SITE_NAME } from '../config/site';
 
 interface FooterProps {
@@ -73,7 +73,20 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
       </div>*/}
 
       <div className="max-w-7xl mx-auto px-4 text-xs sm:text-sm text-gray-500 space-y-4">
-        <div className="flex items-center justify-center">
+        <div className="flex items-center justify-center gap-3 flex-wrap">
+          {/*<a
+            href="/brands"
+            onClick={(e) => {
+              if (onNavigate) {
+                e.preventDefault();
+                onNavigate('/brands');
+              }
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white hover:bg-gray-50 text-gray-700 hover:text-blue-600 font-semibold border border-gray-200/90 shadow-2xs hover:shadow-xs transition-all cursor-pointer"
+          >
+            <Megaphone className="w-4 h-4 text-amber-600" />
+            <span>Brands</span>
+          </a>*/}
           <a
             href="/contacto"
             onClick={handleContactClick}

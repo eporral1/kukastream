@@ -7,11 +7,19 @@ import {
 import { HeatmapTable } from './HeatmapTable';
 import { StreamLineChart } from './StreamLineChart';
 import { StreamCommentsModal } from './StreamCommentsModal';
+import { StreamVideoWithCaptions } from './StreamVideoWithCaptions';
 import { isOctober2026OrLater, formatArgentinaDateTime } from '../utils/dateFilter';
-import { ArrowLeft, ExternalLink, Calendar, Heart, Eye, MessageSquare, Users, Radio, RefreshCw, AlertCircle, Swords } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Calendar, Heart, Eye, MessageSquare, Users, Radio, RefreshCw, AlertCircle, Swords, Video, VideoOff, Megaphone, Sparkles, Subtitles } from 'lucide-react';
 import { SITE_NAME } from '../config/site';
 import { trackEvent, updateSeoMeta } from '../utils/analytics';
 import { isStreamTitleBlocked } from '../config/streamFilters';
+
+const CHANNEL_ADMIN_TOKEN = '31415927';
+
+function hasChannelAdminToken(): boolean {
+  if (typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).get('token') === CHANNEL_ADMIN_TOKEN;
+}
 
 interface ChannelDetailPageProps {
   channel: Channel;
@@ -77,9 +85,76 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
   const [heatmapData, setHeatmapData] = useState<HourDayData[]>([]);
   const [avgData, setAvgData] = useState<AvgDataPoint[]>([]);
   const [selectedStreamForComments, setSelectedStreamForComments] = useState<Stream | null>(null);
+  const [openVideoMap, setOpenVideoMap] = useState<Record<string, boolean>>({});
+  const [openAdsMap, setOpenAdsMap] = useState<Record<string, boolean>>({});
+  const [adsStateMap, setAdsStateMap] = useState<Record<string, { count: number | null; loading: boolean }>>({});
+  const [captionsStateMap, setCaptionsStateMap] = useState<
+    Record<string, { status: string; count: number; progress: number; transcriptOpen: boolean }>
+  >({});
+  const [transcribeSeqMap, setTranscribeSeqMap] = useState<Record<string, number>>({});
+  const [isAdminMode, setIsAdminMode] = useState<boolean>(() => hasChannelAdminToken());
   const [isLoadingChannel, setIsLoadingChannel] = useState<boolean>(true);
   const [channelError, setChannelError] = useState<string | null>(null);
   const lastFetchedId = useRef<string | null>(null);
+
+  useEffect(() => {
+    const syncToken = () => setIsAdminMode(hasChannelAdminToken());
+    syncToken();
+    window.addEventListener('popstate', syncToken);
+    return () => window.removeEventListener('popstate', syncToken);
+  }, []);
+
+  const toggleStreamVideo = React.useCallback((key: string) => {
+    setOpenVideoMap((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  const showStreamVideo = React.useCallback((key: string) => {
+    setOpenVideoMap((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
+  }, []);
+
+  const toggleStreamAds = React.useCallback((key: string) => {
+    setOpenAdsMap((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  const closeStreamAds = React.useCallback((key: string) => {
+    setOpenAdsMap((prev) => (prev[key] ? { ...prev, [key]: false } : prev));
+  }, []);
+
+  const triggerStreamTranscribe = React.useCallback((key: string) => {
+    setTranscribeSeqMap((prev) => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
+  }, []);
+
+  const updateStreamAdsState = React.useCallback(
+    (key: string, info: { count: number | null; loading: boolean }) => {
+      setAdsStateMap((prev) => {
+        const cur = prev[key];
+        if (cur && cur.count === info.count && cur.loading === info.loading) {
+          return prev;
+        }
+        return { ...prev, [key]: info };
+      });
+    },
+    []
+  );
+
+  const updateStreamCaptionsState = React.useCallback(
+    (key: string, info: { status: string; count: number; progress: number; transcriptOpen: boolean }) => {
+      setCaptionsStateMap((prev) => {
+        const cur = prev[key];
+        if (
+          cur &&
+          cur.status === info.status &&
+          cur.count === info.count &&
+          cur.progress === info.progress &&
+          cur.transcriptOpen === info.transcriptOpen
+        ) {
+          return prev;
+        }
+        return { ...prev, [key]: info };
+      });
+    },
+    []
+  );
 
   useEffect(() => {
     const label = channel?.channel_name || channel?.channel || 'Canal';
@@ -406,15 +481,117 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                     )}
                   </div>
 
-                  {/* Button Ver Comments for live stream */}
-                  <div>
+                  {/* Action buttons for live stream: Mensajes & Superchats, Video ON/OFF, Anuncios */}
+                  <div className="flex items-center gap-2 flex-wrap">
                     <button
                       onClick={() => setSelectedStreamForComments(liveStream)}
-                      className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
+                      className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs whitespace-nowrap"
                     >
                       <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
                       <span>Mensajes & Superchats</span>
                     </button>
+
+                    {liveStream.video_id && (() => {
+                      const liveKey = `live_${liveStream.video_id}`;
+                      const isVidOn = Boolean(openVideoMap[liveKey]);
+                      const isAdsOn = Boolean(openAdsMap[liveKey]);
+                      const adsMeta = adsStateMap[liveKey];
+                      const captionsMeta = captionsStateMap[liveKey];
+                      const hasAdsMeasurement = Boolean(adsMeta && adsMeta.count !== null && adsMeta.count > 0);
+                      const hasCachedAdsRecord = Boolean(adsMeta && adsMeta.count !== null);
+                      const showMeasuredAdsBtn = hasAdsMeasurement || (isAdminMode && hasCachedAdsRecord);
+                      const showAnalyzeAdsBtn = isAdminMode && !showMeasuredAdsBtn;
+                      const isDownloadingCaptions = captionsMeta?.status === 'downloading';
+                      const hasCachedCaptions = Boolean(captionsMeta && captionsMeta.count > 0);
+                      return (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => toggleStreamVideo(liveKey)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer shadow-2xs whitespace-nowrap ${
+                              isVidOn
+                                ? 'bg-gray-900 text-white border-gray-900 hover:bg-gray-800'
+                                : 'bg-white hover:bg-gray-50 text-gray-800 border-gray-300'
+                            }`}
+                            title={isVidOn ? 'Ocultar reproductor de video' : 'Mostrar reproductor de video'}
+                          >
+                            {isVidOn ? (
+                              <Video className="w-3.5 h-3.5 text-red-400" />
+                            ) : (
+                              <VideoOff className="w-3.5 h-3.5 text-gray-500" />
+                            )}
+                            <span>{isVidOn ? 'Ocultar stream' : 'Ver stream'}</span>
+                          </button>
+
+                          {showMeasuredAdsBtn && (
+                            <button
+                              type="button"
+                              onClick={() => toggleStreamAds(liveKey)}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer shadow-2xs whitespace-nowrap ${
+                                isAdsOn
+                                  ? 'bg-amber-500 text-gray-950 border-amber-600 hover:bg-amber-400'
+                                  : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                              }`}
+                              title="Ver anuncios y PNTs medidos en esta emisión"
+                            >
+                              <Megaphone className="w-3.5 h-3.5" />
+                              <span>
+                                {adsMeta?.loading
+                                  ? 'Analizando anuncios...'
+                                  : `Anuncios (${adsMeta?.count ?? 0})`}
+                              </span>
+                            </button>
+                          )}
+
+                          {showAnalyzeAdsBtn && (
+                            <button
+                              type="button"
+                              onClick={() => toggleStreamAds(liveKey)}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer shadow-2xs whitespace-nowrap ${
+                                isAdsOn
+                                  ? 'bg-amber-500 text-gray-950 border-amber-600 hover:bg-amber-400'
+                                  : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                              }`}
+                              title="Analizar subtítulos para detectar anuncios y PNTs"
+                            >
+                              <Sparkles className="w-3.5 h-3.5" />
+                              <span>{adsMeta?.loading ? 'Analizando ads...' : 'Analizar ads'}</span>
+                            </button>
+                          )}
+
+                          {isAdminMode && (
+                            <button
+                              type="button"
+                              onClick={() => triggerStreamTranscribe(liveKey)}
+                              disabled={isDownloadingCaptions}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer shadow-2xs whitespace-nowrap disabled:opacity-60 ${
+                                captionsMeta?.transcriptOpen && isVidOn
+                                  ? 'bg-blue-600 text-white border-blue-700 hover:bg-blue-700'
+                                  : 'bg-white hover:bg-blue-50 text-gray-800 border-gray-300 hover:border-blue-300'
+                              }`}
+                              title={
+                                hasCachedCaptions
+                                  ? 'Ver transcripción sincronizada'
+                                  : 'Generar transcripción de esta emisión'
+                              }
+                            >
+                              {isDownloadingCaptions ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />
+                              ) : (
+                                <Subtitles className="w-3.5 h-3.5 text-blue-600" />
+                              )}
+                              <span>
+                                {isDownloadingCaptions
+                                  ? `Transcribiendo (${captionsMeta?.progress || 0}%)...`
+                                  : hasCachedCaptions
+                                  ? 'Transcripción'
+                                  : 'Transcribir'}
+                              </span>
+                            </button>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -453,6 +630,47 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Video Embed (hidden by default) & Separated White/Black Ads List */}
+            {liveStream.video_id && (() => {
+              const liveKey = `live_${liveStream.video_id}`;
+              return (
+                <StreamVideoWithCaptions
+                  videoId={liveStream.video_id}
+                  videoTitle={liveStream.video_title}
+                  startDate={liveStream.start_date}
+                  videoStartDate={liveStream.video_start_date}
+                  endDate={liveStream.scrape_date}
+                  isLive={true}
+                  timelinePoints={
+                    channel.type === 'eternal'
+                      ? [
+                          ...activeLiveChartPoints,
+                          ...pastStreams
+                            .filter((s) => s.video_id === liveStream.video_id)
+                            .flatMap((s) => s.data || []),
+                        ]
+                      : activeLiveChartPoints
+                  }
+                  showVideo={Boolean(openVideoMap[liveKey])}
+                  onRequestShowVideo={() => showStreamVideo(liveKey)}
+                  showAds={Boolean(openAdsMap[liveKey])}
+                  onCloseAds={() => closeStreamAds(liveKey)}
+                  hideInternalAdsButton={true}
+                  separateLightAdsPanel={true}
+                  hideClockAdjustment={!isAdminMode}
+                  hideReanalyze={!isAdminMode}
+                  allowAdTimestampAdjust={isAdminMode}
+                  allowDeleteAds={isAdminMode}
+                  allowAnalyzeAds={isAdminMode}
+                  allowCaptionDownload={isAdminMode}
+                  hideTranscriptButton={!isAdminMode}
+                  transcribeTriggerSeq={transcribeSeqMap[liveKey] || 0}
+                  onAdsStateChange={(info) => updateStreamAdsState(liveKey, info)}
+                  onCaptionsStateChange={(info) => updateStreamCaptionsState(liveKey, info)}
+                />
+              );
+            })()}
 
             {/* Live Minute-by-Minute Timeline Chart (id="chart-{{ $live->video_id }}") */}
             <div className="pt-2">
@@ -545,9 +763,24 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
             const chartLikes = chartData.map((d: any) => d.likes);
             const chartComments = chartData.map((d: any) => d.comments_count);
 
+            const pastKey = `${pastStream.video_id}_${pastStream.start_date || pastStream.scrape_date || index}`;
+            const isPastVidOn = Boolean(openVideoMap[pastKey]);
+            const isPastAdsOn = Boolean(openAdsMap[pastKey]);
+            const pastAdsMeta = adsStateMap[pastKey];
+            const pastCaptionsMeta = captionsStateMap[pastKey];
+            const pastHasAdsMeasurement = Boolean(
+              pastAdsMeta && pastAdsMeta.count !== null && pastAdsMeta.count > 0
+            );
+            const pastHasCachedAdsRecord = Boolean(pastAdsMeta && pastAdsMeta.count !== null);
+            const pastShowMeasuredAdsBtn =
+              pastHasAdsMeasurement || (isAdminMode && pastHasCachedAdsRecord);
+            const pastShowAnalyzeAdsBtn = isAdminMode && !pastShowMeasuredAdsBtn;
+            const pastIsDownloadingCaptions = pastCaptionsMeta?.status === 'downloading';
+            const pastHasCachedCaptions = Boolean(pastCaptionsMeta && pastCaptionsMeta.count > 0);
+
             return (
               <div
-                key={`${pastStream.video_id}_${pastStream.start_date || pastStream.scrape_date || index}`}
+                key={pastKey}
                 className="bg-white rounded-xl shadow-xs border border-gray-100 p-6 space-y-5"
               >
                 <div className="space-y-3 pb-4 border-b border-gray-100">
@@ -582,15 +815,104 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                         )}
                       </div>
 
-                      {/* Button Ver Comments for this past video_id item */}
-                      <div className="mt-2.5 flex items-center gap-2">
+                      {/* Action buttons: Mensajes & Superchats, Video ON/OFF, Anuncios */}
+                      <div className="mt-2.5 flex items-center gap-2 flex-wrap">
                         <button
                           onClick={() => setSelectedStreamForComments(pastStream)}
-                          className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
+                          className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs whitespace-nowrap"
                         >
                           <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
                           <span>Mensajes & Superchats</span>
                         </button>
+
+                        {pastStream.video_id && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => toggleStreamVideo(pastKey)}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer shadow-2xs whitespace-nowrap ${
+                                isPastVidOn
+                                  ? 'bg-gray-900 text-white border-gray-900 hover:bg-gray-800'
+                                  : 'bg-white hover:bg-gray-50 text-gray-800 border-gray-300'
+                              }`}
+                              title={isPastVidOn ? 'Ocultar reproductor de video' : 'Mostrar reproductor de video'}
+                            >
+                              {isPastVidOn ? (
+                                <Video className="w-3.5 h-3.5 text-red-400" />
+                              ) : (
+                                <VideoOff className="w-3.5 h-3.5 text-gray-500" />
+                              )}
+                              <span>{isPastVidOn ? 'Ocultar stream' : 'Mostrar stream'}</span>
+                            </button>
+
+                            {pastShowMeasuredAdsBtn && (
+                              <button
+                                type="button"
+                                onClick={() => toggleStreamAds(pastKey)}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer shadow-2xs whitespace-nowrap ${
+                                  isPastAdsOn
+                                    ? 'bg-amber-500 text-gray-950 border-amber-600 hover:bg-amber-400'
+                                    : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                                }`}
+                                title="Ver anuncios y PNTs medidos en esta emisión"
+                              >
+                                <Megaphone className="w-3.5 h-3.5" />
+                                <span>
+                                  {pastAdsMeta?.loading
+                                    ? 'Analizando anuncios...'
+                                    : `Anuncios (${pastAdsMeta?.count ?? 0})`}
+                                </span>
+                              </button>
+                            )}
+
+                            {pastShowAnalyzeAdsBtn && (
+                              <button
+                                type="button"
+                                onClick={() => toggleStreamAds(pastKey)}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer shadow-2xs whitespace-nowrap ${
+                                  isPastAdsOn
+                                    ? 'bg-amber-500 text-gray-950 border-amber-600 hover:bg-amber-400'
+                                    : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                                }`}
+                                title="Analizar subtítulos para detectar anuncios y PNTs"
+                              >
+                                <Sparkles className="w-3.5 h-3.5" />
+                                <span>{pastAdsMeta?.loading ? 'Analizando ads...' : 'Analizar ads'}</span>
+                              </button>
+                            )}
+
+                            {isAdminMode && (
+                              <button
+                                type="button"
+                                onClick={() => triggerStreamTranscribe(pastKey)}
+                                disabled={pastIsDownloadingCaptions}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer shadow-2xs whitespace-nowrap disabled:opacity-60 ${
+                                  pastCaptionsMeta?.transcriptOpen && isPastVidOn
+                                    ? 'bg-blue-600 text-white border-blue-700 hover:bg-blue-700'
+                                    : 'bg-white hover:bg-blue-50 text-gray-800 border-gray-300 hover:border-blue-300'
+                                }`}
+                                title={
+                                  pastHasCachedCaptions
+                                    ? 'Ver transcripción sincronizada'
+                                    : 'Generar transcripción de esta emisión'
+                                }
+                              >
+                                {pastIsDownloadingCaptions ? (
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />
+                                ) : (
+                                  <Subtitles className="w-3.5 h-3.5 text-blue-600" />
+                                )}
+                                <span>
+                                  {pastIsDownloadingCaptions
+                                    ? `Transcribiendo (${pastCaptionsMeta?.progress || 0}%)...`
+                                    : pastHasCachedCaptions
+                                    ? 'Transcripción'
+                                    : 'Transcribir'}
+                                </span>
+                              </button>
+                            )}
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -642,6 +964,46 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
                   </div>
                 </div>
 
+                {/* Video Embed (hidden by default) & Separated White/Black Ads List */}
+                {pastStream.video_id && (
+                  <StreamVideoWithCaptions
+                    videoId={pastStream.video_id}
+                    videoTitle={pastStream.video_title}
+                    startDate={pastStream.start_date}
+                    videoStartDate={pastStream.video_start_date}
+                    endDate={pastStream.scrape_date}
+                    isLive={false}
+                    timelinePoints={
+                      channel.type === 'eternal'
+                        ? [
+                            ...(liveStream && liveStream.video_id === pastStream.video_id
+                              ? activeLiveChartPoints
+                              : []),
+                            ...pastStreams
+                              .filter((s) => s.video_id === pastStream.video_id)
+                              .flatMap((s) => s.data || []),
+                          ]
+                        : chartData
+                    }
+                    showVideo={isPastVidOn}
+                    onRequestShowVideo={() => showStreamVideo(pastKey)}
+                    showAds={isPastAdsOn}
+                    onCloseAds={() => closeStreamAds(pastKey)}
+                    hideInternalAdsButton={true}
+                    separateLightAdsPanel={true}
+                    hideClockAdjustment={!isAdminMode}
+                    hideReanalyze={!isAdminMode}
+                    allowAdTimestampAdjust={isAdminMode}
+                    allowDeleteAds={isAdminMode}
+                    allowAnalyzeAds={isAdminMode}
+                    allowCaptionDownload={isAdminMode}
+                    hideTranscriptButton={!isAdminMode}
+                    transcribeTriggerSeq={transcribeSeqMap[pastKey] || 0}
+                    onAdsStateChange={(info) => updateStreamAdsState(pastKey, info)}
+                    onCaptionsStateChange={(info) => updateStreamCaptionsState(pastKey, info)}
+                  />
+                )}
+
                 {/* Stream Chart */}
                 {chartLabels.length > 0 && (
                   <div>
@@ -669,6 +1031,7 @@ export const ChannelDetailPage: React.FC<ChannelDetailPageProps> = ({
           stream={selectedStreamForComments}
           isOpen={!!selectedStreamForComments}
           onClose={() => setSelectedStreamForComments(null)}
+          allowAnalyzeAds={isAdminMode}
         />
       )}
     </div>

@@ -105,6 +105,7 @@ export interface Stream {
   old_likes: number;
   scrape_date: string;
   start_date?: string;
+  video_start_date?: string;
   start_fixed?: number;
   max_users?: number;
   max_viewers?: number;
@@ -114,6 +115,8 @@ export interface Stream {
   superchats_count?: number;
   comments_count?: number;
   unique_commentators?: number;
+  chatters_per_viewer?: number;
+  comments_per_user?: number;
   comments?: CommentItem[];
   data?: MinuteDataPoint[];
   type?: string;
@@ -139,6 +142,8 @@ export interface Channel {
   avg_unique_commentators?: number;
   likes_per_viewer?: number;
   comments_per_viewer?: number;
+  chatters_per_viewer?: number;
+  comments_per_user?: number;
   engagement_score?: number;
   type?: string;
   banner?: string;

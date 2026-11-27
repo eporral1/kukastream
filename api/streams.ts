@@ -371,6 +371,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         c.channel, c.channel_name, c.description, c.subs, c.thumb, c.tags, c.twitter, c.type,
         COALESCE(comm.comments_count, 0)::int as comments_count,
         COALESCE(comm.unique_commentators, 0)::int as unique_commentators,
+        CASE
+          WHEN COALESCE(comm.unique_commentators, 0) >= COALESCE(NULLIF(v_avg.avg_viewers, 0), sub.old_viewers, sub.concurrent_viewers, 0)
+               AND COALESCE(v_avg.pt_chatters_ratio, 0) > 0
+            THEN v_avg.pt_chatters_ratio
+          WHEN COALESCE(NULLIF(v_avg.avg_viewers, 0), sub.old_viewers, sub.concurrent_viewers, 0) > 0
+            THEN ROUND(LEAST(1.0, COALESCE(comm.unique_commentators, 0)::numeric / COALESCE(NULLIF(v_avg.avg_viewers, 0), sub.old_viewers, sub.concurrent_viewers, 1)), 4)
+          ELSE 0
+        END::numeric as chatters_per_viewer,
         0::numeric as superchats_total,
         0::int as superchats_count
       FROM (
@@ -395,6 +403,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         -- Promedio con umbral sobre el pico (descarta placa previa / arranque en 0 < 20% del pico):
         WITH m_pts AS (
           SELECT m.concurrent_viewers,
+                 m.authors_count,
                  MAX(m.concurrent_viewers) OVER () AS peak_viewers
           FROM public.minute m 
           WHERE m.video_id = sub.video_id AND m.concurrent_viewers > 0
@@ -404,7 +413,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ROUND(AVG(CASE WHEN concurrent_viewers >= (peak_viewers * 0.20) THEN concurrent_viewers END)),
           ROUND(AVG(concurrent_viewers)),
           0
-        )::int AS avg_viewers
+        )::int AS avg_viewers,
+        COALESCE(
+          ROUND(AVG(CASE WHEN concurrent_viewers > 0 AND authors_count IS NOT NULL THEN LEAST(1.0, authors_count::numeric / concurrent_viewers) END), 4),
+          0
+        )::numeric AS pt_chatters_ratio
         FROM m_pts
       ) v_avg ON true
       LEFT JOIN LATERAL (
@@ -617,6 +630,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               old_likes: group.min_likes,
               comments_count: group.comm_delta,
               unique_commentators: Number(group.authors_delta || 0),
+              chatters_per_viewer: group.avg_viewers > 0 ? Math.min(1, Number((Number(group.authors_delta || 0) / group.avg_viewers).toFixed(4))) : 0,
               start_date: group.start_time,
               scrape_date: group.end_time,
               superchats_total: 0,

@@ -64,7 +64,7 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<StreamSortOption>('engagement');
+  const [sortBy, setSortBy] = useState<StreamSortOption>('viewers');
   const [selectedCommentsStream, setSelectedCommentsStream] = useState<Stream | null>(null);
   const [filterSuperchatsOnly, setFilterSuperchatsOnly] = useState<boolean>(false);
 
@@ -145,36 +145,42 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
       return false;
     })
     .sort((a, b) => {
-      if (sortBy === 'viewers') {
-        const aAvg = Number(a.avg_viewers ?? a.old_viewers ?? a.concurrent_viewers) || 0;
-        const bAvg = Number(b.avg_viewers ?? b.old_viewers ?? b.concurrent_viewers) || 0;
-        return bAvg - aAvg;
-      }
+      const aAvg = Number(a.avg_viewers ?? a.old_viewers ?? a.concurrent_viewers) || 0;
+      const bAvg = Number(b.avg_viewers ?? b.old_viewers ?? b.concurrent_viewers) || 0;
+      const aLikes = Number(a.current_likes ?? a.max_likes ?? a.old_likes) || 0;
+      const bLikes = Number(b.current_likes ?? b.max_likes ?? b.old_likes) || 0;
+      const aComments = Number(a.comments_count) || 0;
+      const bComments = Number(b.comments_count) || 0;
+      const aUsers = Math.max(0, Number(a.unique_commentators || 0));
+      const bUsers = Math.max(0, Number(b.unique_commentators || 0));
+
+      const aLikesRatio = aAvg > 0 ? aLikes / aAvg : 0;
+      const bLikesRatio = bAvg > 0 ? bLikes / bAvg : 0;
+      const aChatRatio = a.chatters_per_viewer !== undefined && Number(a.chatters_per_viewer) > 0
+        ? Math.min(1, Number(a.chatters_per_viewer))
+        : (aAvg > 0 ? Math.min(1, aUsers / aAvg) : 0);
+      const bChatRatio = b.chatters_per_viewer !== undefined && Number(b.chatters_per_viewer) > 0
+        ? Math.min(1, Number(b.chatters_per_viewer))
+        : (bAvg > 0 ? Math.min(1, bUsers / bAvg) : 0);
+      const aMsgsPerUser = aUsers > 0 ? aComments / aUsers : 0;
+      const bMsgsPerUser = bUsers > 0 ? bComments / bUsers : 0;
+
       if (sortBy === 'likes') {
-        const aLikes = Number(a.current_likes ?? a.max_likes ?? a.old_likes) || 0;
-        const bLikes = Number(b.current_likes ?? b.max_likes ?? b.old_likes) || 0;
-        return bLikes - aLikes;
-      }
-      if (sortBy === 'comments') {
-        const aComments = Number(a.comments_count) || 0;
-        const bComments = Number(b.comments_count) || 0;
-        return bComments - aComments;
+        return bLikesRatio - aLikesRatio || bAvg - aAvg;
       }
       if (sortBy === 'chat_users') {
-        const aUsers = Math.max(0, Number(a.unique_commentators || 0));
-        const bUsers = Math.max(0, Number(b.unique_commentators || 0));
-        return bUsers - aUsers;
+        return bChatRatio - aChatRatio || bAvg - aAvg;
+      }
+      if (sortBy === 'comments') {
+        return bMsgsPerUser - aMsgsPerUser || bAvg - aAvg;
       }
       if (sortBy === 'superchats') {
         const aSuperchats = Number(a.superchats_total) || 0;
         const bSuperchats = Number(b.superchats_total) || 0;
-        return bSuperchats - aSuperchats;
+        return bSuperchats - aSuperchats || bAvg - aAvg;
       }
-      const aEng = calculateStreamEngagement(a);
-      const bEng = calculateStreamEngagement(b);
-      const aAvg = Number(a.avg_viewers ?? a.old_viewers ?? a.concurrent_viewers) || 0;
-      const bAvg = Number(b.avg_viewers ?? b.old_viewers ?? b.concurrent_viewers) || 0;
-      return bEng - aEng || bAvg - aAvg;
+      // default: 'viewers'
+      return bAvg - aAvg;
     });
   }, [streams, cleanSearchTerm, filterSuperchatsOnly, sortBy]);
 
@@ -268,12 +274,10 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
               }}
               className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-bold text-gray-800 shadow-2xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none cursor-pointer"
             >
-              <option value="engagement">Engagement (mayor a menor)</option>
-              <option value="viewers">Promedio de espectadores (mayor a menor)</option>
-              <option value="likes">Likes (mayor a menor)</option>
-              <option value="comments">Mensajes (mayor a menor)</option>
-              <option value="chat_users">Usuarios en el chat (mayor a menor)</option>
-              <option value="superchats">Recaudación en superchats en ARS (mayor a menor)</option>
+              <option value="viewers">Promedio de espectadores</option>
+              <option value="chat_users">Chatters / Espectadores</option>
+              <option value="comments">Mensajes / Chatters</option>
+              <option value="superchats">Recaudación en superchats en ARS</option>
             </select>
           </div>
         </div>
@@ -314,7 +318,15 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
 
             const isLive = stream.live === 'live';
             const superchatsTotal = Number(stream.superchats_total) || 0;
-            const engagementScore = calculateStreamEngagement(stream);
+            const avgViewers = Number(stream.avg_viewers ?? stream.old_viewers ?? stream.concurrent_viewers) || 0;
+            const currentLikes = Number(stream.current_likes ?? stream.max_likes ?? stream.old_likes) || 0;
+            const commentsCount = Number(stream.comments_count) || 0;
+            const uniqueCommentators = Math.max(0, Number(stream.unique_commentators || 0));
+
+            const uniqueRatio = stream.chatters_per_viewer !== undefined && Number(stream.chatters_per_viewer) > 0
+              ? Math.min(1, Number(stream.chatters_per_viewer))
+              : (avgViewers > 0 ? Math.min(1, uniqueCommentators / avgViewers) : 0);
+            const messagesPerUser = uniqueCommentators > 0 ? commentsCount / uniqueCommentators : 0;
 
             return (
               <div
@@ -405,6 +417,14 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                           <span>Mensajes</span>
                         </button>
 
+                        <span
+                          className="bg-rose-50 text-rose-600 px-2.5 py-0.5 rounded-full text-xs font-semibold inline-flex items-center gap-1 border border-rose-200/60"
+                          title="Likes"
+                        >
+                          <span>❤️</span>
+                          <span>{formatNumber(currentLikes)}</span>
+                        </span>
+
                         {superchatsTotal > 0 && (
                           <button
                             onClick={() => setSelectedCommentsStream(stream)}
@@ -433,62 +453,37 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
 
                   {/* Desktop Stats */}
                   <div className="flex items-center space-x-6 shrink-0 pl-2">
-                    {/* Comentado temporalmente pico de espectadores:
+                    {/* PROMEDIO DE ESPECTADORES */}
                     <div className="text-center min-w-[90px]">
                       <div className="text-xs text-gray-400 font-semibold mb-0.5">ESPECTADORES</div>
-                      <div className="font-extrabold text-2xl text-gray-900">
-                        {formatNumber(stream.concurrent_viewers)}
-                      </div>
-                      <div className="text-[10px] text-gray-500 uppercase">
-                        {isLive ? 'ACTUALES' : 'PICO'}
-                      </div>
-                    </div>
-                    */}
-
-                    {/* PROMEDIO DE ESPECTADORES */}
-                    <div className="text-center min-w-[95px]">
-                      <div className="text-xs text-gray-400 font-semibold mb-0.5">PROMEDIO</div>
                       <div className="font-extrabold text-2xl text-blue-600">
-                        {formatNumber(stream.avg_viewers ?? stream.old_viewers ?? stream.concurrent_viewers)}
+                        {formatNumber(avgViewers)}
                       </div>
                       <div className="text-[10px] text-gray-500 uppercase font-medium">
-                        ESPECTADORES
+                        PROMEDIO
                       </div>
                     </div>
 
-                    <div className="text-center min-w-[75px]">
-                      <div className="text-xs text-gray-400 font-semibold mb-0.5">LIKES</div>
-                      <div className="font-extrabold text-2xl text-rose-500">
-                        {formatNumber(stream.current_likes || 0)}
-                      </div>
-                      <div className="text-[10px] text-gray-500">TOTALES</div>
-                    </div>
-
-                    <div className="text-center min-w-[80px]">
-                      <div className="text-xs text-gray-400 font-semibold mb-0.5">MENSAJES</div>
-                      <div className="font-extrabold text-2xl text-amber-500">
-                        {formatNumber(stream.comments_count || 0)}
-                      </div>
-                      <div className="text-[10px] text-gray-500">TOTALES</div>
-                    </div>
-
-                    <div className="text-center min-w-[95px]">
-                      <div className="text-xs text-gray-400 font-semibold mb-0.5 whitespace-nowrap">USUARIOS CHAT</div>
+                    {/* Chatters / Esp. */}
+                    <div className="text-center min-w-[85px]">
+                      <div className="text-xs text-gray-400 font-semibold mb-0.5" title="Usuarios únicos en el chat / Espectadores promedio">CHATTERS / ESP.</div>
                       <div className="font-extrabold text-2xl text-emerald-600">
-                        {formatNumber(Math.max(0, stream.unique_commentators || 0))}
+                        {uniqueRatio > 0 ? `${(uniqueRatio * 100).toFixed(1)}%` : '0%'}
                       </div>
-                      <div className="text-[10px] text-gray-500">ÚNICOS</div>
+                      <div className="text-[10px] text-gray-500 font-medium">
+                        {formatNumber(uniqueCommentators)} chatters
+                      </div>
                     </div>
 
-                    <div
-                      className="text-center min-w-[85px] bg-indigo-50/70 px-3 py-1.5 rounded-xl border border-indigo-100"
-                      title="Índice de Engagement del stream (0-100): combina espectadores (75%), % usuarios en chat (13%), % likes (6%) y mensajes/espectador (6%)"
-                    >
-                      <div className="text-[11px] text-indigo-600 font-bold mb-0.5">ENGAGEMENT</div>
-                      <div className="font-black text-2xl text-indigo-700">
-                        {engagementScore.toFixed(1)}
+                    {/* Mensajes / Usuario */}
+                    <div className="text-center min-w-[85px]">
+                      <div className="text-xs text-gray-400 font-semibold mb-0.5" title="Mensajes totales / Usuarios únicos de chat">MENSAJES / ESP.</div>
+                      <div className="font-extrabold text-2xl text-amber-500">
+                        {messagesPerUser > 0 ? messagesPerUser.toFixed(2) : '0.00'}
                       </div>
-                      <div className="text-[10px] text-indigo-500 font-semibold">PUNTOS</div>
+                      <div className="text-[10px] text-gray-500 font-medium">
+                        {formatNumber(commentsCount)} mensajes
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -531,34 +526,29 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                         {highlightMatch(stream.video_title || 'Emisión', cleanSearchTerm)}
                       </p>
 
-                      <div className="flex items-center space-x-3 mt-2.5 flex-wrap gap-y-1">
-                        {/* Comentado temporalmente pico de espectadores:
-                        <div className="flex items-center space-x-1 bg-red-50 text-red-600 px-2 py-0.5 rounded-md text-xs font-bold">
-                          <Radio className="w-3 h-3" />
-                          <span>{formatNumber(stream.concurrent_viewers)}</span>
-                        </div>
-                        */}
-
+                      <div className="flex items-center space-x-2 mt-2.5 flex-wrap gap-y-1">
                         {/* PROMEDIO DE ESPECTADORES */}
-                        <div className="flex items-center space-x-1 bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-md text-xs font-bold" title="Promedio de espectadores">
+                        <div className="flex items-center space-x-1 bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-md border border-blue-200/60 text-xs font-bold" title="Promedio de espectadores">
                           <Radio className="w-3 h-3 text-blue-600" />
-                          <span>Prom: {formatNumber(stream.avg_viewers ?? stream.old_viewers ?? stream.concurrent_viewers)}</span>
+                          <span>{formatNumber(avgViewers)} esp</span>
                         </div>
 
-                        <div className="text-xs text-gray-500">
-                          ❤️ {formatNumber(stream.current_likes || 0)}
+                        <div
+                          className="flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md text-xs font-semibold border border-emerald-200/60"
+                          title="Usuarios únicos en el chat / Espectadores promedio"
+                        >
+                          <span>👥</span>
+                          <span>{uniqueRatio > 0 ? `${(uniqueRatio * 100).toFixed(1)}%` : '0%'} esp</span>
+                          <span className="text-[10px] text-gray-500 font-normal">({formatNumber(uniqueCommentators)} chatters)</span>
                         </div>
 
-                        <div className="text-xs text-gray-500">
-                          💬 {formatNumber(stream.comments_count || 0)}
-                        </div>
-
-                        <div className="text-xs text-emerald-700 font-semibold" title="Usuarios únicos en el chat">
-                          👥 {formatNumber(Math.max(0, stream.unique_commentators || 0))}
-                        </div>
-
-                        <div className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 rounded-md" title="Índice de Engagement (0-100)">
-                          ⚡ {engagementScore.toFixed(1)} pts
+                        <div
+                          className="flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md text-xs font-semibold border border-amber-200/60"
+                          title="Mensajes / Usuarios únicos de chat"
+                        >
+                          <span>💬</span>
+                          <span>{messagesPerUser > 0 ? messagesPerUser.toFixed(2) : '0.00'} msgs/usr</span>
+                          <span className="text-[10px] text-gray-500 font-normal">({formatNumber(commentsCount)})</span>
                         </div>
 
                         {(superchatsTotal > 0 || sortBy === 'superchats') && (
@@ -581,6 +571,13 @@ export const StreamsPage: React.FC<StreamsPageProps> = ({
                         >
                           💬 Mensajes
                         </button>
+                        <span
+                          className="bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full text-xs font-semibold inline-flex items-center gap-1 border border-rose-200/60"
+                          title="Likes"
+                        >
+                          <span>❤️</span>
+                          <span>{formatNumber(currentLikes)}</span>
+                        </span>
                         {stream.video_id && (
                           <a
                             href={`https://youtube.com/watch?v=${stream.video_id}`}

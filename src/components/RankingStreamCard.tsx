@@ -1,7 +1,6 @@
 import React from 'react';
 import { Stream } from '../types';
 import { formatNumber } from '../data/mockData';
-import { calculateStreamEngagement } from '../utils/engagement';
 
 interface RankingStreamCardProps {
   stream: Stream;
@@ -39,8 +38,10 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
   const peakViewers = (stream.max_viewers || stream.max_users || (isLive ? stream.concurrent_viewers : (stream.avg_viewers || stream.concurrent_viewers))) || 0;
   const likesRatio = peakViewers > 0 ? (currentLikes / peakViewers) : 0;
   const commentsRatio = peakViewers > 0 ? (commentsCount / peakViewers) : 0;
-  const uniqueRatio = peakViewers > 0 ? (uniqueCommentators / peakViewers) : 0;
-  const engagementScore = calculateStreamEngagement(stream);
+  const uniqueRatio = stream.chatters_per_viewer !== undefined && Number(stream.chatters_per_viewer) > 0
+    ? Math.min(1, Number(stream.chatters_per_viewer))
+    : (peakViewers > 0 ? Math.min(1, uniqueCommentators / peakViewers) : 0);
+  const messagesPerUser = uniqueCommentators > 0 ? (commentsCount / uniqueCommentators) : 0;
 
   return (
     <div
@@ -120,6 +121,14 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                   </button>
                 )}
 
+                <span
+                  className="bg-rose-50 text-rose-600 px-2.5 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 border border-rose-200/60"
+                  title="Likes"
+                >
+                  <span>❤️</span>
+                  <span>{formatNumber(currentLikes)}</span>
+                </span>
+
                 {superchatsTotal > 0 && (
                   <button
                     onClick={() => onOpenComments && onOpenComments(stream)}
@@ -157,50 +166,25 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
               </div>
             </div>
 
-            {/* Likes Count */}
-            <div className="text-center min-w-[80px]">
-              <div className="text-xs text-gray-400 font-semibold mb-0.5">LIKES</div>
-              <div className="font-extrabold text-2xl text-rose-500">
-                {formatNumber(currentLikes)}
-              </div>
-              <div className="text-[10px] text-gray-500 font-medium" title="Likes por espectador pico del episodio">
-                {likesRatio > 0 ? (likesRatio*100).toFixed(2) : '0.00'}% esp.
-              </div>
-            </div>
-
-            {/* Comments Count */}
-            <div className="text-center min-w-[80px]">
-              <div className="text-xs text-gray-400 font-semibold mb-0.5">MENSAJES</div>
-              <div className="font-extrabold text-2xl text-amber-500">
-                {formatNumber(commentsCount)}
-              </div>
-              <div className="text-[10px] text-gray-500 font-medium" title="Mensajes por espectador pico del episodio">
-                {commentsRatio > 0 ? commentsRatio.toFixed(2) : '0.00'} / esp.
-              </div>
-            </div>
-
-            {/* Unique Chat Users Count */}
-            <div className="text-center min-w-[95px]">
-              <div className="text-xs text-gray-400 font-semibold mb-0.5">USUARIOS CHAT</div>
+            {/* Chat Users / Viewers Ratio (formerly Mensajes) */}
+            <div className="text-center min-w-[85px]">
+              <div className="text-xs text-gray-400 font-semibold mb-0.5" title="Usuarios únicos en el chat / Espectadores promedio o pico">CHATTERS / ESP.</div>
               <div className="font-extrabold text-2xl text-emerald-600">
-                {formatNumber(uniqueCommentators)}
+                {uniqueRatio > 0 ? `${(uniqueRatio * 100).toFixed(1)}%` : '0%'}
               </div>
-              <div className="text-[10px] text-gray-500 font-medium" title="Usuarios únicos en el chat sobre espectador pico">
-                {uniqueRatio > 0 ? `${(uniqueRatio*100).toFixed(2)}` : '0'}% esp.
+              <div className="text-[10px] text-gray-500 font-medium">
+                {formatNumber(uniqueCommentators)} chatters
               </div>
             </div>
 
-            {/* Engagement Score */}
-            <div
-              className="text-center min-w-[85px] bg-indigo-50/70 px-3 py-1.5 rounded-xl border border-indigo-100"
-              title="Índice de Engagement (0-100): combina espectadores (75%), % usuarios en chat (13%), % likes (6%) y mensajes/espectador (6%)"
-            >
-              <div className="text-[11px] text-indigo-600 font-bold mb-0.5">ENGAGEMENT</div>
-              <div className="font-black text-2xl text-indigo-700">
-                {engagementScore.toFixed(1)}
+            {/* Messages per Chat User Ratio (formerly Usuarios Chat) */}
+            <div className="text-center min-w-[85px]">
+              <div className="text-xs text-gray-400 font-semibold mb-0.5" title="Mensajes totales / Usuarios únicos de chat">MENSAJES / ESP.</div>
+              <div className="font-extrabold text-2xl text-amber-500">
+                {messagesPerUser > 0 ? messagesPerUser.toFixed(2) : '0.00'}
               </div>
-              <div className="text-[10px] text-indigo-500 font-semibold">
-                PUNTOS
+              <div className="text-[10px] text-gray-500 font-medium">
+                {formatNumber(commentsCount)} mensajes
               </div>
             </div>
           </div>
@@ -262,37 +246,21 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                 </div>
 
                 <div
-                  className="flex items-center gap-1 bg-rose-50 text-rose-600 px-2 py-0.5 rounded-md text-xs font-semibold border border-rose-200/60"
-                  title="Likes totales y ratio sobre espectador pico del episodio"
+                  className="flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md text-xs font-semibold border border-emerald-200/60"
+                  title="Usuarios únicos en el chat / Espectadores"
                 >
-                  <span>❤️</span>
-                  <span>{formatNumber(currentLikes)}</span>
-                  <span className="text-[10px] text-gray-500 font-normal">({likesRatio > 0 ? (likesRatio*100).toFixed(2) : '0.00'}% esp.)</span>
+                  <span>👥</span>
+                  <span>{uniqueRatio > 0 ? `${(uniqueRatio * 100).toFixed(1)}%` : '0%'} esp</span>
+                  <span className="text-[10px] text-gray-500 font-normal">({formatNumber(uniqueCommentators)} usrs)</span>
                 </div>
 
                 <div
                   className="flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md text-xs font-semibold border border-amber-200/60"
-                  title="Mensajes totales y ratio sobre espectador pico del episodio"
+                  title="Mensajes / Usuarios únicos de chat"
                 >
                   <span>💬</span>
-                  <span>{formatNumber(commentsCount)}</span>
-                  <span className="text-[10px] text-gray-500 font-normal">({commentsRatio > 0 ? commentsRatio.toFixed(2) : '0.00'}/esp.)</span>
-                </div>
-
-                <div
-                  className="flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md text-xs font-semibold border border-emerald-200/60"
-                  title="Usuarios únicos que comentaron en el chat"
-                >
-                  <span>👥</span>
-                  <span>{formatNumber(uniqueCommentators)} usuarios chat</span>
-                </div>
-
-                <div
-                  className="flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md text-xs font-bold border border-indigo-200/80"
-                  title="Índice de Engagement (0-100)"
-                >
-                  <span>⚡</span>
-                  <span>{engagementScore.toFixed(1)} pts</span>
+                  <span>{messagesPerUser > 0 ? messagesPerUser.toFixed(2) : '0.00'} msgs/usr</span>
+                  <span className="text-[10px] text-gray-500 font-normal">({formatNumber(commentsCount)})</span>
                 </div>
 
                 {onOpenComments && (
@@ -300,9 +268,17 @@ export const RankingStreamCard: React.FC<RankingStreamCardProps> = ({
                     onClick={() => onOpenComments(stream)}
                     className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-xs font-semibold border border-blue-200"
                   >
-                    Chat
+                    💬 Mensajes
                   </button>
                 )}
+
+                <span
+                  className="bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 border border-rose-200/60"
+                  title="Likes"
+                >
+                  <span>❤️</span>
+                  <span>{formatNumber(currentLikes)}</span>
+                </span>
 
                 <button
                   onClick={() => onNavigateChannel(stream.channel)}

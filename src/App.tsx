@@ -12,6 +12,8 @@ import { DevSocialModal } from './components/DevSocialModal';
 import { StreamCommentsModal } from './components/StreamCommentsModal';
 import { ContactPage } from './components/ContactPage';
 import { CrossChatUsersPage } from './components/CrossChatUsersPage';
+import { BrandsPage } from './components/BrandsPage';
+import { BrandStreamDetailPage } from './components/BrandStreamDetailPage';
 import { Footer } from './components/Footer';
 import { CategoryTag, Stream, Channel } from './types';
 import { isOctober2026OrLater, formatArgentinaTime } from './utils/dateFilter';
@@ -20,6 +22,7 @@ import { SITE_NAME } from './config/site';
 import { initAnalytics, trackPageView, trackEvent, updateSeoMeta } from './utils/analytics';
 import { calculateStreamEngagement } from './utils/engagement';
 import { isStreamTitleBlocked } from './config/streamFilters';
+import { formatNumber } from './data/mockData';
 
 export interface InitialPrerenderData {
   streams?: Stream[];
@@ -60,7 +63,7 @@ export default function App({ initialData }: AppProps) {
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [dbError, setDbError] = useState<string | null>(null);
   const [isDbErrorDismissed, setIsDbErrorDismissed] = useState<boolean>(false);
-  const [homeSortBy, setHomeSortBy] = useState<'engagement' | 'viewers' | 'likes_pct' | 'comments_per_viewer' | 'chat_users_pct'>('engagement');
+  const [homeSortBy, setHomeSortBy] = useState<'engagement' | 'viewers' | 'likes_pct' | 'comments_per_viewer' | 'chat_users_pct'>('viewers');
 
   const sortedLiveStreams = useMemo(() => {
     const getMetrics = (stream: Stream) => {
@@ -316,9 +319,16 @@ export default function App({ initialData }: AppProps) {
   }, [streams, recentStreams]);
 
   // Handle Channel Route parsing: `/channel/:id` or `/channel/@handle`
-  const isChannelDetail = currentPath.startsWith('/channel/');
+  const normalizedPath = (currentPath || '/').split('?')[0].replace(/\/+$/, '') || '/';
+  const isBrandsList = normalizedPath === '/brands';
+  const isBrandStreamDetail = normalizedPath.startsWith('/brands/') && normalizedPath.length > '/brands/'.length;
+  const currentBrandStreamKey = isBrandStreamDetail
+    ? decodeURIComponent(normalizedPath.slice('/brands/'.length))
+    : null;
+
+  const isChannelDetail = normalizedPath.startsWith('/channel/');
   const currentChannelIdentifier = isChannelDetail
-    ? decodeURIComponent(currentPath.replace('/channel/', '')).toLowerCase()
+    ? decodeURIComponent(normalizedPath.replace('/channel/', '')).toLowerCase()
     : null;
 
   const currentChannel = useMemo(() => {
@@ -551,6 +561,21 @@ export default function App({ initialData }: AppProps) {
               channelsList={channelsList}
               onNavigateChannel={(handle) => navigate(`/channel/${handle}`)}
             />
+          ) : isBrandsList ? (
+            /* Route: Brands B2B Landing & Measured Streams List */
+            <BrandsPage
+              onNavigateBrandStream={(streamKey) => navigate(`/brands/${encodeURIComponent(streamKey)}`)}
+              onNavigateChannel={(handle) => navigate(`/channel/${handle}`)}
+              onNavigateContact={() => navigate('/contacto')}
+            />
+          ) : isBrandStreamDetail && currentBrandStreamKey ? (
+            /* Route: Individual Measured Emission Detail */
+            <BrandStreamDetailPage
+              key={currentBrandStreamKey}
+              streamKey={currentBrandStreamKey}
+              onBack={() => navigate('/brands')}
+              onNavigateChannel={(handle) => navigate(`/channel/${handle}`)}
+            />
           ) : currentPath === '/contacto' || currentPath === '/contact' ? (
             /* Route: Contact Page */
             <ContactPage onBack={() => navigate('/')} />
@@ -623,11 +648,10 @@ export default function App({ initialData }: AppProps) {
                       }}
                       className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-bold text-gray-800 shadow-2xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none cursor-pointer"
                     >
-                      <option value="engagement">Engagement (general)</option>
-                      <option value="viewers">Espectadores (actual)</option>
-                      <option value="likes_pct">% de likes</option>
-                      <option value="comments_per_viewer">Mensajes por espectador</option>
-                      <option value="chat_users_pct">% de espectadores (usuarios chat)</option>
+                      {/*<option value="engagement">Engagement (general)</option>*/}
+                      <option value="viewers">Espectadores actuales</option>
+                      <option value="chat_users_pct">Chatters / Espectadores</option>
+                      <option value="comments_per_viewer">Mensajes / Chatters</option>
                     </select>
                   </div>
                 </div>
@@ -698,15 +722,19 @@ export default function App({ initialData }: AppProps) {
                   </div>
 
                   <div className="space-y-3">
-                    {recentStreams.map((stream, idx) => {
-                      const rPeak = stream.max_viewers || stream.max_users || stream.concurrent_viewers || stream.avg_viewers || 0;
+                    {recentStreams.map((stream) => {
+                      const rPeak = Number(stream.max_viewers || stream.max_users || stream.concurrent_viewers || stream.avg_viewers || 0);
                       const rLikes = Number(stream.current_likes || 0);
                       const rComments = Number(stream.comments_count || 0);
                       const rUniqueUsers = Number(stream.unique_commentators || 0);
-                      const rLikesRatio = rPeak > 0 ? (rLikes / rPeak) : 0;
-                      const rCommentsRatio = rPeak > 0 ? (rComments / rPeak) : 0;
-                      const rUniqueRatio = rPeak > 0 ? (rUniqueUsers / rPeak) : 0;
-                      const rEngagement = calculateStreamEngagement(stream);
+                      const rSuperchatsTotal = Number(stream.superchats_total || 0);
+                      const rUniqueRatio =
+                        stream.chatters_per_viewer !== undefined && Number(stream.chatters_per_viewer) > 0
+                          ? Math.min(1, Number(stream.chatters_per_viewer))
+                          : rPeak > 0
+                          ? Math.min(1, rUniqueUsers / rPeak)
+                          : 0;
+                      const rMessagesPerUser = rUniqueUsers > 0 ? rComments / rUniqueUsers : 0;
 
                       return (
                         <div
@@ -725,7 +753,7 @@ export default function App({ initialData }: AppProps) {
                               <img
                                 src={stream.thumb || `https://i.ytimg.com/vi/${stream.video_id}/hqdefault.jpg`}
                                 alt={stream.channel_name}
-                                className="w-12 h-12 rounded-full object-cover border-2 border-gray-100"
+                                className="w-12 h-12 sm:w-14 sm:h-14 rounded-full object-cover border-2 border-gray-100"
                                 onError={(e) => {
                                   (e.target as HTMLImageElement).src = `https://i.ytimg.com/vi/${stream.video_id}/hqdefault.jpg`;
                                 }}
@@ -750,98 +778,86 @@ export default function App({ initialData }: AppProps) {
                                   Finalizado
                                 </span>
                               </div>
-                              <p className="text-xs text-gray-600 truncate mt-0.5" title={stream.video_title}>
+                              <p className="text-xs sm:text-sm text-gray-600 truncate mt-0.5" title={stream.video_title}>
                                 {stream.video_title || 'Emisión finalizada'}
                               </p>
-                              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                              <div className="flex items-center gap-2 mt-2.5 flex-wrap">
                                 <a
                                   href={`/channel/${stream.channel}`}
                                   onClick={(e) => {
                                     e.preventDefault();
                                     navigate(`/channel/${stream.channel}`);
                                   }}
-                                  className="bg-purple-50 hover:bg-purple-100 text-purple-700 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors cursor-pointer"
+                                  className="bg-purple-100 hover:bg-purple-200 text-purple-800 px-2.5 py-0.5 rounded-full text-xs font-semibold transition-colors cursor-pointer"
                                 >
-                                  Ver Métricas
+                                  <span>📊</span>
+                                  <span>Métricas</span>
                                 </a>
                                 <button
                                   onClick={() => setSelectedCommentsStream(stream)}
-                                  className="bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer border border-blue-200/50"
+                                  className="bg-blue-50 hover:bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer border border-blue-200/60"
                                 >
-                                  💬 Mensajes ({(stream.comments_count || 0).toLocaleString('es-AR')})
+                                  <span>💬</span>
+                                  <span>Mensajes</span>
                                 </button>
-                                {Number(stream.superchats_total) > 0 && (
+                                <span
+                                  className="bg-rose-50 text-rose-600 px-2.5 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 border border-rose-200/60"
+                                  title="Likes"
+                                >
+                                  <span>❤️</span>
+                                  <span>{formatNumber(rLikes)}</span>
+                                </span>
+                                {rSuperchatsTotal > 0 && (
                                   <button
                                     onClick={() => setSelectedCommentsStream(stream)}
-                                    className="bg-amber-100 hover:bg-amber-200 text-amber-900 text-[11px] font-bold px-2 py-0.5 rounded-full transition-colors flex items-center gap-1 cursor-pointer border border-amber-300"
+                                    className="bg-amber-100 hover:bg-amber-200 text-amber-900 px-2.5 py-0.5 rounded-full text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer border border-amber-300"
                                   >
-                                    💰 ${stream.superchats_total} ARS
+                                    <span>💰</span>
+                                    <span>${formatNumber(rSuperchatsTotal)} ARS</span>
                                   </button>
                                 )}
                               </div>
                             </div>
                           </div>
 
-                          <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 flex-wrap sm:flex-nowrap">
-                            <div className="text-right min-w-[70px]">
-                              <div className="text-[11px] text-gray-400 font-semibold">ESPECTADORES</div>
-                              <div className="text-base sm:text-lg font-extrabold text-blue-600">
-                                {new Intl.NumberFormat('es-AR').format(rPeak || stream.concurrent_viewers)}
+                          <div className="flex items-center justify-between sm:justify-end space-x-5 lg:space-x-6 shrink-0 pt-2 sm:pt-0 sm:pl-2 border-t sm:border-t-0 border-gray-100">
+                            <div className="text-center min-w-[85px]">
+                              <div className="text-xs text-gray-400 font-semibold mb-0.5">ESPECTADORES</div>
+                              <div className="font-extrabold text-xl sm:text-2xl text-blue-600">
+                                {formatNumber(rPeak)}
                               </div>
-                              <div className="text-[10px] text-gray-400">PICO</div>
+                              <div className="text-[10px] text-gray-500 font-medium">PICO</div>
                             </div>
 
-                            <div className="text-right min-w-[70px]">
-                              <div className="text-[11px] text-gray-400 font-semibold">LIKES</div>
-                              <div className="text-base sm:text-lg font-extrabold text-rose-500">
-                                {new Intl.NumberFormat('es-AR').format(rLikes)}
-                              </div>
-                              <div className="text-[10px] text-gray-500 font-medium" title="Likes por espectador pico del episodio">
-                                {rLikesRatio > 0 ? (rLikesRatio*100).toFixed(2) : '0.00'}% esp.
-                              </div>
-                            </div>
-
-                            <div className="text-right min-w-[70px]">
-                              <div className="text-[11px] text-gray-400 font-semibold">MENSAJES</div>
-                              <div className="text-base sm:text-lg font-extrabold text-amber-500">
-                                {new Intl.NumberFormat('es-AR').format(rComments)}
-                              </div>
-                              <div className="text-[10px] text-gray-500 font-medium" title="Mensajes por espectador pico del episodio">
-                                {rCommentsRatio > 0 ? rCommentsRatio.toFixed(2) : '0.00'} / esp
-                              </div>
-                            </div>
-
-                            <div className="text-right min-w-[85px]">
-                              <div className="text-[11px] text-gray-400 font-semibold">USUARIOS CHAT</div>
-                              <div className="text-base sm:text-lg font-extrabold text-emerald-600">
-                                {new Intl.NumberFormat('es-AR').format(rUniqueUsers)}
-                              </div>
-                              <div className="text-[10px] text-gray-500 font-medium" title="Usuarios únicos en el chat por espectador pico">
-                                {rUniqueRatio > 0 ? `${(rUniqueRatio*100).toFixed(2)} % esp.` : '0%'}
-                              </div>
-                            </div>
-
-                            <div
-                              className="text-center min-w-[75px] bg-indigo-50/70 px-2.5 py-1 rounded-xl border border-indigo-100"
-                              title="Índice de Engagement (0-100)"
-                            >
-                              <div className="text-[10px] text-indigo-600 font-bold">ENGAGEMENT</div>
-                              <div className="text-base sm:text-lg font-black text-indigo-700">
-                                {rEngagement.toFixed(1)}
-                              </div>
-                              <div className="text-[9px] text-indigo-500 font-semibold">PUNTOS</div>
-                            </div>
-
-                            {stream.video_id && (
-                              <a
-                                href={`https://youtube.com/watch?v=${stream.video_id}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-3 py-1.5 bg-gray-100 hover:bg-red-50 text-gray-700 hover:text-red-600 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 shrink-0"
+                            <div className="text-center min-w-[85px]">
+                              <div
+                                className="text-xs text-gray-400 font-semibold mb-0.5"
+                                title="Usuarios únicos en el chat / Espectadores promedio o pico"
                               >
-                                ▶ YouTube
-                              </a>
-                            )}
+                                CHATTERS / ESP.
+                              </div>
+                              <div className="font-extrabold text-xl sm:text-2xl text-emerald-600">
+                                {rUniqueRatio > 0 ? `${(rUniqueRatio * 100).toFixed(1)}%` : '0%'}
+                              </div>
+                              <div className="text-[10px] text-gray-500 font-medium">
+                                {formatNumber(rUniqueUsers)} chatters
+                              </div>
+                            </div>
+
+                            <div className="text-center min-w-[85px]">
+                              <div
+                                className="text-xs text-gray-400 font-semibold mb-0.5"
+                                title="Mensajes totales / Usuarios únicos de chat"
+                              >
+                                MENSAJES / ESP.
+                              </div>
+                              <div className="font-extrabold text-xl sm:text-2xl text-amber-500">
+                                {rMessagesPerUser > 0 ? rMessagesPerUser.toFixed(2) : '0.00'}
+                              </div>
+                              <div className="text-[10px] text-gray-500 font-medium">
+                                {formatNumber(rComments)} mensajes
+                              </div>
+                            </div>
                           </div>
                         </div>
                       );

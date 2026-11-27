@@ -7,6 +7,7 @@ import { TopCommentatorsList } from './TopCommentatorsList';
 // import { PoliticalAnalysisResult } from '../utils/politicalAnalysis';
 import { HateSpeechAnalysisView } from './HateSpeechAnalysisView';
 import { HateSpeechAnalysisResult } from '../utils/hateSpeechAnalysis';
+import { VideoAdsPanel, VideoAdsAnalysis } from './VideoAdsPanel';
 import { trackEvent } from '../utils/analytics';
 import {
   MessageSquare,
@@ -24,6 +25,7 @@ import {
   Crown,
   Filter,
   ShieldAlert,
+  Megaphone,
 } from 'lucide-react';
 
 // Variable booleana para ocultar/comentar temporalmente la consulta con IA
@@ -33,16 +35,24 @@ interface StreamCommentsModalProps {
   stream: Stream;
   isOpen: boolean;
   onClose: () => void;
+  allowAnalyzeAds?: boolean;
 }
 
-type ModalNavTab = 'comments' | 'top_commentators' | 'ai' | 'captions';
+type ModalNavTab = 'comments' | 'top_commentators' | 'ads' | 'ai' | 'captions';
 type FilterTab = 'all' | 'superchats' | 'comments';
 
 export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
   stream,
   isOpen,
   onClose,
+  allowAnalyzeAds,
 }) => {
+  const effectiveAllowAnalyzeAds =
+    allowAnalyzeAds !== undefined
+      ? allowAnalyzeAds
+      : typeof window !== 'undefined' &&
+        window.location.pathname.startsWith('/channel/') &&
+        new URLSearchParams(window.location.search).get('token') === '31415927';
   const [activeTab, setActiveTab] = useState<ModalNavTab>('comments');
   const [filter, setFilter] = useState<FilterTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -66,6 +76,81 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
       });
     }
   }, [isOpen, stream]);
+
+  // Commercial Ad / PNT Detector state (powered by native YouTube captions)
+  const [adsAnalysis, setAdsAnalysis] = useState<VideoAdsAnalysis | null>(null);
+  const [adsLoading, setAdsLoading] = useState(false);
+  const [adsError, setAdsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAdsAnalysis(null);
+    setAdsError(null);
+    if (!isOpen || !stream.video_id) return;
+    let cancelled = false;
+    fetch(`/api/detect-ads?video_id=${encodeURIComponent(stream.video_id)}&cache_only=1`, {
+      headers: { 'X-App-Client': 'kukastream-web' },
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled && data?.success && data?.found) {
+          setAdsAnalysis(data as VideoAdsAnalysis);
+        }
+      })
+      .catch(() => {
+        // ignore cache probe error
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, stream.video_id]);
+
+  const handleDetectAds = useCallback(
+    async (force = false) => {
+      if (!stream.video_id || adsLoading || !effectiveAllowAnalyzeAds) return;
+      trackEvent('detect_video_ads', {
+        video_id: stream.video_id,
+        channel: stream.channel,
+        force,
+      });
+      setAdsLoading(true);
+      setAdsError(null);
+      try {
+        const res = await fetch('/api/detect-ads', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-App-Client': 'kukastream-web',
+          },
+          body: JSON.stringify({
+            video_id: stream.video_id,
+            force,
+            start_date: stream.start_date || null,
+            end_date: stream.scrape_date || null,
+            video_title: stream.video_title,
+          }),
+        });
+        const data = await res.json().catch(() => null);
+        if (res.ok && data?.success) {
+          setAdsAnalysis(data as VideoAdsAnalysis);
+        } else {
+          setAdsError(data?.error || 'No se pudieron detectar anuncios en este video.');
+        }
+      } catch (err: any) {
+        setAdsError(err?.message || 'Error de conexión al analizar anuncios.');
+      } finally {
+        setAdsLoading(false);
+      }
+    },
+    [
+      stream.video_id,
+      stream.channel,
+      stream.start_date,
+      stream.scrape_date,
+      stream.video_title,
+      adsLoading,
+      effectiveAllowAnalyzeAds,
+    ]
+  );
 
   // Hate Speech Analysis & All Video Messages state (Tendencia Política y Publicidad comentados)
   const [hateSpeechAnalysis, setHateSpeechAnalysis] = useState<HateSpeechAnalysisResult | null>(null);
@@ -438,19 +523,29 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
             </span>
           </button>
 
-          {/* Botón de Análisis de Publicidad comentado por pedido del usuario:
-          <button
-            onClick={() => setActiveTab('captions')}
-            className={`py-3 px-3.5 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'captions'
-                ? 'border-purple-600 text-purple-700 bg-white shadow-2xs rounded-t-lg -mb-px'
-                : 'border-transparent text-gray-600 hover:text-purple-700 hover:bg-purple-50/40'
-            }`}
-          >
-            <Youtube className="w-4 h-4 text-purple-600" />
-            <span>Transcripción & Anuncios</span>
-          </button>
-          */}
+          {(effectiveAllowAnalyzeAds || (adsAnalysis && adsAnalysis.total_ads > 0)) && (
+            <button
+              onClick={() => {
+                setActiveTab('ads');
+                if (!adsAnalysis && !adsLoading && effectiveAllowAnalyzeAds) {
+                  handleDetectAds(false);
+                }
+              }}
+              className={`py-3 px-3.5 text-xs sm:text-sm font-bold border-b-2 flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'ads'
+                  ? 'border-amber-600 text-amber-800 bg-white shadow-2xs rounded-t-lg -mb-px'
+                  : 'border-transparent text-gray-600 hover:text-amber-700 hover:bg-amber-50/40'
+              }`}
+            >
+              <Megaphone className="w-4 h-4 text-amber-600" />
+              <span>{adsAnalysis ? 'Anuncios' : 'Analizar ads'}</span>
+              {adsAnalysis && (
+                <span className="text-[10px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded-full font-bold ml-0.5">
+                  {adsAnalysis.total_ads}
+                </span>
+              )}
+            </button>
+          )}
 
           {/* Botón de Análisis de Tendencia Política comentado por pedido del usuario:
           <button
@@ -926,16 +1021,17 @@ export const StreamCommentsModal: React.FC<StreamCommentsModalProps> = ({
         )}
         */}
 
-        {/*
-        // =====================================================================
-        // COMENTADO: Tab de Transcripción y Detección Exhaustiva de Publicidad
-        // =====================================================================
-        {activeTab === 'captions_ads_disabled' && (
-          <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
-            ...
-          </div>
+        {activeTab === 'ads' && (
+          <VideoAdsPanel
+            videoId={stream.video_id}
+            analysis={adsAnalysis}
+            loading={adsLoading}
+            error={adsError}
+            onAnalyze={(force) => handleDetectAds(Boolean(force))}
+            variant="light"
+            hideReanalyze={!effectiveAllowAnalyzeAds}
+          />
         )}
-        */}
 
         {/* Modal Footer */}
         <div className="p-3.5 border-t border-gray-100 bg-gray-50 flex items-center justify-between text-xs text-gray-500 shrink-0">
